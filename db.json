@@ -1,0 +1,211 @@
+{
+  "ModelName": "lexi-db",
+  "ModelMetadata": {
+    "Author": "Developer",
+    "DateCreated": "2024-03-31T04:36:20Z",
+    "Version": "1.0"
+  },
+  "DataModel": [
+    {
+      "TableName": "Users",
+      "KeyAttributes": {
+        "PartitionKey": {
+          "AttributeName": "user_id",
+          "AttributeType": "S"
+        }
+      },
+      "NonKeyAttributes": [
+        {
+          "AttributeName": "email",
+          "AttributeType": "S"
+        },
+        {
+          "AttributeName": "username",
+          "AttributeType": "S"
+        },
+        {
+          "AttributeName": "role",
+          "AttributeType": "S"
+        },
+        {
+          "AttributeName": "profile_picture_url",
+          "AttributeType": "S"
+        },
+        {
+          "AttributeName": "current_level",
+          "AttributeType": "S"
+        },
+        {
+          "AttributeName": "learning_streak",
+          "AttributeType": "N"
+        },
+        {
+          "AttributeName": "total_lessons_completed",
+          "AttributeType": "N"
+        },
+        {
+          "AttributeName": "total_speaking_time",
+          "AttributeType": "N"
+        },
+        {
+          "AttributeName": "pronunciation_score_avg",
+          "AttributeType": "N"
+        },
+        {
+          "AttributeName": "last_lesson_date",
+          "AttributeType": "S"
+        },
+        {
+          "AttributeName": "status",
+          "AttributeType": "S"
+        },
+        {
+          "AttributeName": "created_at",
+          "AttributeType": "S"
+        },
+        {
+          "AttributeName": "updated_at",
+          "AttributeType": "S"
+        }
+      ],
+      "GlobalSecondaryIndexes": [
+        {
+          "IndexName": "EmailIndex",
+          "KeyAttributes": {
+            "PartitionKey": {
+              "AttributeName": "email",
+              "AttributeType": "S"
+            }
+          },
+          "Projection": {
+            "ProjectionType": "ALL"
+          }
+        },
+        {
+          "IndexName": "RoleIndex",
+          "KeyAttributes": {
+            "PartitionKey": {
+              "AttributeName": "role",
+              "AttributeType": "S"
+            },
+            "SortKey": {
+              "AttributeName": "created_at",
+              "AttributeType": "S"
+            }
+          },
+          "Projection": {
+            "ProjectionType": "INCLUDE",
+            "NonKeyAttributes": ["user_id", "username", "email", "status"]
+          }
+        }
+      ],
+      "TableData": [
+        {
+          "user_id": {
+            "S": "usr_001_john"
+          },
+          "email": {
+            "S": "john@email.com"
+          },
+          "username": {
+            "S": "john_learner"
+          },
+          "role": {
+            "S": "USER"
+          },
+          "profile_picture_url": {
+            "S": "https://mybucket.s3.amazonaws.com/profiles/john.jpg"
+          },
+          "current_level": {
+            "S": "INTERMEDIATE"
+          },
+          "learning_streak": {
+            "N": "15"
+          },
+          "total_lessons_completed": {
+            "N": "45"
+          },
+          "total_speaking_time": {
+            "N": "180"
+          },
+          "pronunciation_score_avg": {
+            "N": "85.5"
+          },
+          "last_lesson_date": {
+            "S": "2024-03-20"
+          },
+          "status": {
+            "S": "ACTIVE"
+          },
+          "created_at": {
+            "S": "2024-01-15T10:00:00Z"
+          },
+          "updated_at": {
+            "S": "2024-03-20T14:30:00Z"
+          }
+        },
+        {
+          "user_id": {
+            "S": "usr_002_jane"
+          },
+          "email": {
+            "S": "jane@email.com"
+          },
+          "username": {
+            "S": "jane_beginner"
+          },
+          "role": {
+            "S": "USER"
+          },
+          "current_level": {
+            "S": "BEGINNER"
+          },
+          "learning_streak": {
+            "N": "3"
+          },
+          "total_lessons_completed": {
+            "N": "8"
+          },
+          "total_speaking_time": {
+            "N": "25"
+          },
+          "pronunciation_score_avg": {
+            "N": "65.0"
+          },
+          "status": {
+            "S": "ACTIVE"
+          },
+          "created_at": {
+            "S": "2024-03-10T09:00:00Z"
+          },
+          "updated_at": {
+            "S": "2024-03-20T11:15:00Z"
+          }
+        },
+        {
+          "user_id": {
+            "S": "adm_001_admin"
+          },
+          "email": {
+            "S": "admin@englishapp.com"
+          },
+          "username": {
+            "S": "admin_mike"
+          },
+          "role": {
+            "S": "ADMIN"
+          },
+          "status": {
+            "S": "ACTIVE"
+          },
+          "created_at": {
+            "S": "2024-01-01T00:00:00Z"
+          },
+          "updated_at": {
+            "S": "2024-03-20T16:45:00Z"
+          }
+        }
+      ]
+    }
+  ]
+}
