@@ -1,0 +1,82 @@
+{
+  "ModelName": "WordCacheModel",
+  "ModelMetadata": {
+    "Author": "LexiLearn Platform",
+    "DateCreated": "Apr 1, 2026",
+    "DateLastModified": "Apr 1, 2026",
+    "Description": "Shared dictionary cache table. Read-heavy, shared across all users. One entry per word (lowercase-normalized). PK already encodes the normalized form: WORD#<word_lowercase>. Stores pronunciation audio S3 key, phonetic, and Vietnamese definition. TTL = 60 days from last update. No GSI needed — access only via GetItem(PK=WORD#word, SK=METADATA).",
+    "AWSService": "Amazon DynamoDB",
+    "Version": "3.0"
+  },
+  "DataModel": [
+    {
+      "TableName": "WordCache",
+      "BillingMode": "PAY_PER_REQUEST",
+      "KeyAttributes": {
+        "PartitionKey": { "AttributeName": "PK", "AttributeType": "S" },
+        "SortKey":      { "AttributeName": "SK", "AttributeType": "S" }
+      },
+      "NonKeyAttributes": [
+        { "AttributeName": "word",             "AttributeType": "S" },
+        { "AttributeName": "word_type",        "AttributeType": "S" },
+        { "AttributeName": "definition_vi",    "AttributeType": "S" },
+        { "AttributeName": "phonetic",         "AttributeType": "S" },
+        { "AttributeName": "audio_s3_key",     "AttributeType": "S" },
+        { "AttributeName": "example_sentence", "AttributeType": "S" },
+        { "AttributeName": "source_api",       "AttributeType": "S" },
+        { "AttributeName": "hit_count",        "AttributeType": "N" },
+        { "AttributeName": "created_at",       "AttributeType": "S" },
+        { "AttributeName": "updated_at",       "AttributeType": "S" },
+        { "AttributeName": "ttl",              "AttributeType": "N" }
+      ],
+      "GlobalSecondaryIndexes": [],
+      "TableData": [
+        {
+          "PK":               { "S": "WORD#scalable" },
+          "SK":               { "S": "METADATA" },
+          "word":             { "S": "scalable" },
+          "word_type":        { "S": "adjective" },
+          "definition_vi":    { "S": "có khả năng mở rộng, có thể phát triển theo quy mô" },
+          "phonetic":         { "S": "/ˈskeɪləbl/" },
+          "audio_s3_key":     { "S": "dictionary/en/scalable.mp3" },
+          "example_sentence": { "S": "We need a scalable solution for this problem." },
+          "source_api":       { "S": "oxford_api" },
+          "hit_count":        { "N": "47" },
+          "created_at":       { "S": "2024-03-20T10:00:00Z" },
+          "updated_at":       { "S": "2024-03-20T10:00:00Z" },
+          "ttl":              { "N": "1727740800" }
+        },
+        {
+          "PK":               { "S": "WORD#passionate" },
+          "SK":               { "S": "METADATA" },
+          "word":             { "S": "passionate" },
+          "word_type":        { "S": "adjective" },
+          "definition_vi":    { "S": "đam mê, nhiệt huyết, tràn đầy cảm xúc mạnh mẽ" },
+          "phonetic":         { "S": "/ˈpæʃənət/" },
+          "audio_s3_key":     { "S": "dictionary/en/passionate.mp3" },
+          "example_sentence": { "S": "She is passionate about her work in education." },
+          "source_api":       { "S": "oxford_api" },
+          "hit_count":        { "N": "103" },
+          "created_at":       { "S": "2024-03-20T10:00:00Z" },
+          "updated_at":       { "S": "2024-03-20T10:00:00Z" },
+          "ttl":              { "N": "1727740800" }
+        },
+        {
+          "PK":               { "S": "WORD#microservices" },
+          "SK":               { "S": "METADATA" },
+          "word":             { "S": "microservices" },
+          "word_type":        { "S": "noun" },
+          "definition_vi":    { "S": "kiến trúc phần mềm xây dựng trên các dịch vụ nhỏ độc lập, giao tiếp qua API" },
+          "phonetic":         { "S": "/ˈmaɪkroʊˌsɜːrvɪsɪz/" },
+          "audio_s3_key":     { "S": "dictionary/en/microservices.mp3" },
+          "example_sentence": { "S": "We refactored our monolithic application into microservices to improve scalability." },
+          "source_api":       { "S": "oxford_api" },
+          "hit_count":        { "N": "12" },
+          "created_at":       { "S": "2024-03-20T10:00:00Z" },
+          "updated_at":       { "S": "2024-03-20T10:00:00Z" },
+          "ttl":              { "N": "1727740800" }
+        }
+      ]
+    }
+  ]
+}
