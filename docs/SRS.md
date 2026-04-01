@@ -150,6 +150,102 @@ lexi-be/
 
 > **Nguyên tắc**: `template.yaml` và `infrastructure/` là 2 phần của Layer 4 — một phần định nghĩa hạ tầng AWS, một phần là code kết nối với hạ tầng đó.
 
+```
+lexi-be/
+│
+├── infrastructure/                      ← IaC (AWS SAM - tách riêng, đúng best practice)
+│   ├── template.yaml                   ← Root template (orchestrator)
+│   │
+│   ├── shared/                         ← Shared resources
+│   │   ├── dynamodb.yaml
+│   │   ├── sqs.yaml
+│   │   └── s3.yaml
+│   │
+│   ├── api/                            ← API Gateway
+│   │   └── api-gateway.yaml
+│   │
+│   ├── functions/                      ← Lambda definitions (mapping handler → function)
+│   │   ├── session-functions.yaml
+│   │   ├── flashcard-functions.yaml
+│   │   ├── word-functions.yaml
+│   │   ├── websocket-functions.yaml
+│   │   └── worker-functions.yaml
+│   │
+│   └── layers/
+│       └── shared-layer.yaml
+│
+├── src/                                ← CODE (Clean Architecture)
+│
+│   ├── domain/                         ← LAYER 1: DOMAIN
+│   │   ├── entities/
+│   │   │   ├── user.py
+│   │   │   ├── session.py
+│   │   │   ├── turn.py
+│   │   │   ├── flash_card.py
+│   │   │   ├── scoring.py
+│   │   │   └── scenario.py
+│   │   │
+│   │   └── services/
+│   │       └── prompt_builder.py
+│   │
+│   ├── application/                    ← LAYER 2: APPLICATION
+│   │   ├── use_cases/
+│   │   │   ├── create_session.py
+│   │   │   ├── run_conversation.py
+│   │   │   ├── score_session.py
+│   │   │   ├── lookup_word.py
+│   │   │   └── review_flashcard.py
+│   │   │
+│   │   ├── ports/
+│   │   │   ├── session_repo.py
+│   │   │   ├── flashcard_repo.py
+│   │   │   ├── bedrock_port.py
+│   │   │   ├── transcribe_port.py
+│   │   │   ├── polly_port.py
+│   │   │   ├── storage_port.py
+│   │   │   └── sqs_port.py
+│   │   │
+│   │   └── dtos/
+│   │       ├── session_dto.py
+│   │       ├── turn_dto.py
+│   │       └── flashcard_dto.py
+│   │
+│   ├── interfaces/                     ← LAYER 3: INTERFACE ADAPTERS
+│   │   ├── controllers/
+│   │   │   ├── session_controller.py
+│   │   │   ├── flashcard_controller.py
+│   │   │   ├── word_controller.py
+│   │   │   └── ws_controller.py
+│   │   │
+│   │   └── presenters/
+│   │       ├── session_presenter.py
+│   │       └── flashcard_presenter.py
+│   │
+│   └── infrastructure/                 ← LAYER 4: CODE (Frameworks & Drivers)
+│       ├── handlers/
+│       │   ├── session_handler.py
+│       │   ├── flashcard_handler.py
+│       │   ├── ws_auth_handler.py
+│       │   ├── ws_conv_handler.py
+│       │   ├── word_handler.py
+│       │   ├── scoring_worker.py
+│       │   └── presigned_handler.py
+│       │
+│       ├── persistence/
+│       │   ├── dynamo_session_repo.py
+│       │   └── dynamo_flashcard_repo.py
+│       │
+│       └── ai/
+│           ├── bedrock_adapter.py
+│           ├── transcribe_adapter.py
+│           ├── polly_adapter.py
+│           └── s3_adapter.py
+│
+└── tests/
+    ├── unit/
+    ├── integration/
+    └── e2e/
+```
 ### 2.3 Mô tả chi tiết từng lớp
 
 #### LAYER 1 — Domain (Entities + Domain Services)
