@@ -1,5 +1,41 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
+Description: lexi-be
+
+Resources:
+  CognitoStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: infra/cognito.yaml
+
+  AuthStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: infra/functions/auth.yaml
+      Parameters:
+        UserPoolArn: !GetAtt CognitoStack.Outputs.UserPoolArn
+        CognitoClientId: !GetAtt CognitoStack.Outputs.ClientId
+
+  HelloWorldStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: infra/functions/hello_world.yaml
+      Parameters:
+        UserPoolArn: !GetAtt CognitoStack.Outputs.UserPoolArn
+
+Outputs:
+  AuthApiUrl:
+    Description: "Auth API URL"
+    Value: !GetAtt AuthStack.Outputs.AuthApiUrl
+  HelloApiUrl:
+    Description: "Hello World API URL"
+    Value: !GetAtt HelloWorldStack.Outputs.HelloApiUrl
+  CognitoUserPoolId:
+    Description: "Cognito User Pool ID"
+    Value: !GetAtt CognitoStack.Outputs.UserPoolId
+  CognitoClientId:
+    Description: "Cognito Client ID"
+    Value: !GetAtt CognitoStack.Outputs.ClientId
 Description: >
   lexi-be — LexiLearn AI Speaking Practice Platform (Serverless)
 
