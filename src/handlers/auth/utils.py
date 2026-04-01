@@ -12,3 +12,18 @@ def response(status_code, body):
         "headers": {"Content-Type": "application/json"},
         "body": json.dumps(body),
     }
+
+
+def parse_body(event):
+    """Parse JSON body, raise ValueError if invalid."""
+    try:
+        return json.loads(event.get("body") or "{}")
+    except json.JSONDecodeError:
+        raise ValueError("Invalid JSON body")
+
+
+def require_fields(body, *fields):
+    """Raise ValueError if any required field is missing."""
+    missing = [f for f in fields if not body.get(f)]
+    if missing:
+        raise ValueError(f"Missing required fields: {', '.join(missing)}")
