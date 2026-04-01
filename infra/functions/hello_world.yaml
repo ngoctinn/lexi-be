@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  UserPoolArn:
+    Type: String
+
+Globals:
+  Function:
+    Timeout: 3
+
+Resources:
+  HelloApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !Ref UserPoolArn
+
+  HelloWorldFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../../src/handlers/hello_world/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Events:
+        HelloWorld:
+          Type: Api
+          Properties:
+            RestApiId: !Ref HelloApi
+            Path: /hello
+            Method: get
+
+Outputs:
+  HelloApiUrl:
+    Value: !Sub "https://${HelloApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod"
