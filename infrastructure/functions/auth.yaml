@@ -1,0 +1,159 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  UserPoolArn:
+    Type: String
+  CognitoClientId:
+    Type: String
+
+Globals:
+  Function:
+    Timeout: 3
+    Environment:
+      Variables:
+        COGNITO_CLIENT_ID: !Ref CognitoClientId
+
+Conditions: {}
+
+# Shared policy applied to each function individually
+# because SAM Globals does not support Policies
+
+Resources:
+  AuthApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+
+  CognitoPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - cognito-idp:SignUp
+              - cognito-idp:ConfirmSignUp
+              - cognito-idp:InitiateAuth
+              - cognito-idp:ForgotPassword
+              - cognito-idp:ConfirmForgotPassword
+              - cognito-idp:GlobalSignOut
+              - cognito-idp:ResendConfirmationCode
+            Resource: !Ref UserPoolArn
+
+  SignUpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../../src/
+      Handler: infrastructure.handlers.auth.sign_up.handler
+      Runtime: python3.13
+      Policies:
+        - !Ref CognitoPolicy
+      Events:
+        SignUp:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthApi
+            Path: /auth/signup
+            Method: post
+
+  ConfirmSignUpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../../src/
+      Handler: infrastructure.handlers.auth.confirm_sign_up.handler
+      Runtime: python3.13
+      Policies:
+        - !Ref CognitoPolicy
+      Events:
+        ConfirmSignUp:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthApi
+            Path: /auth/confirm
+            Method: post
+
+  SignInFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../../src/
+      Handler: infrastructure.handlers.auth.sign_in.handler
+      Runtime: python3.13
+      Policies:
+        - !Ref CognitoPolicy
+      Events:
+        SignIn:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthApi
+            Path: /auth/signin
+            Method: post
+
+  RefreshTokenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../../src/
+      Handler: infrastructure.handlers.auth.refresh_token.handler
+      Runtime: python3.13
+      Policies:
+        - !Ref CognitoPolicy
+      Events:
+        RefreshToken:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthApi
+            Path: /auth/refresh
+            Method: post
+
+  ForgotPasswordFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../../src/
+      Handler: infrastructure.handlers.auth.forgot_password.handler
+      Runtime: python3.13
+      Policies:
+        - !Ref CognitoPolicy
+      Events:
+        ForgotPassword:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthApi
+            Path: /auth/forgot-password
+            Method: post
+
+  ResetPasswordFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../../src/
+      Handler: infrastructure.handlers.auth.reset_password.handler
+      Runtime: python3.13
+      Policies:
+        - !Ref CognitoPolicy
+      Events:
+        ResetPassword:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthApi
+            Path: /auth/reset-password
+            Method: post
+  
+  SignOutFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../../src/
+      Handler: infrastructure.handlers.auth.sign_out.handler
+      Runtime: python3.13
+      Policies:
+        - !Ref CognitoPolicy
+      Events:
+        SignOut:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthApi
+            Path: /auth/signout
+            Method: post
+
+Outputs:
+  AuthApiUrl:
+    Value: !Sub "https://${AuthApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod"
