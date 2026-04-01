@@ -36,3 +36,36 @@ Outputs:
   CognitoClientId:
     Description: "Cognito Client ID"
     Value: !GetAtt CognitoStack.Outputs.ClientId
+Description: >
+  lexi-be — LexiLearn AI Speaking Practice Platform (Serverless)
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures:
+      - arm64
+    Environment:
+      Variables:
+        TABLE_NAME: LexiApp
+        WORD_CACHE_TABLE: WordCache
+        AUDIO_BUCKET: lexi-audio
+        DICT_BUCKET: lexi-dict
+
+# ---------------------------------------------------------------------------
+# NOTE ON TIMEOUTS:
+#   Each function has an explicit timeout matching its workload.
+#   DO NOT use a global Timeout here — workloads differ significantly.
+#
+#   fn_ws_conversation_handler : 29s  (API GW WebSocket max integration timeout)
+#   fn_scoring_worker           : 90s  (Bedrock Claude 3 Sonnet inference)
+#   fn_word_lookup_handler      : 15s  (Oxford API + Polly + S3)
+#   fn_session_handler          : 10s  (DynamoDB CRUD)
+#   fn_flashcard_handler        : 10s  (DynamoDB CRUD)
+#   fn_profile_handler          : 10s  (DynamoDB CRUD)
+#   fn_presigned_url_handler    :  5s  (S3 presign only)
+#   fn_ws_auth_handler          :  5s  (JWT verify only)
+# ---------------------------------------------------------------------------
+
+Resources:
+  # Placeholder — individual functions will be added here.
+  # Each function must define its own Timeout property explicitly.
