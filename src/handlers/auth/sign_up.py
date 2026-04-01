@@ -1,10 +1,14 @@
-import json
 from botocore.exceptions import ClientError
-from utils import cognito, CLIENT_ID, response
+from utils import cognito, CLIENT_ID, response, parse_body, require_fields
 
 
 def handler(event, context):
-    body = json.loads(event["body"])
+    try:
+        body = parse_body(event)
+        require_fields(body, "email", "password")
+    except ValueError as e:
+        return response(400, {"error": str(e)})
+
     try:
         cognito.sign_up(
             ClientId=CLIENT_ID,

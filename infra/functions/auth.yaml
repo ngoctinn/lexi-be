@@ -137,6 +137,22 @@ Resources:
             RestApiId: !Ref AuthApi
             Path: /auth/reset-password
             Method: post
+  
+  SignOutFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../../src/handlers/auth/
+      Handler: sign_out.handler
+      Runtime: python3.13
+      Policies:
+        - !Ref CognitoPolicy
+      Events:
+        SignOut:
+          Type: Api
+          Properties:
+            RestApiId: !Ref AuthApi
+            Path: /auth/signout
+            Method: post
 
 Outputs:
   AuthApiUrl:

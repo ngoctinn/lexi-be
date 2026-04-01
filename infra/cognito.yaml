@@ -3,6 +3,8 @@ AWSTemplateFormatVersion: '2010-09-09'
 Resources:
   CognitoUserPool:
     Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       UserPoolName: lexi-user-pool
       AutoVerifiedAttributes:
@@ -16,6 +18,16 @@ Resources:
           RequireLowercase: true
           RequireNumbers: true
           RequireSymbols: false
+      LambdaConfig:
+        PostConfirmation: !ImportValue PostConfirmationFunctionArn
+
+  PostConfirmationInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !ImportValue PostConfirmationFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !Sub "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*"
 
   CognitoUserPoolClient:
     Type: AWS::Cognito::UserPoolClient

@@ -1,15 +1,23 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: lexi-be
+Description:
+  lexi-be — LexiLearn AI Speaking Practice Platform (Serverless)
 
 Resources:
+  PostConfirmationStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: infra/functions/post_confirmation.yaml
+
   CognitoStack:
     Type: AWS::CloudFormation::Stack
+    DependsOn: PostConfirmationStack
     Properties:
       TemplateURL: infra/cognito.yaml
 
   AuthStack:
     Type: AWS::CloudFormation::Stack
+    DependsOn: CognitoStack
     Properties:
       TemplateURL: infra/functions/auth.yaml
       Parameters:
@@ -36,12 +44,10 @@ Outputs:
   CognitoClientId:
     Description: "Cognito Client ID"
     Value: !GetAtt CognitoStack.Outputs.ClientId
-Description: >
-  lexi-be — LexiLearn AI Speaking Practice Platform (Serverless)
 
 Globals:
   Function:
-    Runtime: python3.12
+    Runtime: python3.13
     Architectures:
       - arm64
     Environment:
@@ -65,7 +71,5 @@ Globals:
 #   fn_presigned_url_handler    :  5s  (S3 presign only)
 #   fn_ws_auth_handler          :  5s  (JWT verify only)
 # ---------------------------------------------------------------------------
-
-Resources:
   # Placeholder — individual functions will be added here.
   # Each function must define its own Timeout property explicitly.
