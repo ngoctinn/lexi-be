@@ -79,171 +79,294 @@ Hướng phụ thuộc:  Infrastructure → Adapters → Use Cases → Domain
 
 ```
 lexi-be/
+├── template.yaml                       ← LAYER 4: AWS SAM (Infrastructure as Code)
+│                                          Định nghĩa API Gateway, Lambda, DynamoDB, SQS
+│
 ├── src/
-│   ├── layers/                         ← Lambda Layer (shared code)
-│   │   └── domain/                     ← LAYER 1: DOMAIN
-│   │       ├── entities/               ← Entities (Pure Python dataclasses)
-│   │       │   ├── user.py             →  UserProfile
-│   │       │   ├── session.py          →  Session
-│   │       │   ├── turn.py             →  Turn
-│   │       │   ├── flash_card.py       →  FlashCard
-│   │       │   ├── scoring.py          →  Scoring
-│   │       │   └── scenario.py         →  Scenario
-│   │       ├── topics/                 ← Domain Services
-│   │       │   └── config.py           →  build_system_prompt() (domain service)
-│   │       └── [application/]          ← LAYER 2: APPLICATION (cần bổ sung)
-│   │           ├── use_cases/          →  CreateSession, RunConversation, ...
-│   │           ├── ports/              →  ISessionRepo, IBedrockPort, ...
-│   │           └── dtos/               →  Request/Response DTOs
+│   ├── domain/                         ← LAYER 1: DOMAIN (Pure Python — zero AWS dependency)
+│   │   ├── entities/
+│   │   │   ├── user.py                 →  UserProfile
+│   │   │   ├── session.py              →  Session
+│   │   │   ├── turn.py                 →  Turn
+│   │   │   ├── flash_card.py           →  FlashCard
+│   │   │   ├── scoring.py              →  Scoring
+│   │   │   └── scenario.py             →  Scenario
+│   │   └── services/
+│   │       └── prompt_builder.py       →  build_system_prompt() (Domain Service)
 │   │
-│   └── handlers/                       ← LAYER 3: INTERFACE ADAPTERS
-│       ├── auth/                       →  Lambda Authorizer Handler
-│       ├── topic/                      →  Controller (entry point)
-│       │   └── create_topic.py
-│       ├── [session/]                  →  Controllers cho session
-│       ├── [flashcard/]                →  Controllers cho flashcard
-│       └── [ws_conversation/]          →  WebSocket Controller
+│   ├── application/                    ← LAYER 2: APPLICATION (không biết AWS tồn tại)
+│   │   ├── use_cases/
+│   │   │   ├── create_session.py       →  CreateSessionUseCase
+│   │   │   ├── run_conversation.py     →  RunConversationUseCase
+│   │   │   ├── score_session.py        →  ScoreSessionUseCase
+│   │   │   ├── lookup_word.py          →  LookupWordUseCase
+│   │   │   └── review_flashcard.py     →  ReviewFlashCardUseCase
+│   │   ├── ports/                      ← Interfaces (Dependency Inversion)
+│   │   │   ├── session_repo.py         →  ISessionRepo (abstract)
+│   │   │   ├── flashcard_repo.py       →  IFlashCardRepo (abstract)
+│   │   │   ├── bedrock_port.py         →  IBedrockPort (abstract)
+│   │   │   ├── transcribe_port.py      →  ITranscribePort (abstract)
+│   │   │   ├── polly_port.py           →  IPollyPort (abstract)
+│   │   │   ├── storage_port.py         →  IStoragePort (abstract)
+│   │   │   └── sqs_port.py             →  ISQSPort (abstract)
+│   │   └── dtos/
+│   │       ├── session_dto.py          →  CreateSessionDTO, SessionResponseDTO
+│   │       ├── turn_dto.py             →  TurnDTO
+│   │       └── flashcard_dto.py        →  FlashCardDTO
+│   │
+│   ├── interfaces/                     ← LAYER 3: INTERFACE ADAPTERS
+│   │   ├── controllers/                ← Nhận DTO → gọi Use Case → trả Entity/DTO
+│   │   │   ├── session_controller.py
+│   │   │   ├── flashcard_controller.py
+│   │   │   ├── word_controller.py
+│   │   │   └── ws_controller.py
+│   │   └── presenters/                 ← Chuyển đổi Entity → HTTP Response dict
+│   │       ├── session_presenter.py
+│   │       └── flashcard_presenter.py
+│   │
+│   └── infrastructure/                 ← LAYER 4: FRAMEWORKS & DRIVERS
+│       ├── handlers/                   ← Lambda Handlers (thin entry points)
+│       │   ├── session_handler.py      →  fn_session_handler  (lambda_handler)
+│       │   ├── flashcard_handler.py    →  fn_flashcard_handler
+│       │   ├── ws_auth_handler.py      →  fn_ws_auth_handler
+│       │   ├── ws_conv_handler.py      →  fn_ws_conversation_handler
+│       │   ├── word_handler.py         →  fn_word_lookup_handler
+│       │   ├── scoring_worker.py       →  fn_scoring_worker
+│       │   └── presigned_handler.py    →  fn_presigned_url_handler
+│       ├── persistence/                ← DynamoDB Adapters (impl Ports)
+│       │   ├── dynamo_session_repo.py  →  DynamoDBSessionRepo  impl ISessionRepo
+│       │   └── dynamo_flashcard_repo.py→  DynamoDBFlashCardRepo impl IFlashCardRepo
+│       └── ai/
+│           ├── bedrock_adapter.py      →  BedrockAdapter  impl IBedrockPort
+│           ├── transcribe_adapter.py   →  TranscribeAdapter impl ITranscribePort
+│           ├── polly_adapter.py        →  PollyAdapter impl IPollyPort
+│           └── s3_adapter.py           →  S3Adapter impl IStoragePort
 │
-├── [infrastructure/]                   ← LAYER 4: FRAMEWORKS & DRIVERS
-│   ├── persistence/                    →  DynamoDBSessionRepo (impl ISessionRepo)
-│   ├── ai/                             →  BedrockAdapter, TranscribeAdapter
-│   ├── storage/                        →  S3Adapter
-│   └── messaging/                      →  SQSAdapter
-│
-└── template.yaml                       ← AWS SAM (Infrastructure as Code)
+└── tests/
+    ├── unit/                           ← Test Entity + Use Case (không cần AWS)
+    ├── integration/                    ← Test Adapter với LocalStack
+    └── e2e/                            ← Test toàn bộ luồng qua SAM Local
 ```
 
-> **Chú thích `[]`**: Thư mục chưa tạo — là **roadmap triển khai** tiếp theo.
+> **Nguyên tắc**: `template.yaml` và `infrastructure/` là 2 phần của Layer 4 — một phần định nghĩa hạ tầng AWS, một phần là code kết nối với hạ tầng đó.
 
 ### 2.3 Mô tả chi tiết từng lớp
 
-#### LAYER 1 — Domain (Entities)
-**Vị trí**: `src/layers/domain/entities/`
+#### LAYER 1 — Domain (Entities + Domain Services)
+**Vị trí**: `src/domain/`
 
-Lớp trong cùng, không import bất kỳ thư viện framework nào (không boto3, không FastAPI, không DynamoDB). Chứa các **Python dataclass** thuần túy thể hiện nghiệp vụ cốt lõi.
+Lớp trong cùng. **Không import boto3, không import bất kỳ AWS SDK nào**. Chứa các Python dataclass thuần túy và Domain Service thuần logic.
 
-| Entity | File | Nghiệp vụ cốt lõi |
-|--------|------|-------------------|
-| `UserProfile` | `user.py` | Quản lý tài khoản, level, streak, role |
-| `Session` | `session.py` | Vòng đời hội thoại, trạng thái, scenario |
-| `Turn` | `turn.py` | Lượt nói (USER/AI), hint/skip tracking |
-| `FlashCard` | `flash_card.py` | Thẻ từ vựng + SRS fields (SM-2) |
-| `Scoring` | `scoring.py` | Kết quả chấm điểm 4 kỹ năng |
-| `Scenario` | `scenario.py` | Mẫu kịch bản roleplay do Admin tạo |
+| Entity | Nghiệp vụ cốt lõi |
+|--------|-------------------|
+| `UserProfile` | Quản lý tài khoản, level, streak, role (LEARNER/ADMIN) |
+| `Session` | Vòng đời hội thoại, trạng thái (ACTIVE/PAUSED/COMPLETED), scenario |
+| `Turn` | Lượt nói (USER/AI), hint/skip, lazy translation |
+| `FlashCard` | Thẻ từ vựng + đầy đủ SRS fields (SM-2 algorithm) |
+| `Scoring` | Kết quả chấm điểm 4 kỹ năng (Fluency, Pronunciation, Grammar, Vocabulary) |
+| `Scenario` | Mẫu kịch bản roleplay do Admin tạo, có usage_count |
 
-**Domain Service** — `src/layers/domain/topics/config.py`:
+**Domain Service** `src/domain/services/prompt_builder.py`:
 ```python
-# Domain service thuần túy — nhận parameters, trả string, không phụ thuộc AWS
-def build_system_prompt(scenario: str, my_character: str, ai_character: str, level: str) -> str
+# Thuần Python — nhận tham số, trả chuỗi. Không biết AWS tồn tại.
+def build_system_prompt(scenario: str, my_character: str, ai_character: str, level: str) -> str:
+    ...
 ```
 
-#### LAYER 2 — Application (Use Cases + Ports)
-**Vị trí**: `src/layers/application/` *(roadmap)*
+---
 
-Điều phối luồng dữ liệu, gọi Domain Entities, giao tiếp với Infrastructure **chỉ qua Port (interface)**.
+#### LAYER 2 — Application (Use Cases + Ports + DTOs)
+**Vị trí**: `src/application/`
 
+Điều phối luồng dữ liệu, gọi Domain Entities, tương tác với Infrastructure **chỉ qua Port (abstract interface)**. Lớp này **không biết nó đang chạy trên AWS Lambda**.
+
+**Ports** (Dependency Inversion — abstract interfaces):
 ```python
-# Ví dụ Port (Abstract Interface) — application/ports/session_repo.py
+# src/application/ports/session_repo.py
 from abc import ABC, abstractmethod
 from domain.entities.session import Session
 
 class ISessionRepo(ABC):
     @abstractmethod
     def save(self, session: Session) -> None: ...
-
     @abstractmethod
     def get_by_id(self, session_id: str) -> Session: ...
 
-# Ví dụ Port cho AI service — application/ports/bedrock_port.py
+# src/application/ports/bedrock_port.py
 class IBedrockPort(ABC):
     @abstractmethod
     def stream_response(self, system_prompt: str, history: list) -> Iterator[str]: ...
 ```
 
+**Use Case** (business flow orchestration):
 ```python
-# Ví dụ Use Case — application/use_cases/create_session.py
+# src/application/use_cases/create_session.py
 class CreateSessionUseCase:
-    def __init__(self, repo: ISessionRepo):  # Dependency Injection
+    def __init__(self, repo: ISessionRepo, bedrock: IBedrockPort):
         self._repo = repo
+        self._bedrock = bedrock
 
     def execute(self, dto: CreateSessionDTO) -> Session:
-        session = Session(session_id=ulid(), **dto.__dict__)
+        # Tạo Session entity (Domain logic)
+        session = Session(session_id=generate_ulid(), **dto.__dict__)
+        # Lưu qua Port — không biết đây là DynamoDB
         self._repo.save(session)
         return session
 ```
 
-#### LAYER 3 — Interface Adapters (Controllers + Presenters)
-**Vị trí**: `src/handlers/`
-
-Lambda Handler đóng vai trò **Controller**: nhận event API Gateway, tạo DTO, gọi Use Case, format response.
-
+**DTOs** — đối tượng vận chuyển dữ liệu qua ranh giới lớp:
 ```python
-# handlers/topic/create_topic.py — Controller pattern
-def lambda_handler(event, context):
-    # 1. Parse request → DTO
-    body = json.loads(event["body"])
-    dto = CreateSessionDTO(**body)
-
-    # 2. Khởi tạo Use Case với Adapter thực tế (Dependency Injection)
-    repo = DynamoDBSessionRepo(table_name=os.environ["TABLE_NAME"])
-    use_case = CreateSessionUseCase(repo=repo)
-
-    # 3. Execute Use Case
-    session = use_case.execute(dto)
-
-    # 4. Trả response (Presenter role)
-    return {"statusCode": 201, "body": json.dumps(session_to_view_model(session))}
+# src/application/dtos/session_dto.py
+@dataclass
+class CreateSessionDTO:
+    user_id: str
+    scenario: str
+    my_character: str
+    ai_character: str
+    ai_gender: str
+    level: str
 ```
 
-#### LAYER 4 — Infrastructure (Frameworks & Drivers)
-**Vị trí**: `infrastructure/` *(roadmap)*
+---
 
-Cài đặt cụ thể cho các Port. Infrastructure biết về AWS SDK, DynamoDB schema — Domain hoàn toàn không biết.
+#### LAYER 3 — Interface Adapters (Controllers + Presenters)
+**Vị trí**: `src/interfaces/`
 
+**Controllers** nhận dữ liệu thô từ Lambda Handler, tạo DTO, gọi Use Case:
 ```python
-# infrastructure/persistence/dynamo_session_repo.py
-class DynamoDBSessionRepo(ISessionRepo):
+# src/interfaces/controllers/session_controller.py
+class SessionController:
+    def __init__(self, create_use_case: CreateSessionUseCase):
+        self._create = create_use_case
+
+    def create(self, raw_body: dict, user_id: str) -> Session:
+        dto = CreateSessionDTO(user_id=user_id, **raw_body)
+        return self._create.execute(dto)  # trả về Domain Entity
+```
+
+**Presenters** chuyển đổi Domain Entity → HTTP response dict theo chuẩn API Gateway:
+```python
+# src/interfaces/presenters/session_presenter.py
+class SessionPresenter:
+    @staticmethod
+    def to_response(session: Session) -> dict:
+        return {
+            "statusCode": 201,
+            "body": json.dumps({
+                "session_id": session.session_id,
+                "status": session.status,
+                "scenario": session.scenario,
+            })
+        }
+```
+
+---
+
+#### LAYER 4 — Infrastructure (Frameworks & Drivers)
+**Vị trí**: `src/infrastructure/` + `template.yaml`
+
+Gồm hai phần:
+
+**A. Lambda Handlers** — entry points mỏng nhất có thể, là cầu nối giữa AWS và Controller:
+```python
+# src/infrastructure/handlers/session_handler.py
+import json
+from interfaces.controllers.session_controller import SessionController
+from interfaces.presenters.session_presenter import SessionPresenter
+from infrastructure.persistence.dynamo_session_repo import DynamoDBSessionRepo
+from application.use_cases.create_session import CreateSessionUseCase
+
+def lambda_handler(event, context):
+    # 1. Wiring: inject Infrastructure Adapters vào Use Case
+    repo = DynamoDBSessionRepo(table_name=os.environ["TABLE_NAME"])
+    use_case = CreateSessionUseCase(repo=repo)
+    controller = SessionController(create_use_case=use_case)
+
+    # 2. Trích xuất dữ liệu từ AWS event
+    user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
+    body = json.loads(event["body"])
+
+    # 3. Gọi Controller — Lambda Handler không chứa business logic
+    session = controller.create(raw_body=body, user_id=user_id)
+
+    # 4. Presenter format kết quả thành HTTP response cho API Gateway
+    return SessionPresenter.to_response(session)
+```
+
+> **Nguyên tắc tối thượng**: Lambda Handler phải mỏng nhất có thể. **Không viết business logic hay truy vấn DB trực tiếp trong `lambda_handler`.**
+
+**B. Infrastructure Adapters** — cài đặt cụ thể cho các Port:
+```python
+# src/infrastructure/persistence/dynamo_session_repo.py
+class DynamoDBSessionRepo(ISessionRepo):  # implements Port
     def save(self, session: Session) -> None:
         item = {
             "PK": f"SESSION#{session.session_id}",
             "SK": "METADATA",
             **dataclasses.asdict(session)
         }
-        self._table.put_item(Item=item)
+        self._table.put_item(Item=item)  # boto3 chỉ ở đây, không lên trên
 ```
+
+**C. `template.yaml`** — định nghĩa toàn bộ hạ tầng AWS (API Gateway, Lambda, DynamoDB, SQS).
 
 ### 2.4 Luồng dữ liệu qua các ranh giới kiến trúc
 
 ```
-Request từ Client
-       │
-       ▼
-[LAYER 3] Lambda Handler (Controller)
-  │  Tạo Request DTO
-  │  Gọi Use Case
-       │
-       ▼
-[LAYER 2] Use Case
-  │  Gọi Domain Entities (validate / business rules)
-  │  Gọi Port interface (ISessionRepo.save, IBedrockPort.stream...)
-       │
-       ▼
-[LAYER 1] Domain Entity
-  │  Thuần Python, không phụ thuộc gì
-  │  Trả kết quả nghiệp vụ
-       │
-       ▼ (qua Dependency Inversion)
-[LAYER 4] Infrastructure Adapter
-  │  DynamoDB boto3 calls
-  │  Bedrock API calls
-  │  S3 operations
-       │
-       ▼
-[LAYER 3] Presenter
-  │  Chuyển đổi Entity → View Model / Response DTO
-       │
-       ▼
-Response về Client
+HTTP Request từ Client
+        │
+        ▼  API Gateway kích hoạt Lambda
+┌─────────────────────────────────────────────────────┐
+│ [LAYER 4] Lambda Handler  (infrastructure/handlers/) │
+│  • Nhận AWS event + context                          │
+│  • Wiring: tạo Adapters, inject vào Use Cases        │
+│  • Trích xuất user_id từ JWT claims                  │
+│  • Gọi Controller → nhận kết quả → gọi Presenter    │
+│  • Trả dict { statusCode, body } cho API Gateway     │
+└─────────────────────────────────────────────────────┘
+        │                              ▲
+     raw_body, user_id          HTTP response dict
+        │                              │
+        ▼                              │
+┌─────────────────────────────────────────────────────┐
+│ [LAYER 3] Controller  (interfaces/controllers/)      │
+│  • Validate input, tạo Request DTO                  │
+│  • Gọi Use Case.execute(dto)                        │
+│                                                     │
+│ [LAYER 3] Presenter   (interfaces/presenters/)       │
+│  • Nhận Domain Entity từ Use Case                   │
+│  • Chuyển đổi → { statusCode, body: json }          │
+└─────────────────────────────────────────────────────┘
+        │                              ▲
+     Request DTO                  Domain Entity
+        │                              │
+        ▼                              │
+┌─────────────────────────────────────────────────────┐
+│ [LAYER 2] Use Case  (application/use_cases/)         │
+│  • Orchestrate business flow                        │
+│  • Gọi Domain Entity methods                        │
+│  • Gọi Port interfaces (ISessionRepo, IBedrockPort) │
+│  • Không biết boto3, không biết Lambda tồn tại      │
+└─────────────────────────────────────────────────────┘
+        │                              ▲
+    Port.method()             Entity / result
+        │                              │
+        ▼                              │
+┌─────────────────────────────────────────────────────┐
+│ [LAYER 1] Domain Entity  (domain/entities/)          │
+│  • Pure Python dataclass                            │
+│  • Business rules (SM-2, status transitions...)     │
+│  • Zero AWS dependency                              │
+└─────────────────────────────────────────────────────┘
+        ▲
+        │ implements Port
+┌─────────────────────────────────────────────────────┐
+│ [LAYER 4] Infrastructure Adapters                    │
+│  (infrastructure/persistence/, infrastructure/ai/)   │
+│  • DynamoDB boto3 calls                             │
+│  • Bedrock API calls                                │
+│  • S3, Polly, Transcribe, SQS operations            │
+└─────────────────────────────────────────────────────┘
 ```
 
 ### 2.5 Dependency Inversion trong thực tế
@@ -268,20 +391,26 @@ DynamoDBSessionRepo (Infrastructure)
 
 ### 2.6 Mapping Lambda Function → Clean Architecture Layer
 
-| Lambda Function | CA Layer | Vai trò |
-|-----------------|----------|---------|
-| `fn_session_handler` | Layer 3 (Controller) | Nhận HTTP event → gọi Session Use Cases |
-| `fn_profile_handler` | Layer 3 (Controller) | Nhận HTTP event → gọi Profile Use Cases |
-| `fn_ws_auth_handler` | Layer 3 (Controller) | Verify JWT, kiểm tra `UserProfile.is_active` |
-| `fn_ws_conversation_handler` | Layer 3 (Controller) | Điều phối Conversation Loop Use Case |
-| `fn_word_lookup_handler` | Layer 3 (Controller) | Cache-Aside → gọi WordLookup Use Case |
-| `fn_flashcard_handler` | Layer 3 (Controller) | CRUD + SM-2 → gọi Flashcard Use Cases |
-| `fn_scoring_worker` | Layer 3 (Controller) | Nhận SQS event → gọi Scoring Use Case |
-| `fn_presigned_url_handler` | Layer 3 (Controller) | Gọi S3Port để cấp Pre-signed URL |
-| `DynamoDBSessionRepo` | Layer 4 (Infrastructure) | Implements `ISessionRepo` |
-| `BedrockAdapter` | Layer 4 (Infrastructure) | Implements `IBedrockPort` |
-| `TranscribeAdapter` | Layer 4 (Infrastructure) | Implements `ITranscribePort` |
-| `S3Adapter` | Layer 4 (Infrastructure) | Implements `IStoragePort` |
+> Lambda Function trong AWS SAM **không phải là Controller**. Đây là **Infrastructure entry point** — càng mỏng càng tốt.
+
+| Thành phần | CA Layer | File | Nhiệm vụ |
+|-----------|----------|------|----------|
+| `fn_session_handler` | **Layer 4** Infrastructure | `infrastructure/handlers/session_handler.py` | Nhận AWS event → wiring → gọi SessionController |
+| `fn_profile_handler` | **Layer 4** Infrastructure | `infrastructure/handlers/profile_handler.py` | Nhận AWS event → gọi ProfileController |
+| `fn_ws_auth_handler` | **Layer 4** Infrastructure | `infrastructure/handlers/ws_auth_handler.py` | Verify JWT từ event query string |
+| `fn_ws_conversation_handler` | **Layer 4** Infrastructure | `infrastructure/handlers/ws_conv_handler.py` | Nhận WS event → gọi ConversationController |
+| `fn_word_lookup_handler` | **Layer 4** Infrastructure | `infrastructure/handlers/word_handler.py` | Nhận AWS event → gọi WordController |
+| `fn_flashcard_handler` | **Layer 4** Infrastructure | `infrastructure/handlers/flashcard_handler.py` | Nhận AWS event → gọi FlashCardController |
+| `fn_scoring_worker` | **Layer 4** Infrastructure | `infrastructure/handlers/scoring_worker.py` | Nhận SQS event → gọi ScoreSessionUseCase |
+| `SessionController` | **Layer 3** Interface Adapter | `interfaces/controllers/session_controller.py` | Parse DTO → gọi Use Cases → trả Entity |
+| `FlashCardController` | **Layer 3** Interface Adapter | `interfaces/controllers/flashcard_controller.py` | Parse DTO → gọi Use Cases → trả Entity |
+| `SessionPresenter` | **Layer 3** Interface Adapter | `interfaces/presenters/session_presenter.py` | Entity → HTTP response dict |
+| `CreateSessionUseCase` | **Layer 2** Application | `application/use_cases/create_session.py` | Orchestrate: tạo Session, lưu qua ISessionRepo |
+| `ScoreSessionUseCase` | **Layer 2** Application | `application/use_cases/score_session.py` | Query Turns → gọi Bedrock → lưu Scoring |
+| `ISessionRepo` | **Layer 2** Port | `application/ports/session_repo.py` | Abstract interface — ranh giới Application/Infrastructure |
+| `DynamoDBSessionRepo` | **Layer 4** Infrastructure | `infrastructure/persistence/dynamo_session_repo.py` | Implements `ISessionRepo` bằng boto3 |
+| `BedrockAdapter` | **Layer 4** Infrastructure | `infrastructure/ai/bedrock_adapter.py` | Implements `IBedrockPort` bằng boto3 |
+| `Session`, `Turn`, `FlashCard`... | **Layer 1** Domain | `domain/entities/*.py` | Pure Python dataclass, zero dependency |
 
 ### 2.7 Chiến lược kiểm thử theo Kim tự tháp
 
