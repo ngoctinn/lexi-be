@@ -6,18 +6,23 @@ Description:
 Resources:
   PostConfirmationStack:
     Type: AWS::CloudFormation::Stack
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TemplateURL: functions/post_confirmation.yaml
 
   CognitoStack:
     Type: AWS::CloudFormation::Stack
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     DependsOn: PostConfirmationStack
     Properties:
       TemplateURL: cognito.yaml
 
   AuthStack:
     Type: AWS::CloudFormation::Stack
-    DependsOn: CognitoStack
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       TemplateURL: functions/auth.yaml
       Parameters:
@@ -26,10 +31,116 @@ Resources:
 
   HelloWorldStack:
     Type: AWS::CloudFormation::Stack
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       TemplateURL: functions/hello_world.yaml
       Parameters:
         UserPoolArn: !GetAtt CognitoStack.Outputs.UserPoolArn
+
+  LexiAppTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: LexiApp
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+        - AttributeName: GSI2PK
+          AttributeType: S
+        - AttributeName: GSI2SK
+          AttributeType: S
+        - AttributeName: EntityType
+          AttributeType: S
+        - AttributeName: created_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1-UserEntity-Time
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes:
+              - EntityType
+              - scenario
+              - my_character
+              - ai_character
+              - ai_gender
+              - level
+              - status
+              - total_turns
+              - new_words_count
+              - overall_score
+              - word
+              - next_review_at
+              - created_at
+              - updated_at
+        - IndexName: GSI2-SRS-ReviewQueue
+          KeySchema:
+            - AttributeName: GSI2PK
+              KeyType: HASH
+            - AttributeName: GSI2SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes:
+              - EntityType
+              - word
+              - word_type
+              - definition_vi
+              - phonetic
+              - audio_s3_key
+              - example_sentence
+              - review_count
+              - easiness_factor
+              - interval_days
+              - difficulty
+              - last_reviewed_at
+              - next_review_at
+        - IndexName: GSI3-Admin-EntityList
+          KeySchema:
+            - AttributeName: EntityType
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes:
+              - email
+              - display_name
+              - role
+              - is_active
+              - title
+              - recommended_level
+              - usage_count
+
+
+
+
+
 
 Outputs:
   AuthApiUrl:

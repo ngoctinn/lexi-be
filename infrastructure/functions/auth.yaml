@@ -45,8 +45,8 @@ Resources:
   SignUpFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../../src/
-      Handler: infrastructure.handlers.auth.sign_up.handler
+      CodeUri: ../../
+      Handler: src.infrastructure.handlers.auth.sign_up.handler
       Runtime: python3.13
       Policies:
         - !Ref CognitoPolicy
@@ -61,8 +61,8 @@ Resources:
   ConfirmSignUpFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../../src/
-      Handler: infrastructure.handlers.auth.confirm_sign_up.handler
+      CodeUri: ../../
+      Handler: src.infrastructure.handlers.auth.confirm_sign_up.handler
       Runtime: python3.13
       Policies:
         - !Ref CognitoPolicy
@@ -77,8 +77,8 @@ Resources:
   SignInFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../../src/
-      Handler: infrastructure.handlers.auth.sign_in.handler
+      CodeUri: ../../
+      Handler: src.infrastructure.handlers.auth.sign_in.handler
       Runtime: python3.13
       Policies:
         - !Ref CognitoPolicy
@@ -93,8 +93,8 @@ Resources:
   RefreshTokenFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../../src/
-      Handler: infrastructure.handlers.auth.refresh_token.handler
+      CodeUri: ../../
+      Handler: src.infrastructure.handlers.auth.refresh_token.handler
       Runtime: python3.13
       Policies:
         - !Ref CognitoPolicy
@@ -109,8 +109,8 @@ Resources:
   ForgotPasswordFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../../src/
-      Handler: infrastructure.handlers.auth.forgot_password.handler
+      CodeUri: ../../
+      Handler: src.infrastructure.handlers.auth.forgot_password.handler
       Runtime: python3.13
       Policies:
         - !Ref CognitoPolicy
@@ -125,8 +125,8 @@ Resources:
   ResetPasswordFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../../src/
-      Handler: infrastructure.handlers.auth.reset_password.handler
+      CodeUri: ../../
+      Handler: src.infrastructure.handlers.auth.reset_password.handler
       Runtime: python3.13
       Policies:
         - !Ref CognitoPolicy
@@ -141,8 +141,8 @@ Resources:
   SignOutFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../../src/
-      Handler: infrastructure.handlers.auth.sign_out.handler
+      CodeUri: ../../
+      Handler: src.infrastructure.handlers.auth.sign_out.handler
       Runtime: python3.13
       Policies:
         - !Ref CognitoPolicy

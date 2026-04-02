@@ -5,8 +5,8 @@ Resources:
   PostConfirmationFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ../../src/infrastructure/handlers/auth/
-      Handler: post_confirmation.handler
+      CodeUri: ../../
+      Handler: src.infrastructure.handlers.auth.post_confirmation.handler
       Runtime: python3.13
       Timeout: 5
       Environment:
