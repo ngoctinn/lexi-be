@@ -24,7 +24,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: ../../
-      Handler: src.infrastructure.handlers.hello_world.handler
+      Handler: src.infrastructure.handlers.hello_world.app.lambda_handler
       Runtime: python3.13
       Events:
         HelloWorld:
