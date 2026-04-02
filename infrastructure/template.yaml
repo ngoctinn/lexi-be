@@ -133,6 +133,7 @@ Resources:
               - display_name
               - role
               - is_active
+              - is_onboarded
               - title
               - recommended_level
               - usage_count

@@ -15,6 +15,7 @@ class CreateUserProfileUseCase:
             email=dto.email,
             display_name=dto.email.split("@")[0],
             current_level="A1",
+            is_onboarded=False,
             created_at=now,
             updated_at=now,
         )

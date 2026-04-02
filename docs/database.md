@@ -93,7 +93,9 @@ Dưới đây là mô tả chi tiết cho toàn bộ các trường dữ liệu 
 | `display_name` | S | Tên hiển thị của người dùng. |
 | `role` | S | Quyền truy cập: `LEARNER` hoặc `ADMIN`. |
 | `is_active` | BOOL | Trạng thái hoạt động (dùng để block user). |
+| `is_onboarded` | BOOL | Trạng thái đã hoàn thành onboarding hay chưa. |
 | `current_level` | S | Trình độ hiện tại (A1, B1, B2, C1, ...). |
+| `learning_goal` | S | Mục tiêu học tập của người dùng. |
 | `current_streak` | N | Số ngày học liên tiếp hiện tại (Streak). |
 | `last_completed_at` | S | Lần cuối hoàn thành một phiên học (để tính streak). |
 | `total_sessions` | N | Tổng số phiên học đã hoàn thành. |
