@@ -89,7 +89,8 @@ Dưới đây là mô tả chi tiết cho toàn bộ các trường dữ liệu 
 #### Thực thể USER_PROFILE
 | Thuộc tính | Kiểu | Mô tả |
 |------------|------|-------|
-| `email` | S | Địa chỉ email của người dùng từ Cognito. |
+| `user_id` | S | Id của người dùng. |
+| `email` | S | Địa chỉ email của người dùng. |
 | `display_name` | S | Tên hiển thị của người dùng. |
 | `role` | S | Quyền truy cập: `LEARNER` hoặc `ADMIN`. |
 | `is_active` | BOOL | Trạng thái hoạt động (dùng để block user). |
@@ -98,39 +99,37 @@ Dưới đây là mô tả chi tiết cho toàn bộ các trường dữ liệu 
 | `learning_goal` | S | Mục tiêu học tập của người dùng. |
 | `current_streak` | N | Số ngày học liên tiếp hiện tại (Streak). |
 | `last_completed_at` | S | Lần cuối hoàn thành một phiên học (để tính streak). |
-| `total_sessions` | N | Tổng số phiên học đã hoàn thành. |
 | `total_words_learned` | N | Tổng số từ vựng đã lưu thành flashcard. |
 
-#### Thực thể SCENARIO (Mới - Dành cho Admin)
+#### Thực thể SCENARIO
 | Thuộc tính | Kiểu | Mô tả |
 |------------|------|-------|
-| `title` | S | Tên hiển thị ngắn gọn của kịch bản (VD: "Phỏng vấn DevOps"). |
+| `scenario_title` | S | Tên hiển thị ngắn gọn của kịch bản (VD: "Phỏng vấn DevOps"). |
 | `description` | S | Mô tả thêm để User hiểu ngữ cảnh trước khi vào học. |
-| `scenario` | S | Kịch bản nội dung truyền vào Prompt. |
+| `scenario_prompt` | S | Kịch bản nội dung truyền vào Prompt. |
 | `my_character` | S | Vai diễn mặc định của User. |
 | `ai_character` | S | Vai diễn mặc định của AI. |
 | `ai_gender` | S | Giới tính của AI (`male` / `female`). |
 | `recommended_level` | S | Khuyến nghị trình độ phù hợp (VD: `B1-B2`). User vẫn luôn quyết định level thực tế ở Session. |
 | `is_active` | BOOL | Nút gạt tắt/bật kịch bản trên App. |
 | `usage_count` | N | Số lượt Session đã dùng kịch bản này. |
-| `created_by` | S | ID của Admin đã tạo kịch bản. |
 
 #### Thực thể SESSION
 | Thuộc tính | Kiểu | Mô tả |
 |------------|------|-------|
-| `user_id` | S | ID của người dùng sở hữu session. |
+| `session_id` | S | ID của phiên |
+| `user_id` | S | ID của người dùng. |
 | `scenario` | S | Tình huống/kịch bản hội thoại (ví dụ: `Ordering food in a restaurant`). |
 | `my_character` | S | Nhân vật mà người học đóng (ví dụ: `a customer`). |
 | `ai_character` | S | Nhân vật mà AI đóng (ví dụ: `a waiter`). |
 | `ai_gender` | S | Giới tính của nhân vật AI (`male` hoặc `female`) – dùng để chọn giọng TTS tương ứng. |
 | `level` | S | Trình độ CEFR của người học đã chọn cho phiên này (`A1`-`C2`). |
 | `connection_id` | S | WebSocket connectionId hiện tại. Cập nhật khi `$connect`, xóa khi `$disconnect`. Lambda dùng để push sự kiện về đúng client. |
-| `status` | S | Trạng thái: `ACTIVE`, `PAUSED`, `PROCESSING_SCORING`, `COMPLETED`. |
+| `status` | S | Trạng thái: `ACTIVE`, `COMPLETED`. |
 | `hint_history` | M | Map lưu cache các gợi ý đã tạo. Khóa (key) là thứ tự lượt nói của AI (ví dụ `1`, `3`), giá trị (value) là nội dung gợi ý bằng tiếng Anh. |
 | `total_turns` | N | Tổng số lượt nói trong session. |
 | `user_turns` | N | Số lượt nói của người dùng. |
 | `hint_used_count` | N | Số lần đã sử dụng gợi ý (hint). |
-| `skip_used_count` | N | Số lần đã bỏ qua lượt (skip). |
 | `new_words_count` | N | Số từ mới đã lưu từ session này. |
 | `overall_score` | N | Điểm trung bình của session (0-100). |
 | `last_active_at` | S | Lần cuối có hoạt động trong session. |
@@ -138,41 +137,34 @@ Dưới đây là mô tả chi tiết cho toàn bộ các trường dữ liệu 
 #### Thực thể TURN (Hội thoại)
 | Thuộc tính | Kiểu | Mô tả |
 |------------|------|-------|
+| `session_id` | S | Id của session |
+| `turn_index` | N | Thứ tự của lượt nói trong session. |
 | `speaker` | S | Người nói: `AI` hoặc `USER`. |
 | `content` | S | Nội dung văn bản bằng tiếng Anh. |
 | `translated_content` | S | **Bản dịch tiếng Việt (Lưu khi người dùng nhấn Translate).** |
 | `audio_s3_key` | S | Đường dẫn file âm thanh giọng nói trên S3. |
 | `stt_confidence` | N | Độ tin cậy của kết quả Speech-to-Text (0 đến 1). |
-| `turn_index` | N | Thứ tự của lượt nói trong session. |
 | `timestamp` | S | Thời điểm phát sinh câu nói. |
 | `is_hint_used` | BOOL | Lượt nói này có dùng gợi ý không. |
-| `is_skipped` | BOOL | Lượt này bị bỏ qua hay không. |
 | `ttl` | N | Unix timestamp để tự động dọn dẹp audio tham chiếu sau 90 ngày. |
 
 #### Thực thể SCORING (Chấm điểm)
 | Thuộc tính | Kiểu | Mô tả |
 |------------|------|-------|
-| `user_id` | S | ID người dùng — đưa vào SCORING để scoring worker không cần đọc thêm SESSION#METADATA. |
-| `fluency_score` | N | Điểm trôi chảy. |
+| `session_id` | S | ID của phiên trò chuyện|
+| `user_id` | S | ID người dùng |
 | `pronunciation_score`| N | Điểm phát âm. |
 | `grammar_score` | N | Điểm ngữ pháp. |
 | `vocabulary_score` | N | Điểm từ vựng. |
-| `feedback_general` | S | Nhận xét chung từ AI. |
 | `feedback_fluency` | S | Nhận xét chi tiết về độ trôi chảy. |
 | `feedback_grammar` | S | Nhận xét chi tiết về ngữ pháp. |
-| `scored_at` | S | Thời điểm hoàn thành chấm điểm. |
 
 #### Thực thể FLASHCARD (Từ vựng)
 | Thuộc tính | Kiểu | Mô tả |
 |------------|------|-------|
-| `word` | S | Từ vựng cần học. |
-| `word_type` | S | Loại từ (adjective, noun, verb, ...). |
-| `definition_vi` | S | Nghĩa tiếng Việt. |
-| `phonetic` | S | Phiên âm quốc tế IPA. |
-| `example_sentence` | S | Câu ví dụ chứa từ vựng. |
-| `source_session_id` | S | ID của session phát sinh ra từ này. |
+| `user_id` | S | Id của người dùng. |
+| `word_id` | S | Id của từ. |
 | `review_count` | N | Số lần đã ôn tập. |
-| `easiness_factor` | N | Hệ số độ dễ (SM-2 Algorithm). |
 | `interval_days` | N | Số ngày cho lần ôn tập tiếp theo. |
 | `last_reviewed_at` | S | Ngày ôn tập gần nhất. |
 | `next_review_at` | S | Ngày đến hạn ôn tập tiếp theo. |
@@ -186,14 +178,10 @@ Dưới đây là mô tả chi tiết cho toàn bộ các trường dữ liệu 
 
 | Thuộc tính | Kiểu | Mô tả |
 |------------|------|-------|
-| `PK` | S | `WORD#<word>` (viết thường) |
-| `SK` | S | Luôn là `METADATA`. |
-| `word` | S | Dạng gốc của từ (có thể có chữ hoa) — dùng để hiển thị. |
+| `word` | S | Dạng gốc của từ — dùng để hiển thị. |
 | `word_type` | S | Loại từ (adjective, noun, verb, ...). |
 | `definition_vi` | S | Nghĩa tiếng Việt lưu trong cache. |
 | `phonetic` | S | Phiên âm tiếng Anh. |
 | `audio_s3_key` | S | Đường dẫn audio phát âm chuẩn của từ điển. |
 | `example_sentence` | S | Câu ví dụ chứa từ. |
 | `source_api` | S | Nguồn API cung cấp dữ liệu (ví dụ: `oxford_api`). |
-| `hit_count` | N | Số lần từ này được tra cứu bởi toàn bộ người dùng. |
-| `ttl` | N | Thời điểm hết hạn cache (Unix Timestamp). |

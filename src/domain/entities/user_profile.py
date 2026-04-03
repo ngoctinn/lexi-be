@@ -13,7 +13,4 @@ class UserProfile:
     is_active: bool = True
     current_streak: int = 0
     last_completed_at: str = ""
-    total_sessions: int = 0
     total_words_learned: int = 0
-    created_at: str = ""
-    updated_at: str = ""

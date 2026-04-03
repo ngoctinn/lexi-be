@@ -9,16 +9,12 @@ class Scenario:
     
     This acts as a catalog of available situations users can choose to practice.
     """
-    scenario_id: str       # ULID
-    title: str             # Display title (e.g., "Job interview for a Frontend role")
+    scenario_title: str             # Display title (e.g., "Job interview for a Frontend role")
     description: str       # Brief explanation of the scenario
-    scenario: str          # The actual context prompt
+    scenario_prompt: str          # The actual context prompt
     my_character: str      # E.g., "A nervous candidate"
     ai_character: str      # E.g., "A strict Technical Manager"
     ai_gender: str         # "male" | "female"
     recommended_level: str # E.g., "B1-C1" (Just a recommendation, user still selects their actual level in the Session)
     is_active: bool = True # Admin can toggle visibility on the app
     usage_count: int = 0   # Track popularity
-    created_by: str = ""   # Admin user_id who created it
-    created_at: str = ""   # ISO8601
-    updated_at: str = ""   # ISO8601

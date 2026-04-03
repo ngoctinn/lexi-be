@@ -2,7 +2,7 @@ import os
 import boto3
 from botocore.exceptions import ClientError
 from src.application.ports.user_repo import IUserRepo
-from src.domain.entities.user import UserProfile
+from domain.entities.user_profile import UserProfile
 
 
 class DynamoDBUserRepo(IUserRepo):
