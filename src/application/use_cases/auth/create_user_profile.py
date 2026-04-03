@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from src.application.ports.user_repo import IUserRepo
 from src.application.dtos.auth_dto import CreateUserProfileDTO
-from src.domain.entities.user import UserProfile
+from domain.entities.user_profile import UserProfile
 
 
 class CreateUserProfileUseCase:

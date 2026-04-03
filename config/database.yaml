@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  Hạ tầng DynamoDB cho LexiApp - Bao gồm bảng chính với thiết kế Single-table,
+  hỗ trợ GSI cho truy vấn theo thời gian, SRS (ôn tập từ vựng) và Admin.
+
+Resources:
+  LexiAppTable:
+    Type: AWS::DynamoDB::Table
+    # Giữ lại bảng ngay cả khi xóa Stack (An toàn cho dữ liệu đồ án)
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: LexiApp
+      BillingMode: PAY_PER_REQUEST
+      
+      # Bảo mật: Mã hóa dữ liệu phía server
+      SSESpecification:
+        SSEEnabled: true
+      
+      # Phục hồi dữ liệu: Cho phép khôi phục về một thời điểm bất kỳ trong quá khứ
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+      # Tự động xóa các bản ghi hết hạn (như các lượt chat cũ)
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+      # Chỉ khai báo các trường dùng làm Khóa (Keys)
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+        - AttributeName: GSI2PK
+          AttributeType: S
+        - AttributeName: GSI2SK
+          AttributeType: S
+        - AttributeName: EntityType
+          AttributeType: S
+        - AttributeName: created_at
+          AttributeType: S
+
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+
+      GlobalSecondaryIndexes:
+        # GSI1: Truy vấn Sessions/Flashcards theo người dùng và thời gian
+        - IndexName: GSI1-UserEntity-Time
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes:
+              - EntityType
+              - scenario
+              - my_character
+              - ai_character
+              - ai_gender
+              - level
+              - status
+              - total_turns
+              - new_words_count
+              - overall_score
+              - word
+              - next_review_at
+              - created_at
+              - updated_at
+
+        # GSI2: Phục vụ thuật toán ôn tập từ vựng (SRS)
+        - IndexName: GSI2-SRS-ReviewQueue
+          KeySchema:
+            - AttributeName: GSI2PK
+              KeyType: HASH
+            - AttributeName: GSI2SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes:
+              - EntityType
+              - word
+              - word_type
+              - definition_vi
+              - phonetic
+              - audio_s3_key
+              - example_sentence
+              - review_count
+              - easiness_factor
+              - interval_days
+              - difficulty
+              - last_reviewed_at
+              - next_review_at
+
+        # GSI3: Hỗ trợ Admin liệt kê danh sách thực thể
+        - IndexName: GSI3-Admin-EntityList
+          KeySchema:
+            - AttributeName: EntityType
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes:
+              - email
+              - display_name
+              - role
+              - is_active
+              - is_onboarded
+              - title
+              - recommended_level
+              - usage_count
+
+Outputs:
+  LexiAppTableArn:
+    Description: "ARN của bảng LexiApp"
+    Value: !GetAtt LexiAppTable.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-LexiAppTableArn"
+
+  LexiAppTableName:
+    Description: "Tên của bảng LexiApp"
+    Value: !Ref LexiAppTable
+    Export:
+      Name: !Sub "${AWS::StackName}-LexiAppTableName"
