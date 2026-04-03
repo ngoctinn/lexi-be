@@ -14,13 +14,13 @@ from src.interfaces.controllers.auth_controller import AuthController
 def build_auth_controller() -> AuthController:
     adapter = CognitoAdapter()
     return AuthController(
-        sign_up=SignUpUseCase(adapter),
-        confirm_sign_up=ConfirmSignUpUseCase(adapter),
-        sign_in=SignInUseCase(adapter),
-        refresh_token=RefreshTokenUseCase(adapter),
-        forgot_password=ForgotPasswordUseCase(adapter),
-        reset_password=ResetPasswordUseCase(adapter),
-        sign_out=SignOutUseCase(adapter),
+        sign_up=SignUpUseCase(auth_service=adapter),
+        confirm_sign_up=ConfirmSignUpUseCase(auth_service=adapter),
+        sign_in=SignInUseCase(auth_service=adapter),
+        refresh_token=RefreshTokenUseCase(auth_service=adapter),
+        forgot_password=ForgotPasswordUseCase(auth_service=adapter),
+        reset_password=ResetPasswordUseCase(auth_service=adapter),
+        sign_out=SignOutUseCase(auth_service=adapter),
     )
 
 

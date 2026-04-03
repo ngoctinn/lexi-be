@@ -1,8 +1,8 @@
 import os
 import boto3
 from botocore.exceptions import ClientError
-from src.application.ports.user_repo import IUserRepo
-from domain.entities.user_profile import UserProfile
+from src.application.repositories.user_repo import IUserRepo
+from src.domain.entities.user_profile import UserProfile
 
 
 class DynamoDBUserRepo(IUserRepo):
