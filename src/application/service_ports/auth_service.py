@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-class ICognitoPort(ABC):
+class IAuthService(ABC):
     @abstractmethod
     def sign_up(self, email: str, password: str): ...
 

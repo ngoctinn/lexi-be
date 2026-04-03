@@ -1,7 +1,7 @@
 import os
 import boto3
 from botocore.exceptions import ClientError
-from src.application.ports.cognito_port import ICognitoPort
+from src.application.service_ports.auth_service import IAuthService
 from src.application.exceptions import (
     AuthError, UserAlreadyExistsError, InvalidCredentialsError,
     UserNotConfirmedError, CodeMismatchError, UserNotFoundError, ExpiredCodeError,
@@ -23,7 +23,7 @@ def _map_error(e: ClientError) -> AuthError:
     return _ERROR_MAP.get(code, AuthError)(msg)
 
 
-class CognitoAdapter(ICognitoPort):
+class CognitoAdapter(IAuthService):
     def __init__(self, client=None):
         self._client = client or boto3.client("cognito-idp")
         self._client_id = os.environ["COGNITO_CLIENT_ID"]
