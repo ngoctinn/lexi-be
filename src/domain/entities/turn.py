@@ -15,7 +15,6 @@ class Turn:
     content: str           # English text
     audio_s3_key: str = ""
     translated_content: str = ""  # Vietnamese translation (lazy — populated on demand)
-    stt_confidence: float = 0.0   # 0.0–1.0, only for USER turns
     is_hint_used: bool = False
     timestamp: str = ""    # ISO8601
     ttl: int = 0           # Unix timestamp for auto-expiry
