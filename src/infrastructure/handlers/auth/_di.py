@@ -1,4 +1,4 @@
-from src.infrastructure.auth.cognito_adapter import CognitoAdapter
+from infrastructure.services.auth.cognito_adapter import CognitoAdapter
 from src.infrastructure.persistence.dynamo_user_repo import DynamoDBUserRepo
 from src.application.use_cases.auth.sign_up import SignUpUseCase
 from src.application.use_cases.auth.confirm_sign_up import ConfirmSignUpUseCase
