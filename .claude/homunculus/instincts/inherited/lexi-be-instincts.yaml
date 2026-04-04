@@ -1,0 +1,387 @@
+# Instincts generated from https://github.com/ngoctinn/lexi-be
+# Generated: 2026-04-04T04:09:17.942Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: lexi-be-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/ngoctinn/lexi-be
+---
+
+# Lexi Be Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: feat
+
+## Evidence
+
+- 12 commits analyzed
+- Detected conventional commit pattern
+- Examples: feat: add lexi-be-conventions ECC bundle (.claude/ecc-tools.json), feat: add lexi-be-conventions ECC bundle (.claude/skills/lexi-be/SKILL.md)
+
+---
+id: lexi-be-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/ngoctinn/lexi-be
+---
+
+# Lexi Be Commit Length
+
+## Action
+
+Write moderate-length commit messages (~73 characters)
+
+## Evidence
+
+- Average commit message length: 73 chars
+- Based on 12 commits
+
+---
+id: lexi-be-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/ngoctinn/lexi-be
+---
+
+# Lexi Be Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: lexi-be-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/ngoctinn/lexi-be
+---
+
+# Lexi Be Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: lexi-be-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/ngoctinn/lexi-be
+---
+
+# Lexi Be Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: lexi-be-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/ngoctinn/lexi-be
+---
+
+# Lexi Be Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: lexi-be-workflow-feature-development
+trigger: "when implementing a new feature"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/ngoctinn/lexi-be
+---
+
+# Lexi Be Workflow Feature Development
+
+## Action
+
+Follow the feature-development workflow:
+1. Add feature implementation
+2. Add tests for feature
+3. Update documentation
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~30x per month
+- Files: 
+
+---
+id: lexi-be-workflow-add-ecc-bundle-component
+trigger: "when doing add ecc bundle component"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/ngoctinn/lexi-be
+---
+
+# Lexi Be Workflow Add Ecc Bundle Component
+
+## Action
+
+Follow the add-ecc-bundle-component workflow:
+1. Create or add a new file under a convention-specific directory (e.g., .claude/, .agents/, .codex/).
+2. Commit the file with a message indicating addition to the ECC bundle.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~10x per month
+- Files: .claude/ecc-tools.json, .claude/skills/lexi-be/SKILL.md, .agents/skills/lexi-be/SKILL.md
+
+---
+id: lexi-be-instinct-file-naming
+trigger: "When creating a new file in the repository"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ngoctinn/lexi-be
+---
+
+# Lexi Be Instinct File Naming
+
+## Action
+
+Name the file using camelCase convention
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.files
+- Consistent file naming in .claude/skills/lexi-be/SKILL.md and similar files
+
+---
+id: lexi-be-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ngoctinn/lexi-be
+---
+
+# Lexi Be Instinct Function Naming
+
+## Action
+
+Name the function using camelCase convention
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.functions
+
+---
+id: lexi-be-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ngoctinn/lexi-be
+---
+
+# Lexi Be Instinct Class Naming
+
+## Action
+
+Name the class using PascalCase convention
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.classes
+
+---
+id: lexi-be-instinct-constant-naming
+trigger: "When defining a constant"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ngoctinn/lexi-be
+---
+
+# Lexi Be Instinct Constant Naming
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE convention
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.constants
+
+---
+id: lexi-be-instinct-import-style
+trigger: "When importing modules in TypeScript files"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ngoctinn/lexi-be
+---
+
+# Lexi Be Instinct Import Style
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in codeStyle.importStyle
+
+---
+id: lexi-be-instinct-export-style
+trigger: "When exporting from a module"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ngoctinn/lexi-be
+---
+
+# Lexi Be Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in codeStyle.exportStyle
+
+---
+id: lexi-be-instinct-test-location
+trigger: "When adding tests for new features"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: ngoctinn/lexi-be
+---
+
+# Lexi Be Instinct Test Location
+
+## Action
+
+Place test files in a separate directory from source files
+
+## Evidence
+
+- Pattern in architecture.folderStructure.testLocation
+
+---
+id: lexi-be-instinct-commit-format
+trigger: "When making a git commit"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: ngoctinn/lexi-be
+---
+
+# Lexi Be Instinct Commit Format
+
+## Action
+
+Format the commit message using the 'feat: description' conventional commit style
+
+## Evidence
+
+- Pattern in commits.type: conventional
+- Examples: 'feat: add lexi-be-conventions ECC bundle ...'
+
+---
+id: lexi-be-instinct-commit-length
+trigger: "When writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: ngoctinn/lexi-be
+---
+
+# Lexi Be Instinct Commit Length
+
+## Action
+
+Keep the commit message concise, around 73 characters on average
+
+## Evidence
+
+- Pattern in commits.averageLength
+
+---
+id: lexi-be-instinct-feature-workflow
+trigger: "When implementing a new feature"
+confidence: 0.85
+domain: workflow
+source: repo-analysis
+source_repo: ngoctinn/lexi-be
+---
+
+# Lexi Be Instinct Feature Workflow
+
+## Action
+
+Follow the sequence: implement feature → add tests → update documentation
+
+## Evidence
+
+- Pattern in workflows[0].commitSequence
+- Example commits in workflows[0].example.commits
+
+---
+id: lexi-be-instinct-add-ecc-bundle-component
+trigger: "When introducing a new ECC bundle component for lexi-be-conventions"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: ngoctinn/lexi-be
+---
+
+# Lexi Be Instinct Add Ecc Bundle Component
+
+## Action
+
+Create or add a new file under a convention-specific directory (e.g., .claude/, .agents/, .codex/) and commit with a message indicating addition to the ECC bundle
+
+## Evidence
+
+- Workflow 'add-ecc-bundle-component'
+- Example commits and files in workflow definition
+
