@@ -1,20 +1,50 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+from ulid import ULID
 
 @dataclass
 class FlashCard:
-    """
-    Represents a FLASHCARD entity in DynamoDB.
-    PK = USER#<user_id>  |  SK = FLASHCARD#<ulid>
+    """Thực thể Thẻ từ vựng (FlashCard) phục vụ ôn tập SRS."""
+    # Định danh (ID)
+    flashcard_id: str = field(default_factory=lambda: str(ULID()), init=False) # ID duy nhất của thẻ
+    
+    # Thông tin cơ bản
+    user_id: str = ""                # Liên kết với ID người dùng (Cognito)
+    word: str = ""                   # Từ vựng cần học (vốn gốc)
+    
+    # Trạng thái ghi nhớ (SRS)
+    review_count: int = 0            # Số lần đã thực hiện ôn tập
+    interval_days: int = 1           # Khoảng cách ngày cho lần ôn tiếp theo
+    difficulty: int = 0              # Mức độ khó (0-5)
+    last_reviewed_at: str = ""       # Thời điểm vừa ôn tập xong (ISO string)
+    next_review_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat()) # Thời điểm cần ôn tập tiếp
 
-    GSI1PK = USER#<user_id>#FLASHCARD
-    GSI1SK = <created_at ISO8601>
-    GSI2PK = USER#<user_id>
-    GSI2SK = <next_review_at ISO8601>  ← used by SRS review queue
-    """
-    user_id: str           # Cognito sub
-    word: str
-    review_count: int = 0
-    interval_days: int = 1
-    difficulty: int = 0    # 0–5
-    last_reviewed_at: str = ""
-    next_review_at: str = ""   
+    def __post_init__(self):
+        # Kiểm tra tính toàn vẹn dữ liệu bắt buộc
+        if not self.user_id or not self.word:
+            raise ValueError("user_id và word là bắt buộc cho FlashCard")
+        if not (0 <= self.difficulty <= 5):
+            raise ValueError(f"Độ khó phải từ 0-5, nhận được {self.difficulty}")
+
+    def update_srs(self, rating: int):
+        """Cập nhật dữ liệu lặp lại ngắt quãng dựa trên đánh giá của người dùng."""
+        now = datetime.now(timezone.utc)
+        self.last_reviewed_at = now.isoformat()
+        self.review_count += 1
+        
+        if rating >= 3:
+            self.interval_days = min(self.interval_days * 2, 365)
+        else:
+            self.interval_days = 1
+            
+        next_review_date = now + timedelta(days=self.interval_days)
+        self.next_review_at = next_review_date.isoformat()
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, FlashCard):
+            return False
+        return self.flashcard_id == other.flashcard_id
+
+    def __hash__(self) -> int:
+        return hash(self.flashcard_id)

@@ -1,18 +1,47 @@
-from dataclasses import dataclass
-
+from dataclasses import dataclass, field
+from ulid import ULID
 
 @dataclass
 class Scoring:
-    """
-    Represents the SCORING entity in DynamoDB.
-    PK = SESSION#<ulid>  |  SK = SCORING
+    """Kết quả chấm điểm hội thoại của một phiên học."""
+    # Định danh (ID)
+    scoring_id: str = field(default_factory=lambda: str(ULID()), init=False) # ID bản ghi chấm điểm
+    
+    # Liên kết
+    session_id: str = ""             # ID của session hội thoại tương ứng
+    
+    # Chi tiết điểm số (0-100)
+    grammar_score: int = 0           # Điểm ngữ pháp
+    vocabulary_score: int = 0        # Điểm phong phú từ vựng
+    fluency_score: int = 0           # Điểm độ trôi chảy
+    coherence_score: int = 0       # Điểm tính mạch lạc
+    overall_score: int = 0           # Điểm tổng kết
+    feedback_fluency: str = ""       # Nhận xét chi tiết từ AI
 
-    Populated asynchronously by fn_scoring_worker via SQS FIFO.
-    user_id is included here so the scoring worker can update
-    USER_PROFILE stats without an extra GetItem on SESSION#METADATA.
-    """
-    session_id: str        # ULID of parent session
-    grammar_score: int = 0       # 0–100
-    vocabulary_score: int = 0    # 0–100
-    overall_score: int = 0       # Average of the four
-    feedback_fluency: str = ""
+    def __post_init__(self):
+        # Kiểm tra session_id
+        if not self.session_id:
+            raise ValueError("Scoring phải liên kết với một session_id")
+            
+        # Kiểm tra dải điểm
+        scores = [self.grammar_score, self.vocabulary_score, self.fluency_score, self.coherence_score]
+        for score in scores:
+            if not (0 <= score <= 100):
+                raise ValueError(f"Điểm số phải từ 0-100, nhận được {score}")
+        
+    def calculate_overall(self):
+        """Tự động tính điểm trung bình tổng quát."""
+        scores = [self.grammar_score, self.vocabulary_score, self.fluency_score, self.coherence_score]
+        self.overall_score = round(sum(scores) / len(scores))
+        
+    def add_feedback(self, feedback: str):
+        """Cập nhật nội dung nhận xét."""
+        self.feedback_fluency = feedback
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Scoring):
+            return False
+        return self.scoring_id == other.scoring_id
+
+    def __hash__(self) -> int:
+        return hash(self.scoring_id)

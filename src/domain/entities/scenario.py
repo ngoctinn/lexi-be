@@ -1,17 +1,39 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from ulid import ULID
 
 @dataclass
 class Scenario:
-    """
-    Represents a predefined ROLEPLAY SCENARIO curated by Admins.
-    PK = SYSTEM#SCENARIOS  |  SK = SCENARIO#<ulid>
+    """Kịch bản hội thoại mẫu do hệ thống biên soạn."""
+    # Định danh (ID)
+    scenario_id: str = field(default_factory=lambda: str(ULID()), init=False) # ID duy nhất của kịch bản
     
-    This acts as a catalog of available situations users can choose to practice.
-    """
-    session_id: int        
-    scenario_title: str             # Display title (e.g., "Job interview for a Frontend role")
-    scenario_prompt: str          # The actual context prompt
-    my_character: str      # E.g., "A nervous candidate"
-    ai_character: str      # E.g., "A strict Technical Manager"
-    is_active: bool = True # Admin can toggle visibility on the app
-    usage_count: int = 0   # Track popularity to show on top list recommendations
+    # Nội dung kịch bản
+    scenario_title: str = ""         # Tiêu đề hiển thị cho người dùng
+    scenario_prompt: str = ""        # Lệnh điều hướng (Prompt) cho AI
+    my_character: str = ""           # Nhân vật người dùng sẽ đóng vai
+    ai_character: str = ""           # Nhân vật AI sẽ đóng vai
+    
+    # Trạng thái
+    is_active: bool = True           # Kịch bản có đang được sử dụng hay không
+    usage_count: int = 0             # Tổng số lượt session đã sử dụng kịch bản này
+
+    def __post_init__(self):
+        # Kiểm tra tính toàn vẹn dữ liệu bắt buộc
+        if not self.scenario_title or not self.scenario_prompt:
+            raise ValueError("scenario_title và scenario_prompt không được để trống")
+
+    def increment_usage(self):
+        """Tăng bộ đếm lượt sử dụng."""
+        self.usage_count += 1
+
+    def deactivate(self):
+        """Ngừng kích hoạt kịch bản."""
+        self.is_active = False
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Scenario):
+            return False
+        return self.scenario_id == other.scenario_id
+
+    def __hash__(self) -> int:
+        return hash(self.scenario_id)
