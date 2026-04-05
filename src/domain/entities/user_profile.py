@@ -5,7 +5,7 @@ from .enums import ProficiencyLevel, Role
 class UserProfile:
     """Thông tin hồ sơ cá nhân của người học."""
     # Định danh (ID)
-    user_id: str = ""                 # ID định danh từ Cognito (Bắt buộc)
+    user_id: str = ""                 # ID định danh hệ thống (Trùng khớp auth id)
     
     # Thông tin cơ bản từ Auth
     email: str = ""                  # Email đăng ký
