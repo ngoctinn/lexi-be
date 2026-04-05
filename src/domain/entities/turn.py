@@ -15,20 +15,19 @@ class Turn:
     # Nội dung và Metadata
     speaker: Speaker = Speaker.AI   # Vai trò người nói (AI/USER)
     content: str = ""                # Nội dung văn bản của lượt thoại
-    audio_s3_key: str = ""           # Đường dẫn file âm thanh trên S3 (nếu có)
+    audio_url: str = ""              # Đường dẫn file âm thanh (nếu có)
     translated_content: str = ""      # Bản dịch của nội dung (thường là sang tiếng Việt)
     is_hint_used: bool = False       # Lượt này có phải là kết quả của một gợi ý không
-    ttl: int = 0                     # Thời gian tồn tại bản ghi (dùng cho DynamoDB TTL)
 
     def __post_init__(self):
         if not self.session_id:
             raise ValueError("Mỗi lượt thoại phải thuộc về một session_id")
 
-    def set_content(self, text: str, s3_key: str = ""):
+    def set_content(self, text: str, audio_url: str = ""):
         """Thiết lập văn bản và audio của lượt nói."""
         self.content = text
-        if s3_key:
-            self.audio_s3_key = s3_key
+        if audio_url:
+            self.audio_url = audio_url
         
     def add_translation(self, text: str):
         """Gán nội dung dịch thuật."""
