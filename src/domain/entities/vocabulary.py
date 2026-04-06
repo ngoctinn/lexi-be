@@ -1,0 +1,38 @@
+from dataclasses import dataclass, field
+from typing import Optional
+from ulid import ULID
+
+@dataclass
+class Vocabulary:
+    """Thông tin từ vựng trong từ điển hệ thống."""
+    # Định danh (ID)
+    vocabulary_id: str = field(default_factory=lambda: str(ULID()), init=False) # ID bản ghi từ vựng
+    
+    # Dữ liệu từ vựng
+    word: str = ""                   # Từ vựng (Viết thường, đã trim)
+    word_type: str = ""              # Loại từ (n, v, adj...)
+    definition_vi: str = ""          # Định nghĩa nghĩa tiếng Việt
+    phonetic: str = ""               # Cách phát âm (IPA)
+    audio_url: str = ""              # Đường dẫn file phát âm (nếu có)
+    example_sentence: str = ""       # Câu ví dụ mẫu
+    
+    # Thông tin nguồn
+    source_api: Optional[str] = ""    # Tên API nguồn lấy dữ liệu
+    
+    def __post_init__(self):
+        if not self.word:
+            raise ValueError("word không được để trống trong Vocabulary")
+        # Chuẩn hóa dữ liệu
+        self.word = self.word.strip().lower()
+
+    def format_entry(self) -> str:
+        """Định dạng nhanh thông tin hiển thị."""
+        return f"{self.word} ({self.word_type}): {self.definition_vi}"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Vocabulary):
+            return False
+        return self.vocabulary_id == other.vocabulary_id
+
+    def __hash__(self) -> int:
+        return hash(self.vocabulary_id)
