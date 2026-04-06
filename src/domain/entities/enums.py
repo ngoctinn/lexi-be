@@ -11,8 +11,8 @@ class ProficiencyLevel(Enum):
 
 class Gender(Enum):
     """Giới tính cho việc chọn giọng đọc AI."""
-    MALE = "male"
-    FEMALE = "female"
+    MALE = "MALE"
+    FEMALE = "FEMALE"
 
 class Speaker(Enum):
     """Vai trò của người nói trong lượt hội thoại."""
