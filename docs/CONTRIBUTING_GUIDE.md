@@ -224,6 +224,7 @@ refactor(payment): đơn giản hóa logic
 * Comment lỗi thời
 * TODO không rõ ràng
 * Dùng comment để che code xấu
+* Comment dạng nhật ký cá nhân (Ví dụ: # Đã xóa logic tính thuế cũ vì sai).
 
 ---
 

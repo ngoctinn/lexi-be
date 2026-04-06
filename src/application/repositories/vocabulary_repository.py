@@ -13,9 +13,10 @@ class VocabularyRepository(ABC):
     @abstractmethod
     def find_by_word(self, word: str) -> Optional[Vocabulary]:
         """
-        Tìm kiếm thuật ngữ trong kho dữ liệu từ điển.
+        Truy xuất thông tin từ vựng định danh bằng chính từ đó (word).
         
-        Sử dụng khi AI cần giải thích cấu trúc từ vựng phát sinh trong bài học.
+        Business Rule:
+        - Word dùng làm Partition Key trong WordCache.
         """
         ...
 
@@ -24,9 +25,4 @@ class VocabularyRepository(ABC):
         """
         Gợi ý danh sách từ vựng theo trình độ CERF mục tiêu.
         """
-        ...
-
-    @abstractmethod
-    def get_by_id(self, vocabulary_id: str) -> Optional[Vocabulary]:
-        """Truy xuất thông tin ngôn ngữ chi tiết (gồm phát âm và nghĩa)."""
         ...
