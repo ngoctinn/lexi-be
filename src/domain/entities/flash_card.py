@@ -11,7 +11,7 @@ class FlashCard:
     
     # Thông tin cơ bản
     user_id: str = ""                # ID của người dùng sở hữu thẻ (Trùng khớp auth id)
-    vocabulary_id: str = ""          # ID của từ vựng (Liên kết với Vocabulary entity)
+    word: str = ""                   # Từ vựng (Liên kết với Vocabulary.word làm ID)
     
     # Trạng thái ghi nhớ (SRS)
     review_count: int = 0            # Số lần đã thực hiện ôn tập
@@ -22,8 +22,8 @@ class FlashCard:
 
     def __post_init__(self):
         # Kiểm tra tính toàn vẹn dữ liệu bắt buộc
-        if not self.user_id or not self.vocabulary_id:
-            raise ValueError("user_id và vocabulary_id là bắt buộc cho FlashCard")
+        if not self.user_id or not self.word:
+            raise ValueError("user_id và word là bắt buộc cho FlashCard")
         if not (0 <= self.difficulty <= 5):
             raise ValueError(f"Độ khó phải từ 0-5, nhận được {self.difficulty}")
 

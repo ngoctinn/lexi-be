@@ -32,13 +32,13 @@ Bảng `LexiApp` được thiết kế để gom nhiều loại thực thể và
 
 *   **GSI1: `GSI1-UserEntity-Time`**
     *   **GSI1PK**: `<USER#id>#<ENTITY_TYPE>` (Để lọc theo từng loại: `USER#123#SESSION`)
-    *   **GSI1SK**: `ISO8601 Timestamp` (Để sắp xếp theo thời gian)
+    *   **GSI1SK**: `ID (ULID)` hoặc `ISO8601 Timestamp` (Để sắp xếp theo thời gian. Lưu ý: UserProfile dùng Timestamp ẩn tại tầng Infra).
 *   **GSI2: `GSI2-SRS-ReviewQueue`**
     *   **GSI2PK**: `USER#<user_id>`
     *   **GSI2SK**: `next_review_at` (Sắp xếp theo hạn ôn tập)
 *   **GSI3: `GSI3-Admin-EntityList`**
     *   **GSI3PK**: `EntityType` (Ví dụ: `USER_PROFILE`)
-    *   **GSI3SK**: `created_at` (Hỗ trợ Admin query toàn bộ danh sách User/Scenario mới nhất)
+    *   **GSI3SK**: `joined_at` (Technical Metadata - Timestamp khi tham gia hệ thống)
 
 ---
 
@@ -83,9 +83,9 @@ Bảng này hoạt động như một tầng cache dùng chung để lưu địn
 | `learning_goal` | S | Mục tiêu học tập. |
 | `role` | S | Quyền truy cập: `LEARNER` hoặc `ADMIN`. |
 | `is_active` | BOOL | Trạng thái hoạt động của tài khoản. |
-| `current_streak` | N | Số ngày học liên tiếp hiện tại (Streak). |
+| `current_streak` | N | Số ngày học liên tục hiện tại (Streak). |
 | `last_completed_at` | S | Lần cuối hoàn thành bài học (ISO8601). |
-| `total_words_learned` | N | Tổng số từ vựng đã lưu. |
+| `total_words_learned` | N | Tổng số từ vựng đã học được. |
 
 #### Thực thể SCENARIO
 | Thuộc tính | Kiểu | Mô tả |
@@ -110,7 +110,7 @@ Bảng này hoạt động như một tầng cache dùng chung để lưu địn
 | `user_turns` | N | Số lượt thoại của người dùng. |
 | `hint_used_count` | N | Số lần đã sử dụng gợi ý (hint). |
 
-#### Thực thể TURN (Hội thoại)
+#### Thực thể TURN
 | Thuộc tính | Kiểu | Mô tả |
 |------------|------|-------|
 | `turn_id` | S | ULID định danh lượt thoại. |
@@ -139,7 +139,7 @@ Bảng này hoạt động như một tầng cache dùng chung để lưu địn
 |------------|------|-------|
 | `flashcard_id` | S | ULID định danh thẻ. |
 | `user_id` | S | ID của người sở hữu. |
-| `vocabulary_id` | S | ID từ vựng liên kết. |
+| `word` | S | Từ vựng liên kết (ID của Vocabulary). |
 | `review_count` | N | Số lần đã ôn tập. |
 | `interval_days` | N | Khoảng cách ngày ôn tiếp theo. |
 | `difficulty` | N | Mức độ khó (0-5). |
@@ -148,12 +148,11 @@ Bảng này hoạt động như một tầng cache dùng chung để lưu địn
 
 ---
 
-### 5.2 Bảng WordCache (VOCABULARY Entity)
+### 5.2 Bảng VOCABULARY
 
 | Thuộc tính | Kiểu | Mô tả |
 |------------|------|-------|
-| `vocabulary_id` | S | ULID định danh từ vựng. |
-| `word` | S | Từ vựng (viết thường). |
+| `word` | S | Từ vựng (viết thường) - Đóng vai trò là ID định danh. |
 | `word_type` | S | Loại từ (n, v, adj...). |
 | `definition_vi` | S | Định nghĩa tiếng Việt. |
 | `phonetic` | S | Phiên âm IPA. |
