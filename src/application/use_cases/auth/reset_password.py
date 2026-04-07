@@ -1,6 +1,6 @@
 from src.application.service_ports.auth_service import IAuthService
 from src.application.dtos.auth_dto import ResetPasswordDTO
-from src.application.exceptions import AuthError
+from application.exceptions.auth_errors import AuthError
 
 
 class ResetPasswordUseCase:

@@ -26,3 +26,14 @@ env.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Python Virtual Environment
+.venv/
+venv/
+env/
+
+# AI Agents 
+.agents/
+.claude/
+.codex/
+Learning_Notes/

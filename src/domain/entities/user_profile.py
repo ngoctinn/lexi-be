@@ -1,5 +1,6 @@
-from dataclasses import dataclass, field
-from .enums import ProficiencyLevel, Role
+from dataclasses import dataclass
+
+from domain.value_objects.enums import ProficiencyLevel, Role
 
 @dataclass
 class UserProfile:
@@ -13,7 +14,7 @@ class UserProfile:
     
     # Quá trình học tập
     current_level: ProficiencyLevel = ProficiencyLevel.A1 # Trình độ hiện tại
-    learning_goal: str = ""          # Mục tiêu học tập (vd: Giao tiếp đi làm)
+    learning_goal: ProficiencyLevel        # Mục tiêu học tập 
     role: Role = Role.LEARNER        # Vai trò trong hệ thống
     is_active: bool = True           # Trạng thái tài khoản
     current_streak: int = 0          # Số ngày học liên tục (Chuỗi streak)

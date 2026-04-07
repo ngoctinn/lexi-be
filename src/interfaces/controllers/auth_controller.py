@@ -11,7 +11,7 @@ from src.application.dtos.auth_dto import (
     SignUpDTO, ConfirmSignUpDTO, SignInDTO, RefreshTokenDTO,
     ForgotPasswordDTO, ResetPasswordDTO, SignOutDTO,
 )
-from src.application.exceptions import AuthError
+from application.exceptions.auth_errors import AuthError
 
 
 class AuthController:

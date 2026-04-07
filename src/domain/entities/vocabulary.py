@@ -1,18 +1,15 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
-from ulid import ULID
 
 @dataclass
 class Vocabulary:
-    """Thông tin từ vựng trong từ điển hệ thống."""
-    # Định danh (ID) duy nhất là chính từ vựng (word)
-    word: str = ""                   # Từ vựng (Viết thường, đã trim làm ID)
-    
-    # Dữ liệu từ vựng
+    """Thông tin từ vựng trong từ điển hệ thống."""    
+    # Dữ liệu từ vựng 
+    word: str = ""                   # Từ vựng (Viết thường, đã trim)
     word_type: str = ""              # Loại từ (n, v, adj...)
     definition_vi: str = ""          # Định nghĩa nghĩa tiếng Việt
     phonetic: str = ""               # Cách phát âm (IPA)
-    audio_url: str = ""              # Đường dẫn file phát âm (nếu có)
+    audio_url: str = ""              # Đường dẫn file phát âm 
     example_sentence: str = ""       # Câu ví dụ mẫu
     
     # Thông tin nguồn

@@ -1,14 +1,14 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from ulid import ULID
 
 @dataclass
 class Scoring:
     """Kết quả chấm điểm hội thoại của một phiên học."""
     # Định danh (ID)
-    scoring_id: str = field(default_factory=lambda: str(ULID()), init=False) # ID bản ghi chấm điểm
+    scoring_id: ULID # ID bản ghi chấm điểm
     
     # Liên kết
-    session_id: str = ""             # ID của session hội thoại tương ứng
+    session_id: ULID             # ID của session hội thoại tương ứng
     
     # Chi tiết điểm số (0-100)
     grammar_score: int = 0           # Điểm ngữ pháp

@@ -1,15 +1,14 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from ulid import ULID
-from .enums import Speaker
+
+from domain.value_objects.enums import Speaker
 
 @dataclass
 class Turn:
     """Một lượt thoại đơn lẻ trong nội dung hội thoại."""
-    # Định danh (ID)
-    turn_id: str = field(default_factory=lambda: str(ULID()), init=False) # ID duy nhất của dòng thoại
-    
+
     # Liên kết và vị trí
-    session_id: str = ""             # ID của session chứa lượt thoại này
+    session_id: ULID            # ID của session chứa lượt thoại này
     turn_index: int = 0              # Thứ tự lượt nói trong session (0, 1, 2...)
     
     # Nội dung và Metadata

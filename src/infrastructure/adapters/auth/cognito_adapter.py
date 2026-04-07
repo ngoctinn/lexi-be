@@ -2,7 +2,7 @@ import os
 import boto3
 from botocore.exceptions import ClientError
 from src.application.service_ports.auth_service import IAuthService
-from src.application.exceptions import (
+from application.exceptions.auth_errors import (
     AuthError, UserAlreadyExistsError, InvalidCredentialsError,
     UserNotConfirmedError, CodeMismatchError, UserNotFoundError, ExpiredCodeError,
 )
