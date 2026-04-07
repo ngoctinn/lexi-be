@@ -18,7 +18,7 @@ class Vocabulary:
     def __post_init__(self):
         if not self.word:
             raise ValueError("word không được để trống trong Vocabulary")
-        # Chuẩn hóa dữ liệu
+        # Chuẩn hóa dữ liệu để dùng làm ID đồng nhất
         self.word = self.word.strip().lower()
 
     def format_entry(self) -> str:
@@ -28,7 +28,7 @@ class Vocabulary:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Vocabulary):
             return False
-        return self.vocabulary_id == other.vocabulary_id
+        return self.word == other.word
 
     def __hash__(self) -> int:
-        return hash(self.vocabulary_id)
+        return hash(self.word)

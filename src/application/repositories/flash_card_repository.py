@@ -36,8 +36,8 @@ class FlashCardRepository(ABC):
         ...
 
     @abstractmethod
-    def get_by_user_and_vocabulary(self, user_id: str, vocabulary_id: str) -> Optional[FlashCard]:
+    def get_by_user_and_word(self, user_id: str, word: str) -> Optional[FlashCard]:
         """
-        Xác định xem người dùng đã tạo ghi nhớ cho từ vựng này chưa.
+        Xác định xem người dùng đã tạo thẻ ghi nhớ cho từ vựng này chưa.
         """
         ...
