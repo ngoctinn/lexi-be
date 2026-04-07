@@ -16,8 +16,8 @@ class FlashCard:
     review_count: int = 0            # Số lần đã thực hiện ôn tập
     interval_days: int = 1           # Khoảng cách ngày cho lần ôn tiếp theo
     difficulty: int = 0              # Mức độ khó (0-5)
-    last_reviewed_at: str = datetime.now(timezone.utc).isoformat() # Thời điểm vừa ôn tập xong (ISO string)
-    next_review_at: str = datetime.now(timezone.utc).isoformat() # Thời điểm cần ôn tập tiếp
+    last_reviewed_at: datetime = datetime.now(timezone.utc).isoformat() # Thời điểm vừa ôn tập xong (ISO string)
+    next_review_at: datetime = datetime.now(timezone.utc).isoformat() # Thời điểm cần ôn tập tiếp
 
     def __post_init__(self):
         # Kiểm tra tính toàn vẹn dữ liệu bắt buộc
