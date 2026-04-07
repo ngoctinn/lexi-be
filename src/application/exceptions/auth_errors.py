@@ -1,5 +1,6 @@
-class AuthError(Exception):
-    """Base exception cho tất cả auth errors — raise từ CognitoAdapter, catch tại Controller."""
+from application.exceptions.application_errors import ApplicationError
+
+class AuthError(ApplicationError):
     pass
 
 class UserAlreadyExistsError(AuthError):

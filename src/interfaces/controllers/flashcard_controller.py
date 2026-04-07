@@ -1,5 +1,4 @@
 import json
-from typing import Dict
 
 from interfaces.mapper.flashcard_mapper import FlashCardMapper
 
@@ -15,5 +14,5 @@ class FlashCardController:
         command = self.mapper.to_create_command(body)
 
         # calling use case
-
+        
         # return response

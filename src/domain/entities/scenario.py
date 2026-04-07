@@ -1,12 +1,13 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from ulid import ULID
 
 @dataclass
 class Scenario:
     """Kịch bản hội thoại mẫu do hệ thống biên soạn."""
     # Định danh (ID)
-    scenario_id: str = field(default_factory=lambda: str(ULID()), init=False) # ID duy nhất của kịch bản
+    scenario_id: ULID # ID duy nhất của kịch bản
     
+    #hello
     # Nội dung kịch bản
     scenario_title: str = ""         # Tiêu đề hiển thị cho người dùng
     scenario_prompt: str = ""        # Lệnh điều hướng (Prompt) cho AI

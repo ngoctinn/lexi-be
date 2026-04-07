@@ -1,16 +1,16 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from ulid import ULID
-from .enums import ProficiencyLevel, Gender
+from domain.value_objects.enums import Gender, ProficiencyLevel
 
 @dataclass
 class Session:
     """Phiên hội thoại (Session) đang diễn ra giữa AI và Người dùng."""
     # Định danh (ID)
-    session_id: str = field(default_factory=lambda: str(ULID()), init=False) # ID duy nhất của phiên học
+    session_id: ULID # ID duy nhất của phiên học
     
     # Cấu hình phiên
     user_id: str = ""                # ID người dùng tham gia
-    scenario_id: str = ""            # ID kịch bản đang học
+    scenario_id: ULID           # ID kịch bản đang học
     ai_gender: Gender = Gender.FEMALE # Giới tính của giọng nói AI
     level: ProficiencyLevel = ProficiencyLevel.B1 # Trình độ ngoại ngữ của session
     

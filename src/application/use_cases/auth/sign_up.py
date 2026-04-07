@@ -1,7 +1,7 @@
 import re
 from src.application.service_ports.auth_service import IAuthService
 from src.application.dtos.auth_dto import SignUpDTO
-from src.application.exceptions import AuthError
+from application.exceptions.auth_errors import AuthError
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
