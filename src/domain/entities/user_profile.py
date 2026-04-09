@@ -38,6 +38,15 @@ class UserProfile:
         """Nâng cấp trình độ của người dùng."""
         self.current_level = new_level
 
+    def update_profile_info(self, display_name: str = None, current_level: ProficiencyLevel = None, learning_goal: ProficiencyLevel = None):
+        """Cập nhật thông tin profile cơ bản."""
+        if display_name:
+            self.display_name = display_name
+        if current_level:
+            self.current_level = current_level
+        if learning_goal:
+            self.learning_goal = learning_goal
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, UserProfile):
             return False

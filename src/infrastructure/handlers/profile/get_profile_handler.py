@@ -1,83 +1,63 @@
 import json
-import boto3
 import os
-from datetime import datetime, timezone
-from botocore.exceptions import ClientError
+import dataclasses
+from infrastructure.persistence.dynamo_user_repo import DynamoDBUserRepo
+from application.use_cases.profile.get_profile import GetProfileUseCase
+from application.use_cases.profile.update_profile import UpdateProfileUseCase
+from application.dtos.profile.update.update_profile_command import UpdateProfileCommand
 
-dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(os.environ["LEXI_TABLE_NAME"])
+# DI - Khởi tạo các lớp một lần
+user_repo = DynamoDBUserRepo()
+get_profile_uc = GetProfileUseCase(user_repo)
+update_profile_uc = UpdateProfileUseCase(user_repo)
 
-
-def _user_id(event):
-    return event["requestContext"]["authorizer"]["claims"]["sub"]
-
-
-def _now():
-    return datetime.now(timezone.utc).isoformat()
-
-
-def response(status, body):
-    return {"statusCode": status, "headers": {"Content-Type": "application/json"}, "body": json.dumps(body)}
-
+def _response(status, body):
+    return {
+        "statusCode": status, 
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*" # Chuẩn bị cho tích hợp Frontend
+        }, 
+        "body": json.dumps(body)
+    }
 
 def handler(event, context):
     method = event["httpMethod"]
-    user_id = _user_id(event)
+    # Lấy User ID từ Authorizer (đã được Cognito xác thực)
+    try:
+        user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
+    except KeyError:
+        return _response(401, {"error": "Unauthorized"})
 
+    # --- XỬ LÝ GET (LẤY PROFILE) ---
     if method == "GET":
-        result = table.get_item(Key={"PK": f"USER#{user_id}", "SK": "PROFILE"})
-        item = result.get("Item")
-        if not item:
-            return response(404, {"error": "Profile not found"})
-        return response(200, item)
+        result = get_profile_uc.execute(user_id)
+        if not result.is_success:
+            return _response(404, {"error": result.error})
+        
+        # Result value là GetProfileResponse DTO
+        response_dto = result.value
+        return _response(200, dataclasses.asdict(response_dto))
 
-    if method == "PUT":
+    # --- XỬ LÝ PUT/POST (CẬP NHẬT PROFILE / ONBOARDING) ---
+    if method in ["PUT", "POST"]:
         try:
             body = json.loads(event.get("body") or "{}")
         except json.JSONDecodeError:
-            return response(400, {"error": "Invalid JSON"})
+            return _response(400, {"error": "Invalid JSON body"})
 
-        allowed = {"display_name", "current_level", "learning_goal"}
-        updates = {k: v for k, v in body.items() if k in allowed and v}
-        if not updates:
-            return response(400, {"error": "No valid fields to update"})
-
-        updates["updated_at"] = _now()
-        expr = "SET " + ", ".join(f"#{k}=:{k}" for k in updates)
-        names = {f"#{k}": k for k in updates}
-        values = {f":{k}": v for k, v in updates.items()}
-
-        table.update_item(
-            Key={"PK": f"USER#{user_id}", "SK": "PROFILE"},
-            UpdateExpression=expr,
-            ExpressionAttributeNames=names,
-            ExpressionAttributeValues=values,
+        request = UpdateProfileCommand(
+            user_id=user_id,
+            display_name=body.get("display_name"),
+            current_level=body.get("current_level"),
+            learning_goal=body.get("learning_goal")
         )
-        return response(200, {"message": "Profile updated"})
 
-    if method == "POST" and "onboarding" in event["path"]:
-        try:
-            body = json.loads(event.get("body") or "{}")
-            display_name = body.get("display_name")
-            current_level = body.get("current_level")
-            learning_goal = body.get("learning_goal")
-            
-            if not display_name or not current_level:
-                return response(400, {"error": "display_name and current_level are required"})
+        result = update_profile_uc.execute(request)
+        if not result.is_success:
+            return _response(400, {"error": result.error})
 
-            table.update_item(
-                Key={"PK": f"USER#{user_id}", "SK": "PROFILE"},
-                UpdateExpression="SET display_name=:dn, current_level=:cl, learning_goal=:lg, is_onboarded=:io, updated_at=:u",
-                ExpressionAttributeValues={
-                    ":dn": display_name,
-                    ":cl": current_level,
-                    ":lg": learning_goal or "",
-                    ":io": True,
-                    ":u": _now()
-                }
-            )
-            return response(200, {"message": "Onboarding completed"})
-        except Exception as e:
-            return response(500, {"error": str(e)})
+        response_dto = result.value
+        return _response(200, dataclasses.asdict(response_dto))
 
-    return response(405, {"error": "Method not allowed"})
+    return _response(405, {"error": "Method not allowed"})

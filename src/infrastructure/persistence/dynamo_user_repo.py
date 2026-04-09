@@ -58,12 +58,12 @@ class DynamoDBUserRepo(UserProfileRepository):
         from domain.value_objects.enums import ProficiencyLevel, Role
         
         return UserProfile(
-            user_id=item["user_id"],
-            email=item["email"],
+            user_id=item.get("user_id", user_id),
+            email=item.get("email", ""),
             display_name=item.get("display_name", ""),
-            current_level=ProficiencyLevel(item["current_level"]),
-            learning_goal=ProficiencyLevel(item["learning_goal"]),
-            role=Role(item["role"]),
+            current_level=ProficiencyLevel(item.get("current_level", "A1")),
+            learning_goal=ProficiencyLevel(item.get("learning_goal", "B2")),
+            role=Role(item.get("role", "LEARNER")),
             is_active=item.get("is_active", True),
             current_streak=item.get("current_streak", 0),
             last_completed_at=item.get("last_completed_at", ""),
