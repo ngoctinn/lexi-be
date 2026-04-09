@@ -7,7 +7,6 @@ class Scenario:
     # Định danh (ID)
     scenario_id: ULID # ID duy nhất của kịch bản
     
-    #hello
     # Nội dung kịch bản
     scenario_title: str = ""         # Tiêu đề hiển thị cho người dùng
     scenario_prompt: str = ""        # Lệnh điều hướng (Prompt) cho AI
@@ -16,7 +15,6 @@ class Scenario:
     
     # Trạng thái
     is_active: bool = True           # Kịch bản có đang được sử dụng hay không
-    usage_count: int = 0             # Tổng số lượt session đã sử dụng kịch bản này
 
     def __post_init__(self):
         # Kiểm tra tính toàn vẹn dữ liệu bắt buộc

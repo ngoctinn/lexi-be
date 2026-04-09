@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from domain.entities.flash_card import FlashCard
+from domain.entities.flashcard import FlashCard
 
 
 class FlashCardRepository(ABC):
