@@ -1,11 +1,7 @@
 import json
 
-from interfaces.mapper.flashcard_mapper import FlashCardMapper
-
-
 class FlashCardController:
-    def __init__(self, mapper: FlashCardMapper, create_flashcard_usecase) -> None:
-        self.mapper = mapper
+    def __init__(self, create_flashcard_usecase) -> None:
         self.create_flashcard_usecase = create_flashcard_usecase
 
     def create(self, event) -> None:

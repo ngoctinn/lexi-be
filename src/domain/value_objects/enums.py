@@ -23,3 +23,17 @@ class Speaker(Enum):
     """Vai trò của người nói trong lượt hội thoại."""
     AI = "AI"
     USER = "USER"
+
+class VocabType(Enum):
+    """Loại từ vựng"""
+    NOUN = ("noun")
+    VERB = ("verb")
+    ADJECTIVE = ("adjective")
+    ADVERB = ("adverb")
+    PRONOUN = ("pronoun")
+    PREPOSITION = ("preposition")
+    CONJUNCTION = ("conjunction")
+    INTERJECTION = ("interjection")
+    PHRASE = ("phrase")
+    IDIOM = ("idiom")
+

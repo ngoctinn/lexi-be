@@ -13,10 +13,8 @@ class Scoring:
     # Chi tiết điểm số (0-100)
     grammar_score: int = 0           # Điểm ngữ pháp
     vocabulary_score: int = 0        # Điểm phong phú từ vựng
-    fluency_score: int = 0           # Điểm độ trôi chảy
-    coherence_score: int = 0       # Điểm tính mạch lạc
     overall_score: int = 0           # Điểm tổng kết
-    feedback_fluency: str = ""       # Nhận xét chi tiết từ AI
+    feedback: str = ""       # Nhận xét chi tiết từ AI
 
     def __post_init__(self):
         # Kiểm tra session_id

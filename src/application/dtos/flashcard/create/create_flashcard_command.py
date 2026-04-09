@@ -4,6 +4,7 @@ from typing import Optional
 from pydantic import Field, field_validator, model_validator
 
 from application.dtos.base_dto import BaseDTO
+from domain.value_objects.enums import VocabType
 
 class CreateFlashCardCommand(BaseDTO):
     # Not allowed to casting dynamically
@@ -33,21 +34,11 @@ class CreateFlashCardCommand(BaseDTO):
     @field_validator('vocab_type')
     @classmethod
     def validate_vocab_type(cls, v: str) -> str:
+        if v.lower() not in VocabType:
+
         valid_types = {'n', 'v', 'adj', 'adv', 'prep', 'conj', 'int', 'pron', ''}
         if v.lower() not in valid_types:
             raise ValueError(f'Invalid vocab_type. Must be one of {valid_types}')
         return v.lower()
 
-    # 3. Model Validator: Kiểm tra tính logic giữa các trường
-    @model_validator(mode='after')
-    def check_audio_if_external_source(self) -> 'CreateFlashCardCommand':
-        # Ví dụ: Nếu nguồn từ API ngoài thì bắt buộc phải có audio_url
-        if self.source_api != "internal" and not self.audio_url:
-            raise ValueError('External API sources must provide an audio_url')
-        
-        # Kiểm tra nếu có ví dụ thì ví dụ phải chứa từ vựng (vocab)
-        if self.example_sentence and self.vocab not in self.example_sentence.lower():
-            # Đây là một cảnh báo nhẹ hoặc lỗi tùy bạn quyết định logic nghiệp vụ
-            pass 
-            
-        return self
+    

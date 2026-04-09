@@ -1,23 +1,19 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 from ulid import ULID
 
 @dataclass
 class FlashCard:
-    # Định danh (ID)
-    flashcard_id: ULID # ID duy nhất của thẻ
-    
     # Thông tin cơ bản
-    user_id: str = ""                # ID của người dùng sở hữu thẻ (Trùng khớp auth id)
+    user_id: str = ""             # ID của người dùng sở hữu thẻ (Trùng khớp auth id)
     vocabulary: str = ""          # ID của từ vựng (Liên kết với Vocabulary entity)
 
     # Trạng thái ghi nhớ (SRS)
     review_count: int = 0            # Số lần đã thực hiện ôn tập
     interval_days: int = 1           # Khoảng cách ngày cho lần ôn tiếp theo
     difficulty: int = 0              # Mức độ khó (0-5)
-    last_reviewed_at: datetime = datetime.now(timezone.utc).isoformat() # Thời điểm vừa ôn tập xong (ISO string)
-    next_review_at: datetime = datetime.now(timezone.utc).isoformat() # Thời điểm cần ôn tập tiếp
+    last_reviewed_at: datetime = datetime.now()
+    next_review_at: datetime = datetime.now() # Thời điểm cần ôn tập tiếp
 
     def __post_init__(self):
         # Kiểm tra tính toàn vẹn dữ liệu bắt buộc
