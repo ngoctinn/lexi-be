@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List
-from src.domain.entities.scenario import Scenario
+from domain.entities.scenario import Scenario
 
 
 class ScenarioRepository(ABC):

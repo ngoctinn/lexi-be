@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List
-from src.domain.entities.session import Session
+from domain.entities.session import Session
 
 
 class SessionRepository(ABC):

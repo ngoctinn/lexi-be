@@ -9,7 +9,7 @@ region = "ap-southeast-1"
 [default.build.parameters]
 cached = true
 parallel = true
-template = "infrastructure/template.yaml"
+template = "template.yaml"
 
 [default.validate.parameters]
 lint = true
@@ -19,8 +19,7 @@ capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
 confirm_changeset = true
 resolve_s3 = true
 s3_prefix = "lexi-be"
-region = "ap-southeast-1"
-template = "infrastructure/template.yaml"
+template = "template.yaml"
 image_repositories = []
 
 [default.package.parameters]

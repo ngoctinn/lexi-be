@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List
-from src.domain.entities.scoring import Scoring
+from domain.entities.scoring import Scoring
 
 
 class ScoringRepository(ABC):

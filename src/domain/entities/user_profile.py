@@ -14,7 +14,7 @@ class UserProfile:
     
     # Quá trình học tập
     current_level: ProficiencyLevel = ProficiencyLevel.A1 # Trình độ hiện tại
-    learning_goal: ProficiencyLevel        # Mục tiêu học tập 
+    learning_goal: ProficiencyLevel = ProficiencyLevel.B2 # Mục tiêu học tập 
     role: Role = Role.LEARNER        # Vai trò trong hệ thống
     is_active: bool = True           # Trạng thái tài khoản
     current_streak: int = 0          # Số ngày học liên tục (Chuỗi streak)
@@ -37,6 +37,15 @@ class UserProfile:
     def update_level(self, new_level: ProficiencyLevel):
         """Nâng cấp trình độ của người dùng."""
         self.current_level = new_level
+
+    def update_profile_info(self, display_name: str = None, current_level: ProficiencyLevel = None, learning_goal: ProficiencyLevel = None):
+        """Cập nhật thông tin profile cơ bản."""
+        if display_name:
+            self.display_name = display_name
+        if current_level:
+            self.current_level = current_level
+        if learning_goal:
+            self.learning_goal = learning_goal
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, UserProfile):

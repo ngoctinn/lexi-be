@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  Hạ tầng xác thực Amazon Cognito cho LexiApp.
+  Cấu hình User Pool, Client và logic hậu đăng ký (Post Confirmation).
+
+Parameters:
+  TableName:
+    Type: String
+    Description: Tên bảng DynamoDB để lưu User Profile
+  TableArn:
+    Type: String
+    Description: ARN của bảng DynamoDB để cấp quyền cho Lambda
+
+Resources:
+  # --- 1. COGNITO USER POOL ---
+  LexiUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: LexiUserPool
+      # Tự động xác thực qua email để tiện lợi cho người dùng và Frontend
+      AutoVerifiedAttributes:
+        - email
+      # Cấu hình login bằng email thay vì username
+      UsernameAttributes:
+        - email
+      
+      # Quy định độ mạnh mật khẩu (Security best practice)
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+      
+      # Các thuộc tính tùy chỉnh cần thiết cho nghiệp vụ
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: false
+          Required: true
+        - Name: current_level
+          AttributeDataType: String
+          Mutable: true
+        - Name: learning_goal
+          AttributeDataType: String
+          Mutable: true
+
+      # Liên kết Lambda Trigger để tự động tạo profile ngay sau khi xác thực email
+      LambdaConfig:
+        PostConfirmation: !GetAtt PostConfirmationLambda.Arn
+
+  # --- 2. COGNITO APP CLIENT (Cấu hình thêm Hosted UI để test trên Browser) ---
+  LexiUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref LexiUserPool
+      ClientName: LexiWebClient
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      # Cấp quyền cho Client được phép Đọc và Ghi vào các thuộc tính tùy chỉnh
+      ReadAttributes:
+        - email
+        - custom:current_level
+        - custom:learning_goal
+      WriteAttributes:
+        - email
+        - custom:current_level
+        - custom:learning_goal
+      # Thêm cấu hình Hosted UI
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlows:
+        - implicit # Dùng implicit để token hiện thẳng lên thanh địa chỉ (dễ test)
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      CallbackURLs:
+        - https://example.com
+      AllowedOAuthFlowsUserPoolClient: true
+
+  # --- 2.1 COGNITO DOMAIN (Bắt buộc để chạy Hosted UI) ---
+  LexiUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      # Tên này phải là duy nhất trên toàn vùng AWS. 
+      # Tôi dùng một chuỗi ngẫu nhiên kết hợp để tránh trùng lặp.
+      Domain: !Sub "lexi-auth-${AWS::AccountId}"
+      UserPoolId: !Ref LexiUserPool
+
+  # --- 3. POST CONFIRMATION LAMBDA ---
+  PostConfirmationLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../src/
+      Handler: infrastructure.handlers.auth.post_confirmation_handler.handler
+      Runtime: python3.13
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !Ref TableName
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TableName
+
+  # --- 4. CẤP QUYỀN CHO COGNITO GỌI LAMBDA ---
+  PostConfirmationLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt PostConfirmationLambda.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt LexiUserPool.Arn
+
+Outputs:
+  UserPoolArn:
+    Description: "ARN của User Pool để gắn vào API Gateway"
+    Value: !GetAtt LexiUserPool.Arn
+  
+  UserPoolClientId:
+    Description: "Client ID để Frontend tích hợp"
+    Value: !Ref LexiUserPoolClient
+
+  LoginUrl:
+    Description: "Link vào trang Login để lấy Token nhanh"
+    Value: !Sub "https://${LexiUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/login?client_id=${LexiUserPoolClient}&response_type=token&scope=email+openid+profile&redirect_uri=https://example.com"
