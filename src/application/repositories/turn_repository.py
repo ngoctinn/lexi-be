@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List
-from src.domain.entities.turn import Turn
+from domain.entities.turn import Turn
 
 
 class TurnRepository(ABC):

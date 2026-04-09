@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Optional
-from src.domain.entities.user_profile import UserProfile
+from domain.entities.user_profile import UserProfile
 
 
 class UserProfileRepository(ABC):

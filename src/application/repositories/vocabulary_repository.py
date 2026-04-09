@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from src.domain.entities.vocabulary import Vocabulary
+from domain.entities.vocabulary import Vocabulary
 
 
 class VocabularyRepository(ABC):
