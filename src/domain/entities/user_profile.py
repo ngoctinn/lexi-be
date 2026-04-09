@@ -14,7 +14,7 @@ class UserProfile:
     
     # Quá trình học tập
     current_level: ProficiencyLevel = ProficiencyLevel.A1 # Trình độ hiện tại
-    learning_goal: ProficiencyLevel        # Mục tiêu học tập 
+    learning_goal: ProficiencyLevel = ProficiencyLevel.B2 # Mục tiêu học tập 
     role: Role = Role.LEARNER        # Vai trò trong hệ thống
     is_active: bool = True           # Trạng thái tài khoản
     current_streak: int = 0          # Số ngày học liên tục (Chuỗi streak)

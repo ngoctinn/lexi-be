@@ -1,30 +1,75 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
+Description: >
+  Template chính cho dự án Lexi-BE. 
+  Quản lý việc nhúng các module hạ tầng và định nghĩa API Gateway trung tâm.
 
 Resources:
-  # --- 1. NHÚNG FILE DATABASE ---
+  # --- 1. MODULE DATABASE (DynamoDB) ---
   DatabaseModule:
     Type: AWS::Serverless::Application
     Properties:
-      # Đường dẫn tương đối từ template.yaml đến file database.yaml
       Location: config/database.yaml
 
-  # --- 2. SỬ DỤNG TRONG LAMBDA ---
-  MyFunction:
+  # --- 2. MODULE AUTH (Cognito & PostConfirmation Logic) ---
+  AuthModule:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: config/auth.yaml
+      Parameters:
+        # Truyền thông tin bảng từ DatabaseModule sang AuthModule
+        TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+        TableArn: !GetAtt DatabaseModule.Outputs.LexiAppTableArn
+
+  # --- 3. API GATEWAY TRUNG TÂM (Với Cognito Authorizer) ---
+  LexiApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Auth:
+        DefaultAuthorizer: MyCognitoAuthorizer
+        Authorizers:
+          MyCognitoAuthorizer:
+            UserPoolArn: !GetAtt AuthModule.Outputs.UserPoolArn
+            Identity:
+              Header: Authorization
+
+  # --- 4. CÁC DỊCH VỤ (LAMBDA FUNCTIONS) ---
+  
+  # Ví dụ: Function lấy thông tin cá nhân
+  MyProfileFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
-      Handler: app.lambda_handler
-      Runtime: python3.9
-      
-      # Truyền tên bảng vào biến môi trường của Code Python
+      Handler: infrastructure.handlers.profile.get_profile_handler.handler
+      Runtime: python3.13
       Environment:
         Variables:
-          # Cú pháp: !GetAtt [Tên_Logic_Module].Outputs.[Tên_Output_Trong_File_Con]
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
-      
-      # Cấp quyền cho Lambda thao tác với bảng
+      Events:
+        GetProfile:
+          Type: Api
+          Properties:
+            Path: /profile
+            Method: GET
+            RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBCrudPolicy:
-            # Sử dụng tên bảng từ module để cấp quyền
             TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
+Outputs:
+  Region:
+    Description: "AWS Region"
+    Value: !Ref "AWS::Region"
+  
+  ApiUrl:
+    Description: "URL của API Gateway"
+    Value: !Sub "https://${LexiApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  
+  UserPoolId:
+    Description: "ID của Cognito User Pool"
+    Value: !GetAtt AuthModule.Outputs.UserPoolArn # Lưu ý: Outputs từ nested stack
+  
+  UserPoolClientId:
+    Description: "Client ID cho ứng dụng Frontend"
+    Value: !GetAtt AuthModule.Outputs.UserPoolClientId

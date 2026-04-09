@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from botocore.exceptions import ClientError
 
 dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(os.environ["TABLE_NAME"])
+table = dynamodb.Table(os.environ["LEXI_TABLE_NAME"])
 
 
 def _user_id(event):
