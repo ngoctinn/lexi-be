@@ -30,10 +30,10 @@ Resources:
       Policies:
         PasswordPolicy:
           MinimumLength: 8
-          RequireLowercase: true
-          RequireNumbers: true
-          RequireSymbols: true
-          RequireUppercase: true
+          RequireLowercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+          RequireUppercase: false
       
       # Các thuộc tính tùy chỉnh cần thiết cho nghiệp vụ
       Schema:
