@@ -9,6 +9,6 @@ class AuthMapper:
         return CreateUserProfileCommand(
             user_id=event.get('userName', ''),
             email=user_attrs.get('email', ''),
-            current_level=user_attrs.get('custom:current_level', 'A1'),
-            learning_goal=user_attrs.get('custom:learning_goal', 'B2')
+            display_name=user_attrs.get('name', ''),
+            avatar_url=user_attrs.get('picture', '')
         )

@@ -5,8 +5,10 @@ class UpdateProfileCommand(BaseDTO):
     """DTO đầu vào (Command) cho UpdateProfileUseCase."""
     user_id: str
     display_name: Optional[str] = None
+    avatar_url: Optional[str] = None
     current_level: Optional[str] = None
     learning_goal: Optional[str] = None
+    is_new_user: Optional[bool] = None
 
 
 

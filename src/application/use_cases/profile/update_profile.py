@@ -41,8 +41,10 @@ class UpdateProfileUseCase:
         # 3. Giao tiếp với Entity (Domain Logic nằm ở Entity)
         profile.update_profile_info(
             display_name=request.display_name,
+            avatar_url=request.avatar_url,
             current_level=new_level,
-            learning_goal=new_goal
+            learning_goal=new_goal,
+            is_new_user=request.is_new_user
         )
 
         # 4. Lưu lại

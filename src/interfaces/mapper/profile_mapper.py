@@ -8,6 +8,8 @@ class ProfileMapper:
         return UpdateProfileCommand(
             user_id=user_id,
             display_name=body.get("display_name"),
+            avatar_url=body.get("avatar_url"),
             current_level=body.get("current_level"),
-            learning_goal=body.get("learning_goal")
+            learning_goal=body.get("learning_goal"),
+            is_new_user=body.get("is_new_user")
         )

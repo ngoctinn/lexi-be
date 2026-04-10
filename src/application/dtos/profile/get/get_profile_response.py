@@ -5,10 +5,12 @@ class GetProfileResponse(BaseDTO):
     user_id: str
     email: str
     display_name: str
+    avatar_url: str = ""
     current_level: str
     learning_goal: str
     current_streak: int
     total_words_learned: int
     role: str
     is_active: bool
+    is_new_user: bool = True
 
