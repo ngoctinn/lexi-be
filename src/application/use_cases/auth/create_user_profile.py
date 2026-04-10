@@ -14,6 +14,9 @@ class CreateUserProfileUseCase:
         self._repo = repo
 
     def execute(self, request: CreateUserProfileCommand) -> Result[CreateUserProfileResponse, str]:
+        """
+        Thực thi trình tự tạo hồ sơ người dùng.
+        """
         # 1. Validation & Mapping (DTO -> Entity)
         try:
             current_level = ProficiencyLevel(request.current_level)
@@ -32,16 +35,18 @@ class CreateUserProfileUseCase:
 
         # 3. Lưu trữ qua Port (Repository)
         try:
-            self._repo.create(profile)
+            is_new = self._repo.create(profile)
         except Exception as e:
             # Lưu ý: Ở đây ta bắt lỗi Infrastructure và trả về lỗi Domain
             return Result.failure(f"Lỗi khi lưu trữ hồ sơ: {str(e)}")
 
         # 4. Trả về kết quả qua ResponseDTO
+        message = "Hồ sơ được tạo thành công" if is_new else "Hồ sơ đã tồn tại, bỏ qua bước tạo mới."
+        
         response = CreateUserProfileResponse(
             user_id=profile.user_id,
             email=profile.email,
-            is_created=True,
-            message="Hồ sơ được tạo thành công"
+            is_created=is_new,
+            message=message
         )
         return Result.success(response)

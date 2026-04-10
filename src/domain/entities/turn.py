@@ -9,7 +9,7 @@ class Turn:
 
     # Liên kết và vị trí
     session_id: ULID            # ID của session chứa lượt thoại này
-    turn_index: int = 0              # Thứ tự lượt nói trong session (0, 1, 2...)
+    turn_index: int = 0             # Thứ tự lượt nói trong session (0, 1, 2...)
     
     # Nội dung và Metadata
     speaker: Speaker = Speaker.AI   # Vai trò người nói (AI/USER)
@@ -39,7 +39,7 @@ class Turn:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Turn):
             return False
-        return self.turn_id == other.turn_id
+        return self.session_id == other.session_id and self.turn_index == other.turn_index
 
     def __hash__(self) -> int:
-        return hash(self.turn_id)
+        return hash((self.session_id, self.turn_index))

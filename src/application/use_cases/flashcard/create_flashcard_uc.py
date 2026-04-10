@@ -1,39 +1,54 @@
+import ulid
 from application.dtos.flashcard.create.create_flashcard_command import CreateFlashCardCommand
-from application.exceptions.flashcard_errors import InvalidUserId
-
+from application.dtos.flashcard.create.create_flashcard_response import CreateFlashCardResponse
+from application.repositories.flash_card_repository import FlashCardRepository
+from domain.entities.flashcard import FlashCard
+from shared.result import Result
 
 class CreateFlashCardUC:
-    def _init_(self, repo: IFlashCardRepo):
+    """
+    Ca sử dụng: Tạo thẻ từ vựng (FlashCard) mới cho người dùng.
+    
+    Quy trình:
+    1. Kiểm tra từ vựng đã tồn tại trong kho thẻ của người dùng chưa.
+    2. Nếu chưa, tạo thực thể FlashCard mới với ID duy nhất (ULID).
+    3. Lưu vào cơ sở dữ liệu thông qua Repository.
+    4. Trả về kết quả thành công kèm thông tin thẻ.
+    """
+    def __init__(self, repo: FlashCardRepository):
         self._repo = repo
     
-    def execute(self, dto: CreateFlashCardCommand):
-        # validate
-        
-        # map dto command to entity
-        # business logic
-        # save database
-        # map entity to dto response
-        flashcard = FlashCard(front, back)
-        return self._repo.save(flashcard)
-    
-    def __validate(dto: CreateFlashCardCommand):
-        if not dto.user_id or not dto.user_id.strip():
-            raise InvalidUserId("user_id không được để trống")
-        
-        if not dto.word or not dto.word.strip():
-            raise InvalidVocab("từ không được để trống")
-        
-        if not dto.definition_vi or not dto.definition_vi.strip():
-            raise InvalidDefinitionVI("nghĩa tiếng việt không được để trống")
-        
-        if not dto.phonetic or not dto.phonetic.strip():
-            raise InvalidPhonetic("cách phát âm không được để trống")
-        
-        if not dto.audio_url or not dto.audio_url.strip():
-            raise InvalidAudioUrl("đường dẫn audio không được để trống")
+    def execute(self, command: CreateFlashCardCommand) -> Result[CreateFlashCardResponse, str]:
+        """
+        Thực thi trình tự tạo thẻ ghi nhớ.
+        """
+        # 1. Kiểm tra trùng lặp (Idempotency check)
+        existing_card = self._repo.get_by_user_and_word(command.user_id, command.word)
+        if existing_card:
+            return Result.failure(f"Từ vựng '{command.word}' đã có trong kho thẻ của bạn.")
 
-        if not dto.example_sentence or not dto.example_sentence.strip():
-            raise InvalidExampleSentence("câu ví dụ không được để trống")
-        
-        if not dto.source_api or not dto.source_api.strip():
-            raise InvalidSourceAPI("nguồn api không được để trống")
+        # 2. Tạo thực thể Domain mới
+        # Lưu ý: Thông tin chi tiết như phonetic, example sẽ được lưu ở bảng Vocabulary, 
+        # FlashCard chỉ lưu liên kết và trạng thái học tập.
+        try:
+            flashcard = FlashCard(
+                flashcard_id=str(ulid.new()),
+                user_id=command.user_id,
+                word=command.word
+            )
+        except ValueError as e:
+            return Result.failure(str(e))
+
+        # 3. Lưu trữ
+        try:
+            self._repo.save(flashcard)
+        except Exception as e:
+            return Result.failure(f"Không thể lưu thẻ từ vựng: {str(e)}")
+
+        # 4. Trả về kết quả
+        response = CreateFlashCardResponse(
+            flashcard_id=flashcard.flashcard_id,
+            word=flashcard.word,
+            message="Tạo thẻ từ vựng thành công."
+        )
+        return Result.success(response)
