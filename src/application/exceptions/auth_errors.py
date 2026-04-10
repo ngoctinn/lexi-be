@@ -1,28 +1,10 @@
 from application.exceptions.application_errors import ApplicationError
 
 class AuthError(ApplicationError):
-    pass
-
-class UserAlreadyExistsError(AuthError):
-    """Email đã được đăng ký."""
-    pass
-
-class InvalidCredentialsError(AuthError):
-    """Sai email hoặc password."""
-    pass
-
-class UserNotConfirmedError(AuthError):
-    """Tài khoản chưa xác minh email."""
-    pass
-
-class CodeMismatchError(AuthError):
-    """OTP/confirmation code không đúng."""
+    """Lớp ngoại lệ cơ bản cho các lỗi xác thực và phân quyền."""
     pass
 
 class UserNotFoundError(AuthError):
-    """Không tìm thấy user."""
+    """Lỗi xảy ra khi không tìm thấy hồ sơ người dùng trong hệ thống."""
     pass
 
-class ExpiredCodeError(AuthError):
-    """OTP/confirmation code đã hết hạn."""
-    pass

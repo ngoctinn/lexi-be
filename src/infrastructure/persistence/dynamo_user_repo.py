@@ -11,7 +11,16 @@ class DynamoDBUserRepo(UserProfileRepository):
     def __init__(self, table=None):
         self._table = table or boto3.resource("dynamodb").Table(os.environ["LEXI_TABLE_NAME"])
 
-    def create(self, profile: UserProfile) -> None:
+    def create(self, profile: UserProfile) -> bool:
+        """
+        Tạo mới bộ hồ sơ người dùng trong DynamoDB.
+        
+        Args:
+            profile: Thực thể UserProfile cần lưu.
+            
+        Returns:
+            bool: True nếu tạo mới thành công, False nếu hồ sơ đã tồn tại.
+        """
         try:
             now = datetime.now(timezone.utc).isoformat()
             self._table.put_item(
@@ -19,9 +28,9 @@ class DynamoDBUserRepo(UserProfileRepository):
                     "PK": f"USER#{profile.user_id}",
                     "SK": "PROFILE",
                     "GSI1PK": f"USER#{profile.user_id}#USER_PROFILE",
-                    "GSI1SK": now,  # Technical Metadata cho GSI1
+                    "GSI1SK": now,
                     "GSI3PK": "USER_PROFILE",
-                    "GSI3SK": now,  # Technical Metadata cho GSI3 (joined_at)
+                    "GSI3SK": now,
                     "EntityType": "USER_PROFILE",
                     "user_id": profile.user_id,
                     "email": profile.email,
@@ -33,13 +42,14 @@ class DynamoDBUserRepo(UserProfileRepository):
                     "current_streak": profile.current_streak,
                     "last_completed_at": profile.last_completed_at,
                     "total_words_learned": profile.total_words_learned,
-                    "joined_at": now,  # Chỉ tồn tại dưới DB
+                    "joined_at": now,
                 },
                 ConditionExpression="attribute_not_exists(PK)",
             )
+            return True
         except ClientError as e:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                return
+                return False
             raise
 
     def get_by_user_id(self, user_id: str) -> Optional[UserProfile]:

@@ -1,7 +1,6 @@
-from dataclasses import dataclass
+from application.dtos.base_dto import BaseDTO
 
-@dataclass(frozen=True)
-class GetProfileResponse:
+class GetProfileResponse(BaseDTO):
     """DTO đầu ra cho GetProfileUseCase."""
     user_id: str
     email: str
@@ -12,3 +11,4 @@ class GetProfileResponse:
     total_words_learned: int
     role: str
     is_active: bool
+

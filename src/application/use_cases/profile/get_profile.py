@@ -3,11 +3,21 @@ from application.dtos.profile.get.get_profile_response import GetProfileResponse
 from shared.result import Result
 
 class GetProfileUseCase:
-    """Ca sử dụng: Lấy thông tin chi tiết hồ sơ."""
+    """
+    Ca sử dụng: Lấy thông tin hồ sơ người dùng.
+    
+    Quy trình:
+    1. Truy vấn Repository theo User ID.
+    2. Nếu không thấy, trả về lỗi.
+    3. Nếu thấy, map Entity sang Response DTO.
+    """
     def __init__(self, repo: UserProfileRepository):
         self._repo = repo
 
     def execute(self, user_id: str) -> Result[GetProfileResponse, str]:
+        """
+        Thực thi trình tự lấy hồ sơ.
+        """
         profile = self._repo.get_by_user_id(user_id)
         if not profile:
             return Result.failure("Không tìm thấy hồ sơ người dùng.")

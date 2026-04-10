@@ -1,40 +1,53 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from ulid import ULID
+from typing import Optional
+import ulid
 
 @dataclass
 class FlashCard:
-    # Thông tin cơ bản
-    user_id: str = ""             # ID của người dùng sở hữu thẻ (Trùng khớp auth id)
-    vocabulary: str = ""          # ID của từ vựng (Liên kết với Vocabulary entity)
+    """
+    Thực thể FlashCard đại diện cho một thẻ từ vựng cá nhân của người học.
+    
+    Tích hợp thuật toán lặp lại ngắt quãng (SRS) cơ bản để tối ưu việc ghi nhớ.
+    """
+    # Định danh
+    flashcard_id: str                      # ULID định danh duy nhất cho thẻ
+    user_id: str                           # ID người dùng sở hữu thẻ
+    word: str                             # Từ vựng liên kết
 
-    # Trạng thái ghi nhớ (SRS)
-    review_count: int = 0            # Số lần đã thực hiện ôn tập
-    interval_days: int = 1           # Khoảng cách ngày cho lần ôn tiếp theo
-    difficulty: int = 0              # Mức độ khó (0-5)
-    last_reviewed_at: datetime = datetime.now()
-    next_review_at: datetime = datetime.now() # Thời điểm cần ôn tập tiếp
+    # Dữ liệu SRS (Spaced Repetition System)
+    review_count: int = 0                  # Số lần đã ôn tập
+    interval_days: int = 1                 # Khoảng cách ngày ôn tiếp theo
+    difficulty: int = 0                    # Mức độ khó (0-5)
+    last_reviewed_at: Optional[datetime] = None
+    next_review_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def __post_init__(self):
-        # Kiểm tra tính toàn vẹn dữ liệu bắt buộc
-        if not self.user_id or not self.word:
-            raise ValueError("user_id và word là bắt buộc cho FlashCard")
+        # 1. Kiểm tra tính toàn vẹn (Validation)
+        if not self.flashcard_id or not self.user_id or not self.word:
+            raise ValueError("flashcard_id, user_id và word là thông tin bắt buộc.")
+            
         if not (0 <= self.difficulty <= 5):
-            raise ValueError(f"Độ khó phải từ 0-5, nhận được {self.difficulty}")
+            raise ValueError(f"Độ khó phải nằm trong khoảng 0-5. Nhận được: {self.difficulty}")
 
     def update_srs(self, rating: int):
-        """Cập nhật dữ liệu lặp lại ngắt quãng dựa trên đánh giá của người dùng."""
+        """
+        Cập nhật logic SRS dựa trên phản hồi của người dùng.
+        Logic SM-2 rút gọn.
+        """
         now = datetime.now(timezone.utc)
-        self.last_reviewed_at = now.isoformat()
+        self.last_reviewed_at = now
         self.review_count += 1
         
+        # Logic tính toán khoảng cách ôn tập tiếp theo (Simplified SRS)
         if rating >= 3:
+            # Nếu người dùng nhớ tốt, tăng khoảng cách (tối đa 365 ngày)
             self.interval_days = min(self.interval_days * 2, 365)
         else:
+            # Nếu quên, reset lại chu kỳ từ đầu
             self.interval_days = 1
             
-        next_review_date = now + timedelta(days=self.interval_days)
-        self.next_review_at = next_review_date.isoformat()
+        self.next_review_at = now + timedelta(days=self.interval_days)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, FlashCard):

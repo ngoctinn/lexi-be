@@ -1,15 +1,12 @@
-from dataclasses import dataclass
+from typing import Optional
+from application.dtos.base_dto import BaseDTO
 
-@dataclass(frozen=True)
-class UpdateProfileCommand:
+class UpdateProfileCommand(BaseDTO):
     """DTO đầu vào (Command) cho UpdateProfileUseCase."""
     user_id: str
-    display_name: str = None
-    current_level: str = None
-    learning_goal: str = None
+    display_name: Optional[str] = None
+    current_level: Optional[str] = None
+    learning_goal: Optional[str] = None
 
-@dataclass(frozen=True)
-class UpdateProfileResponse:
-    """DTO đầu ra cho UpdateProfileUseCase."""
-    is_success: bool
-    message: str
+
+

@@ -2,3 +2,5 @@ python-ulid
 pydantic
 boto3
 aws-lambda-powertools
+email-validator
+
