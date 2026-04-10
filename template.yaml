@@ -35,9 +35,9 @@ Resources:
               Header: Authorization
 
   # --- 4. CÁC DỊCH VỤ (LAMBDA FUNCTIONS) ---
-  
-  # Ví dụ: Function lấy thông tin cá nhân
-  MyProfileFunction:
+
+  # [MÔ-ĐUN HỒ SƠ] - Quản lý thông tin người dùng
+  GetProfileFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
@@ -54,6 +54,26 @@ Resources:
             Method: GET
             RestApiId: !Ref LexiApi
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
+  UpdateProfileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.profile.update_profile_handler.handler
+      Runtime: python3.13
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+      Events:
+        UpdateProfile:
+          Type: Api
+          Properties:
+            Path: /profile
+            Method: PATCH
+            RestApiId: !Ref LexiApi
+      Policies:
         - DynamoDBCrudPolicy:
             TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
 
@@ -68,7 +88,7 @@ Outputs:
   
   UserPoolId:
     Description: "ID của Cognito User Pool"
-    Value: !GetAtt AuthModule.Outputs.UserPoolArn # Lưu ý: Outputs từ nested stack
+    Value: !GetAtt AuthModule.Outputs.UserPoolArn
   
   UserPoolClientId:
     Description: "Client ID cho ứng dụng Frontend"

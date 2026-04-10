@@ -35,8 +35,10 @@ class DynamoDBUserRepo(UserProfileRepository):
                     "user_id": profile.user_id,
                     "email": profile.email,
                     "display_name": profile.display_name,
+                    "avatar_url": profile.avatar_url,
                     "role": profile.role.value if hasattr(profile.role, "value") else profile.role,
                     "is_active": profile.is_active,
+                    "is_new_user": profile.is_new_user,
                     "current_level": profile.current_level.value if hasattr(profile.current_level, "value") else profile.current_level,
                     "learning_goal": profile.learning_goal.value if hasattr(profile.learning_goal, "value") else profile.learning_goal,
                     "current_streak": profile.current_streak,
@@ -71,10 +73,12 @@ class DynamoDBUserRepo(UserProfileRepository):
             user_id=item.get("user_id", user_id),
             email=item.get("email", ""),
             display_name=item.get("display_name", ""),
+            avatar_url=item.get("avatar_url", ""),
             current_level=ProficiencyLevel(item.get("current_level", "A1")),
             learning_goal=ProficiencyLevel(item.get("learning_goal", "B2")),
             role=Role(item.get("role", "LEARNER")),
             is_active=item.get("is_active", True),
+            is_new_user=item.get("is_new_user", True),
             current_streak=item.get("current_streak", 0),
             last_completed_at=item.get("last_completed_at", ""),
             total_words_learned=item.get("total_words_learned", 0)
@@ -87,11 +91,13 @@ class DynamoDBUserRepo(UserProfileRepository):
                 "PK": f"USER#{profile.user_id}",
                 "SK": "PROFILE"
             },
-            UpdateExpression="SET display_name = :dn, current_level = :cl, learning_goal = :lg, current_streak = :cs, last_completed_at = :lc, total_words_learned = :tw",
+            UpdateExpression="SET display_name = :dn, avatar_url = :au, current_level = :cl, learning_goal = :lg, is_new_user = :inu, current_streak = :cs, last_completed_at = :lc, total_words_learned = :tw",
             ExpressionAttributeValues={
                 ":dn": profile.display_name,
+                ":au": profile.avatar_url,
                 ":cl": profile.current_level.value,
                 ":lg": profile.learning_goal.value,
+                ":inu": profile.is_new_user,
                 ":cs": profile.current_streak,
                 ":lc": profile.last_completed_at,
                 ":tw": profile.total_words_learned

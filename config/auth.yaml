@@ -35,18 +35,12 @@ Resources:
           RequireSymbols: false
           RequireUppercase: false
       
-      # Các thuộc tính tùy chỉnh cần thiết cho nghiệp vụ
+      # Các thuộc tính tùy chỉnh: (Đã dọn dẹp, chuyển hết sang Database Profile)
       Schema:
         - Name: email
           AttributeDataType: String
           Mutable: false
           Required: true
-        - Name: current_level
-          AttributeDataType: String
-          Mutable: true
-        - Name: learning_goal
-          AttributeDataType: String
-          Mutable: true
 
       # Liên kết Lambda Trigger để tự động tạo profile ngay sau khi xác thực email
       LambdaConfig:
@@ -65,12 +59,12 @@ Resources:
       # Cấp quyền cho Client được phép Đọc và Ghi vào các thuộc tính tùy chỉnh
       ReadAttributes:
         - email
-        - custom:current_level
-        - custom:learning_goal
+        - name
+        - picture
       WriteAttributes:
         - email
-        - custom:current_level
-        - custom:learning_goal
+        - name
+        - picture
       # Thêm cấu hình Hosted UI
       SupportedIdentityProviders:
         - COGNITO

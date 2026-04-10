@@ -5,6 +5,8 @@ class CreateUserProfileCommand(BaseDTO):
     """DTO đầu vào (Command) từ UI/Cognito."""
     user_id: str = Field(min_length=1)
     email: EmailStr
+    display_name: str = ""
+    avatar_url: str = ""
     current_level: str = "A1"
     learning_goal: str = "B2"
 

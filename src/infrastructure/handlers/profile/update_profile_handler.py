@@ -10,7 +10,7 @@ update_profile_uc = UpdateProfileUseCase(user_repo)
 profile_controller = ProfileController(get_profile_uc, update_profile_uc)
 
 def handler(event, context):
-    """Handler chuyên trách lấy thông tin hồ sơ."""
+    """Handler chuyên trách cập nhật thông tin hồ sơ."""
     try:
         user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
     except KeyError:
@@ -20,4 +20,5 @@ def handler(event, context):
             "body": '{"error": "Unauthorized"}'
         }
 
-    return profile_controller.get_profile(user_id)
+    body_str = event.get("body")
+    return profile_controller.update_profile(user_id, body_str)

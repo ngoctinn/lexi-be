@@ -28,7 +28,8 @@ class CreateUserProfileUseCase:
         profile = UserProfile(
             user_id=request.user_id,
             email=request.email,
-            display_name=request.email.split("@")[0],
+            display_name=request.display_name or request.email.split("@")[0],
+            avatar_url=request.avatar_url,
             current_level=current_level,
             learning_goal=learning_goal
         )
