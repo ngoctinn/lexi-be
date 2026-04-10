@@ -1,12 +1,15 @@
 from dataclasses import dataclass
 from typing import Optional
 
+from ulid import ULID
+
 from domain.value_objects.enums import VocabType
 
 @dataclass
 class Vocabulary:
     """Thông tin từ vựng trong từ điển hệ thống."""    
     # Dữ liệu từ vựng 
+    vocabulary_id: ULID
     word: str = ""                   # Từ vựng (Viết thường, đã trim)
     word_type: VocabType = VocabType.NOUN            # Loại từ (n, v, adj...)
     definition_vi: str = ""          # Định nghĩa nghĩa tiếng Việt

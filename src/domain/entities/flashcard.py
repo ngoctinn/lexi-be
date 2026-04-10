@@ -7,7 +7,7 @@ class FlashCard:
     # Thông tin cơ bản
     flashcard_id: ULID # ID thẻ ghi nhớ duy nhất
     user_id: str = ""             # ID của người dùng sở hữu thẻ (Trùng khớp auth id)
-    vocabulary: str = ""          # ID của từ vựng (Liên kết với Vocabulary entity)
+    vocabulary_id: ULID          # ID của từ vựng (Liên kết với Vocabulary entity)
 
     # Trạng thái ghi nhớ (SRS)
     review_count: int = 0            # Số lần đã thực hiện ôn tập

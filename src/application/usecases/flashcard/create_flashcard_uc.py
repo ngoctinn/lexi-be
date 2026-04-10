@@ -10,7 +10,11 @@ class CreateFlashCardUC:
         self._repo = repo
     
     def execute(self, dto: CreateFlashCardCommand):
-        # Kiểm tra xem Flashcard này đã tồn tại trong kho của User chưa
+        # Kiểm tra xem user_id có tồn tại không
+        # Kiểm tra xem từ này đã có trong kho vocab chưa
+        # 1. Nếu từ chưa có trong kho vocab, thêm từ vào vocab và tạo flashcard mới
+        # 2. Nếu từ đã có trong kho vocab, kiểm tra xem user đã từng học từ đó chưa (user_id + vocab_id)
+        # Kiểm tra xem Flashcard này đã tồn tại trong kho của User chưa ()
         # Theo thiết kế chúng ta bàn: PK: USER#<id>, SK: VOCAB#<word>
         existing_card = self._repo.get_by_user_and_word(dto.user_id, dto.vocab, dto.vocab_type)
         if existing_card:

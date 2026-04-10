@@ -1,7 +1,7 @@
 from interfaces.controllers.flashcard_controller import FlashCardController
 
 def lambda_handler(event, context):
-    # create flashcard logic here
+    # celete flashcard logic here
     ctrl = FlashCardController()
     # return response
-    return ctrl.create(event)
+    return ctrl.delete(event)
