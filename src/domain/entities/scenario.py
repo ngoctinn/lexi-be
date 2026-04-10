@@ -12,7 +12,7 @@ class Scenario:
     scenario_prompt: str = ""        # Lệnh điều hướng (Prompt) cho AI
     my_character: str = ""           # Nhân vật người dùng sẽ đóng vai
     ai_character: str = ""           # Nhân vật AI sẽ đóng vai
-    
+    usage_count: int = 0
     # Trạng thái
     is_active: bool = True           # Kịch bản có đang được sử dụng hay không
 

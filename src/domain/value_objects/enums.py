@@ -26,14 +26,14 @@ class Speaker(Enum):
 
 class VocabType(Enum):
     """Loại từ vựng"""
-    NOUN = ("noun")
-    VERB = ("verb")
-    ADJECTIVE = ("adjective")
-    ADVERB = ("adverb")
-    PRONOUN = ("pronoun")
-    PREPOSITION = ("preposition")
-    CONJUNCTION = ("conjunction")
-    INTERJECTION = ("interjection")
-    PHRASE = ("phrase")
-    IDIOM = ("idiom")
+    NOUN = "noun"
+    VERB = "verb"
+    ADJECTIVE = "adjective"
+    ADVERB = "adverb"
+    PRONOUN = "pronoun"
+    PREPOSITION = "preposition"
+    CONJUNCTION = "conjunction"
+    INTERJECTION = "interjection"
+    PHRASE = "phrase"
+    IDIOM = "idiom"
 
