@@ -7,13 +7,15 @@ class Session:
     """Phiên hội thoại (Session) đang diễn ra giữa AI và Người dùng."""
     # Định danh (ID)
     session_id: ULID # ID duy nhất của phiên học
-    
+
     # Cấu hình phiên
-    user_id: str = ""                # ID người dùng tham gia
     scenario_id: ULID           # ID kịch bản đang học
+    user_id: str = ""                # ID người dùng tham gia
     ai_gender: Gender = Gender.FEMALE # Giới tính của giọng nói AI
     level: ProficiencyLevel = ProficiencyLevel.B1 # Trình độ ngoại ngữ của session
-    
+    # Snapshot: final built prompt used to run the session (serialize as plain string)
+    prompt_snapshot: str = ""      # Lưu prompt hoàn chỉnh để replay/debug
+
     # Chỉ số thống kê
     total_turns: int = 0             # Tổng số lượt thoại trong session
     user_turns: int = 0              # Số lượt thoại của người dùng
@@ -28,7 +30,7 @@ class Session:
         self.total_turns += 1
         if is_user:
             self.user_turns += 1
-            
+
     def record_hint(self):
         """Ghi nhận việc sử dụng giải thích ngữ pháp/gợi ý."""
         self.hint_used_count += 1

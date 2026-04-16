@@ -32,8 +32,9 @@ Thumbs.db
 venv/
 env/
 
-# AI Agents 
+# AI Agentshải dùng h
 .agents/
 .claude/
 .codex/
 Learning_Notes/
+output/
