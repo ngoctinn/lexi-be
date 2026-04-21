@@ -1,6 +1,9 @@
-python-ulid
-pydantic
-boto3
-aws-lambda-powertools
-email-validator
+python-ulid>=1.0.0
+# Pydantic v2 API used across the codebase (model_config)
+pydantic>=2.0,<3
+# Boto3 for AWS SDK
+boto3>=1.26.0
+# AWS Powertools for structured logging/tracing/metrics
+aws-lambda-powertools>=2.43.1
+email-validator>=1.1.3
 
