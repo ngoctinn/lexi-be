@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 
 Description: >
@@ -25,7 +25,7 @@ Resources:
       # Cấu hình login bằng email thay vì username
       UsernameAttributes:
         - email
-      
+
       # Quy định độ mạnh mật khẩu (Security best practice)
       Policies:
         PasswordPolicy:
@@ -34,7 +34,7 @@ Resources:
           RequireNumbers: false
           RequireSymbols: false
           RequireUppercase: false
-      
+
       # Các thuộc tính tùy chỉnh: (Đã dọn dẹp, chuyển hết sang Database Profile)
       Schema:
         - Name: email
@@ -82,7 +82,7 @@ Resources:
   LexiUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
-      # Tên này phải là duy nhất trên toàn vùng AWS. 
+      # Tên này phải là duy nhất trên toàn vùng AWS.
       # Tôi dùng một chuỗi ngẫu nhiên kết hợp để tránh trùng lặp.
       Domain: !Sub "lexi-auth-${AWS::AccountId}"
       UserPoolId: !Ref LexiUserPool
@@ -93,7 +93,7 @@ Resources:
     Properties:
       CodeUri: ../src/
       Handler: infrastructure.handlers.auth.post_confirmation_handler.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Environment:
         Variables:
           LEXI_TABLE_NAME: !Ref TableName
@@ -114,7 +114,7 @@ Outputs:
   UserPoolArn:
     Description: "ARN của User Pool để gắn vào API Gateway"
     Value: !GetAtt LexiUserPool.Arn
-  
+
   UserPoolClientId:
     Description: "Client ID để Frontend tích hợp"
     Value: !Ref LexiUserPoolClient

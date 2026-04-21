@@ -1,7 +1,7 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  Template chính cho dự án Lexi-BE. 
+  Template chính cho dự án Lexi-BE.
   Quản lý việc nhúng các module hạ tầng và định nghĩa API Gateway trung tâm.
 
 Resources:
@@ -42,7 +42,7 @@ Resources:
     Properties:
       CodeUri: src/
       Handler: infrastructure.handlers.profile.get_profile_handler.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -62,7 +62,7 @@ Resources:
     Properties:
       CodeUri: src/
       Handler: infrastructure.handlers.profile.update_profile_handler.handler
-      Runtime: python3.13
+      Runtime: python3.12
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -77,19 +77,44 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
 
+  TranslateVocabularyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.vocabulary.translate_vocabulary_handler.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+      Events:
+        TranslateVocabulary:
+          Type: Api
+          Properties:
+            Path: /vocabulary/translate
+            Method: POST
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - translate:TranslateText
+              Resource: "*"
+
 Outputs:
   Region:
     Description: "AWS Region"
     Value: !Ref "AWS::Region"
-  
+
   ApiUrl:
     Description: "URL của API Gateway"
     Value: !Sub "https://${LexiApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
-  
+
   UserPoolId:
     Description: "ID của Cognito User Pool"
     Value: !GetAtt AuthModule.Outputs.UserPoolArn
-  
+
   UserPoolClientId:
     Description: "Client ID cho ứng dụng Frontend"
     Value: !GetAtt AuthModule.Outputs.UserPoolClientId

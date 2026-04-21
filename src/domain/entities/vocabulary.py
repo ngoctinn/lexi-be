@@ -5,18 +5,19 @@ from domain.value_objects.enums import VocabType
 
 @dataclass
 class Vocabulary:
-    """Thông tin từ vựng trong từ điển hệ thống."""    
-    # Dữ liệu từ vựng 
+    """Thông tin từ vựng trong từ điển hệ thống."""
+    # Dữ liệu từ vựng
     word: str = ""                   # Từ vựng (Viết thường, đã trim)
     word_type: VocabType = VocabType.NOUN            # Loại từ (n, v, adj...)
-    definition_vi: str = ""          # Định nghĩa nghĩa tiếng Việt
+    translation_vi: str = ""         # Bản dịch tiếng Việt của từ gốc
+    definition_vi: str = ""          # Định nghĩa / giải nghĩa tiếng Việt
     phonetic: str = ""               # Cách phát âm (IPA)
-    audio_url: str = ""              # Đường dẫn file phát âm 
+    audio_url: str = ""              # Đường dẫn file phát âm
     example_sentence: str = ""       # Câu ví dụ mẫu
-    
+
     # Thông tin nguồn
     source_api: Optional[str] = ""    # Tên API nguồn lấy dữ liệu
-    
+
     def __post_init__(self):
         if not self.word:
             raise ValueError("word không được để trống trong Vocabulary")
@@ -25,7 +26,10 @@ class Vocabulary:
 
     def format_entry(self) -> str:
         """Định dạng nhanh thông tin hiển thị."""
-        return f"{self.word} ({self.word_type}): {self.definition_vi}"
+        parts = [part for part in [self.translation_vi, self.definition_vi] if part]
+        if not parts:
+            return f"{self.word} ({self.word_type})"
+        return f"{self.word} ({self.word_type}): {' | '.join(parts)}"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Vocabulary):
