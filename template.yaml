@@ -102,6 +102,68 @@ Resources:
                 - translate:TranslateText
               Resource: "*"
 
+  SpeakingAudioBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  SpeakingSessionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.session_handler.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          SPEAKING_AUDIO_BUCKET_NAME: !Ref SpeakingAudioBucket
+      Events:
+        CreateSpeakingSession:
+          Type: Api
+          Properties:
+            Path: /sessions
+            Method: POST
+            RestApiId: !Ref LexiApi
+        ListSpeakingSessions:
+          Type: Api
+          Properties:
+            Path: /sessions
+            Method: GET
+            RestApiId: !Ref LexiApi
+        GetSpeakingSession:
+          Type: Api
+          Properties:
+            Path: /sessions/{session_id}
+            Method: GET
+            RestApiId: !Ref LexiApi
+        SubmitSpeakingTurn:
+          Type: Api
+          Properties:
+            Path: /sessions/{session_id}/turns
+            Method: POST
+            RestApiId: !Ref LexiApi
+        CompleteSpeakingSession:
+          Type: Api
+          Properties:
+            Path: /sessions/{session_id}/complete
+            Method: POST
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+        - S3CrudPolicy:
+            BucketName: !Ref SpeakingAudioBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - comprehend:DetectKeyPhrases
+                - comprehend:DetectSyntax
+                - polly:SynthesizeSpeech
+              Resource: "*"
+
 Outputs:
   Region:
     Description: "AWS Region"

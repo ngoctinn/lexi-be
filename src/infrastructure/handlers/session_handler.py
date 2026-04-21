@@ -1,0 +1,122 @@
+from functools import lru_cache
+
+from application.use_cases.speaking_session_use_cases import (
+    CompleteSpeakingSessionUseCase,
+    CreateSpeakingSessionUseCase,
+    GetSpeakingSessionUseCase,
+    ListSpeakingSessionsUseCase,
+    SubmitSpeakingTurnUseCase,
+)
+from infrastructure.persistence.dynamo_scoring_repo import DynamoScoringRepo
+from infrastructure.persistence.static_scenario_repo import StaticScenarioRepository
+from infrastructure.persistence.dynamo_session_repo import DynamoSessionRepo
+from infrastructure.persistence.dynamo_turn_repo import DynamoTurnRepo
+from infrastructure.services.speaking_pipeline_services import (
+    ComprehendTranscriptAnalysisService,
+    PollySpeechSynthesisService,
+    RuleBasedConversationGenerationService,
+)
+from interfaces.controllers.session_controller import SessionController
+
+
+def build_session_controller(
+    session_repo=None,
+    turn_repo=None,
+    scoring_repo=None,
+    scenario_repo=None,
+    transcript_analysis_service=None,
+    conversation_generation_service=None,
+    speech_synthesis_service=None,
+) -> SessionController:
+    session_repo = session_repo or DynamoSessionRepo()
+    turn_repo = turn_repo or DynamoTurnRepo()
+    scoring_repo = scoring_repo or DynamoScoringRepo()
+    scenario_repo = scenario_repo or StaticScenarioRepository()
+    transcript_analysis_service = transcript_analysis_service or ComprehendTranscriptAnalysisService()
+    conversation_generation_service = conversation_generation_service or RuleBasedConversationGenerationService()
+    speech_synthesis_service = speech_synthesis_service or PollySpeechSynthesisService()
+
+    create_use_case = CreateSpeakingSessionUseCase(session_repo, scenario_repo)
+    get_use_case = GetSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo)
+    list_use_case = ListSpeakingSessionsUseCase(session_repo, scoring_repo)
+    submit_turn_use_case = SubmitSpeakingTurnUseCase(
+        session_repo,
+        turn_repo,
+        transcript_analysis_service,
+        conversation_generation_service,
+        speech_synthesis_service,
+    )
+    complete_use_case = CompleteSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo)
+
+    return SessionController(
+        create_use_case=create_use_case,
+        get_use_case=get_use_case,
+        list_use_case=list_use_case,
+        submit_turn_use_case=submit_turn_use_case,
+        complete_use_case=complete_use_case,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_session_controller() -> SessionController:
+    return build_session_controller()
+
+
+def _unauthorized_response():
+    return {
+        "statusCode": 401,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+        },
+        "body": '{"error": "Unauthorized"}',
+    }
+
+
+def handler(event, context):
+    session_controller = get_session_controller()
+    try:
+        user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
+    except KeyError:
+        return _unauthorized_response()
+
+    method = event.get("httpMethod", "").upper()
+    resource = event.get("resource") or event.get("path") or ""
+    path_parameters = event.get("pathParameters") or {}
+    query_parameters = event.get("queryStringParameters") or {}
+
+    if method == "POST" and resource == "/sessions":
+        return session_controller.create_session(user_id, event.get("body"))
+
+    if method == "GET" and resource == "/sessions":
+        limit = int(query_parameters.get("limit", 10) or 10)
+        return session_controller.list_sessions(user_id, limit)
+
+    session_id = path_parameters.get("session_id") or path_parameters.get("id")
+    if not session_id:
+        return {
+            "statusCode": 404,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+            "body": '{"error": "Not Found"}',
+        }
+
+    if method == "GET" and resource == "/sessions/{session_id}":
+        return session_controller.get_session(user_id, session_id)
+
+    if method == "POST" and resource == "/sessions/{session_id}/turns":
+        return session_controller.submit_turn(user_id, session_id, event.get("body"))
+
+    if method == "POST" and resource == "/sessions/{session_id}/complete":
+        return session_controller.complete_session(user_id, session_id)
+
+    return {
+        "statusCode": 404,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+        },
+        "body": '{"error": "Not Found"}',
+    }
