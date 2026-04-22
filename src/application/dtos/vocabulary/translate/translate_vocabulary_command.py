@@ -7,6 +7,7 @@ from application.dtos.base_dto import BaseDTO
 
 class TranslateVocabularyCommand(BaseDTO):
     word: str = Field(strict=True, min_length=1, max_length=100)
+    context: str | None = Field(default=None, max_length=500)
 
     @field_validator("word")
     @classmethod

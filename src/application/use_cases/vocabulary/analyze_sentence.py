@@ -20,7 +20,6 @@ class AnalyzeSentenceUC:
                         text=item.text,
                         type=item.token_type,
                         base=item.base,
-                        definition_vi=item.definition_vi,
                     )
                     for item in analyzed_tokens
                 ]

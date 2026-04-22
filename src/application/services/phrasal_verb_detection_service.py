@@ -7,7 +7,6 @@ class AnalyzedVocabularyToken:
     text: str
     token_type: str
     base: str | None = None
-    definition_vi: str | None = None
 
 
 class PhrasalVerbDetectionService(ABC):

@@ -84,23 +84,28 @@ class WebSocketSessionController:
     send_message: Callable[[dict[str, Any]], None]
 
     def connect(self, session_id: str, token: str, connection_id: str) -> dict[str, Any]:
+        print(f"[WS-CONNECT] session_id={session_id}, token_len={len(token)}, connection_id={connection_id}")
         if not session_id:
             return _response(400, {"message": "Thiếu session_id."})
 
         session = self.session_repo.get_by_id(session_id)
         if not session:
+            print(f"[WS-CONNECT] Session {session_id} not found")
             return _response(404, {"message": "Session không tồn tại."})
 
         if token != MOCK_SESSION_TOKEN:
             claims = _decode_jwt_payload(token)
             user_id = claims.get("sub")
+            print(f"[WS-CONNECT] claims_sub={user_id}, session_user_id={session.user_id}")
             if not user_id:
                 return _response(401, {"message": "Token không hợp lệ."})
             if session.user_id != user_id:
+                print(f"[WS-CONNECT] User mismatch: {user_id} != {session.user_id}")
                 return _response(403, {"message": "Session không thuộc về người dùng này."})
 
         session.connection_id = connection_id
         self.session_repo.save(session)
+        print(f"[WS-CONNECT] Success")
         return _response(200, {"message": "Connected"})
 
     def disconnect(self, session_id: str | None, connection_id: str) -> dict[str, Any]:
@@ -302,13 +307,19 @@ def _make_sender(event: dict[str, Any], connection_id: str) -> Callable[[dict[st
 
 
 def handler(event, context):
+    print(f"[WS-HANDLER] event={json.dumps(event)}")
     base_controller = get_websocket_controller()
     route_key = (event.get("requestContext") or {}).get("routeKey", "")
     connection_id = (event.get("requestContext") or {}).get("connectionId", "")
     body = _parse_json_body(event.get("body"))
-    session_id = body.get("session_id") or (event.get("queryStringParameters") or {}).get("session_id")
-    token = (event.get("queryStringParameters") or {}).get("token", "")
+    
+    # Extract params from queryStringParameters or body
+    query_params = event.get("queryStringParameters") or {}
+    session_id = body.get("session_id") or query_params.get("session_id")
+    token = query_params.get("token", "")
+    
     action = route_key if route_key not in {"$default"} else str(body.get("action") or "")
+    print(f"[WS-HANDLER] route_key={route_key}, session_id={session_id}, token_len={len(token)}")
 
     controller = replace(base_controller, send_message=_make_sender(event, connection_id))
 

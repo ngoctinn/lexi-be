@@ -7,40 +7,40 @@ from application.services.phrasal_verb_detection_service import (
 )
 
 
-_PHRASE_DEFINITIONS_VI: dict[str, str] = {
-    "ask for": "yêu cầu; xin",
-    "break down": "hỏng; suy sụp",
-    "bring up": "đề cập; nuôi dạy",
-    "call back": "gọi lại",
-    "call off": "hủy bỏ",
-    "carry on": "tiếp tục",
-    "check in": "làm thủ tục vào",
-    "check out": "trả phòng; kiểm tra",
-    "come back": "quay lại",
-    "come in": "đi vào",
-    "come up": "xảy ra; xuất hiện",
-    "fill out": "điền (biểu mẫu)",
-    "find out": "tìm ra",
-    "figure out": "hiểu ra; tìm cách giải quyết",
-    "get up": "thức dậy",
-    "give up": "từ bỏ",
-    "go on": "tiếp diễn",
-    "hand in": "nộp",
-    "hold on": "chờ một chút",
-    "look for": "tìm kiếm",
-    "look up": "tra cứu",
-    "make up": "bịa ra; làm lành",
-    "pick up": "nhặt lên; đón",
-    "put off": "hoãn lại",
-    "put on": "mặc vào",
-    "run out": "hết",
-    "set up": "thiết lập",
-    "show up": "xuất hiện",
-    "take off": "cởi ra; cất cánh",
-    "turn off": "tắt",
-    "turn on": "bật",
-    "wake up": "thức dậy",
-    "work out": "tìm ra; tập luyện",
+_PHRASAL_VERBS: set[str] = {
+    "ask for",
+    "break down",
+    "bring up",
+    "call back",
+    "call off",
+    "carry on",
+    "check in",
+    "check out",
+    "come back",
+    "come in",
+    "come up",
+    "fill out",
+    "find out",
+    "figure out",
+    "get up",
+    "give up",
+    "go on",
+    "hand in",
+    "hold on",
+    "look for",
+    "look up",
+    "make up",
+    "pick up",
+    "put off",
+    "put on",
+    "run out",
+    "set up",
+    "show up",
+    "take off",
+    "turn off",
+    "turn on",
+    "wake up",
+    "work out",
 }
 
 _IRREGULAR_VERB_LEMMAS: dict[str, str] = {
@@ -77,10 +77,10 @@ class _WordToken:
 
 class RuleBasedPhrasalVerbDetectionService(PhrasalVerbDetectionService):
     def __init__(self):
-        self._phrases_by_verb: dict[str, list[tuple[str, str, str]]] = {}
-        for base, definition in _PHRASE_DEFINITIONS_VI.items():
+        self._phrases_by_verb: dict[str, list[tuple[str, str]]] = {}
+        for base in _PHRASAL_VERBS:
             verb, particle = base.split(" ", 1)
-            self._phrases_by_verb.setdefault(verb, []).append((base, particle, definition))
+            self._phrases_by_verb.setdefault(verb, []).append((base, particle))
 
     def analyze(self, text: str) -> list[AnalyzedVocabularyToken]:
         tokens = self._tokenize(text)
@@ -96,14 +96,13 @@ class RuleBasedPhrasalVerbDetectionService(PhrasalVerbDetectionService):
 
             matched = self._match_phrase(tokens, index)
             if matched:
-                end_index, base, definition = matched
+                end_index, base = matched
                 phrase_text = " ".join(part.text for part in tokens[index : end_index + 1])
                 results.append(
                     AnalyzedVocabularyToken(
                         text=phrase_text,
                         token_type="phrase",
                         base=base,
-                        definition_vi=definition,
                     )
                 )
                 index = end_index + 1
@@ -125,21 +124,21 @@ class RuleBasedPhrasalVerbDetectionService(PhrasalVerbDetectionService):
             for part in parts
         ]
 
-    def _match_phrase(self, tokens: list[_WordToken], start_index: int) -> tuple[int, str, str] | None:
+    def _match_phrase(self, tokens: list[_WordToken], start_index: int) -> tuple[int, str] | None:
         token = tokens[start_index]
         lemmas = self._candidate_lemmas(token.lower)
-        best: tuple[int, str, str] | None = None
+        best: tuple[int, str] | None = None
 
         for lemma in lemmas:
             candidates = self._phrases_by_verb.get(lemma, [])
-            for base, particle, definition in candidates:
+            for base, particle in candidates:
                 contiguous_index = start_index + 1
                 if (
                     contiguous_index < len(tokens)
                     and tokens[contiguous_index].is_alpha
                     and tokens[contiguous_index].lower == particle
                 ):
-                    best = self._pick_longer(best, (contiguous_index, base, definition))
+                    best = self._pick_longer(best, (contiguous_index, base))
 
                 separated_end = min(len(tokens), start_index + _MAX_SEPARATED_GAP + 2)
                 for particle_index in range(start_index + 2, separated_end):
@@ -150,7 +149,7 @@ class RuleBasedPhrasalVerbDetectionService(PhrasalVerbDetectionService):
                         continue
                     if any(not middle.is_alpha for middle in tokens[start_index + 1 : particle_index]):
                         continue
-                    best = self._pick_longer(best, (particle_index, base, definition))
+                    best = self._pick_longer(best, (particle_index, base))
                     break
 
         return best
@@ -189,9 +188,9 @@ class RuleBasedPhrasalVerbDetectionService(PhrasalVerbDetectionService):
 
     def _pick_longer(
         self,
-        current: tuple[int, str, str] | None,
-        candidate: tuple[int, str, str],
-    ) -> tuple[int, str, str]:
+        current: tuple[int, str] | None,
+        candidate: tuple[int, str],
+    ) -> tuple[int, str]:
         if current is None:
             return candidate
         if candidate[0] > current[0]:

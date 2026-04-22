@@ -15,12 +15,23 @@ class FlashCard:
     user_id: str                           # ID người dùng sở hữu thẻ
     word: str                             # Từ vựng liên kết
 
+    # Nội dung học
+    translation_vi: str = ""               # Bản dịch ngắn gọn
+    definition_vi: str = ""                # Định nghĩa chi tiết
+    phonetic: str = ""                     # Phiên âm
+    audio_url: str = ""                    # URL audio phát âm
+    example_sentence: str = ""             # Câu ví dụ
+
     # Dữ liệu SRS (Spaced Repetition System)
     review_count: int = 0                  # Số lần đã ôn tập
     interval_days: int = 1                 # Khoảng cách ngày ôn tiếp theo
     difficulty: int = 0                    # Mức độ khó (0-5)
     last_reviewed_at: Optional[datetime] = None
     next_review_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    # Source tracking (từ session)
+    source_session_id: Optional[str] = None
+    source_turn_index: Optional[int] = None
 
     def __post_init__(self):
         # 1. Kiểm tra tính toàn vẹn (Validation)

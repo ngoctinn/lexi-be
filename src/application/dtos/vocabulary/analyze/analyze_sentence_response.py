@@ -7,7 +7,6 @@ class AnalyzeSentenceItem(BaseDTO):
     text: str
     type: Literal["word", "phrase"]
     base: str | None = None
-    definition_vi: str | None = None
 
 
 class AnalyzeSentenceResponse(BaseDTO):

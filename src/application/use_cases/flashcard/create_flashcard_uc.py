@@ -23,18 +23,23 @@ class CreateFlashCardUC:
         Thực thi trình tự tạo thẻ ghi nhớ.
         """
         # 1. Kiểm tra trùng lặp (Idempotency check)
-        existing_card = self._repo.get_by_user_and_word(command.user_id, command.word)
+        existing_card = self._repo.get_by_user_and_word(command.user_id, command.vocab)
         if existing_card:
-            return Result.failure(f"Từ vựng '{command.word}' đã có trong kho thẻ của bạn.")
+            return Result.failure(f"Từ vựng '{command.vocab}' đã có trong kho thẻ của bạn.")
 
         # 2. Tạo thực thể Domain mới
-        # Lưu ý: Thông tin chi tiết như phonetic, example sẽ được lưu ở bảng Vocabulary, 
-        # FlashCard chỉ lưu liên kết và trạng thái học tập.
         try:
             flashcard = FlashCard(
                 flashcard_id=str(ulid.new()),
                 user_id=command.user_id,
-                word=command.word
+                word=command.vocab,
+                translation_vi=command.translation_vi or "",
+                definition_vi=command.definition_vi,
+                phonetic=command.phonetic or "",
+                audio_url=command.audio_url or "",
+                example_sentence=command.example_sentence or "",
+                source_session_id=command.source_session_id,
+                source_turn_index=command.source_turn_index,
             )
         except ValueError as e:
             return Result.failure(str(e))

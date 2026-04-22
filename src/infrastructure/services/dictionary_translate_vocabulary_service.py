@@ -37,6 +37,9 @@ class DictionaryTranslateVocabularyService(VocabularyLookupService):
         translation_vi = self._translate_text(normalized_word)
         definition_vi = self._translate_text(definition_en)
 
+        # Lấy tất cả meanings và dịch
+        all_meanings = self._extract_all_meanings(entry)
+
         return Vocabulary(
             word=normalized_word,
             word_type=self._map_part_of_speech(part_of_speech),
@@ -46,7 +49,38 @@ class DictionaryTranslateVocabularyService(VocabularyLookupService):
             audio_url=audio_url,
             example_sentence=example_sentence,
             source_api="dictionaryapi.dev+amazon-translate",
+            all_meanings=all_meanings,
         )
+
+    def _extract_all_meanings(self, entry: Dict[str, Any]) -> List[Dict[str, str]]:
+        """Lấy tất cả meanings, dịch definition sang tiếng Việt."""
+        result = []
+        seen_pos = set()  # Tránh duplicate cùng part_of_speech
+
+        for meaning in entry.get("meanings", []):
+            pos = str(meaning.get("partOfSpeech", "")).strip().lower()
+            if pos in seen_pos:
+                continue
+            seen_pos.add(pos)
+
+            first_def = self._first_definition(meaning.get("definitions", []))
+            if not first_def:
+                continue
+
+            definition_en = str(first_def.get("definition", "")).strip()
+            example = str(first_def.get("example", "")).strip()
+
+            if not definition_en:
+                continue
+
+            definition_vi = self._translate_text(definition_en)
+            result.append({
+                "part_of_speech": pos,
+                "definition_vi": definition_vi,
+                "example_sentence": example,
+            })
+
+        return result
 
     def _fetch_dictionary_entry(self, word: str) -> Dict[str, Any]:
         url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{quote(word)}"

@@ -98,6 +98,7 @@ Resources:
       CodeUri: src/
       Handler: infrastructure.handlers.vocabulary.translate_vocabulary_handler.handler
       Runtime: python3.12
+      Timeout: 15
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -111,6 +112,27 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - translate:TranslateText
+              Resource: "*"
+
+  TranslateSentenceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.vocabulary.translate_sentence_handler.handler
+      Runtime: python3.12
+      Timeout: 15
+      Events:
+        TranslateSentence:
+          Type: Api
+          Properties:
+            Path: /vocabulary/translate-sentence
+            Method: POST
+            RestApiId: !Ref LexiApi
+      Policies:
         - Statement:
             - Effect: Allow
               Action:
@@ -132,6 +154,26 @@ Resources:
             RestApiId: !Ref LexiApi
             Auth:
               Authorizer: NONE
+
+  CreateFlashcardFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.flashcard.create_flashcard_handler.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+      Events:
+        CreateFlashcard:
+          Type: Api
+          Properties:
+            Path: /flashcards
+            Method: POST
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
 
   ListScenariosFunction:
     Type: AWS::Serverless::Function

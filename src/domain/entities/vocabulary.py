@@ -1,22 +1,20 @@
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 
 from domain.value_objects.enums import VocabType
 
 @dataclass
 class Vocabulary:
     """Thông tin từ vựng trong từ điển hệ thống."""
-    # Dữ liệu từ vựng
-    word: str = ""                   # Từ vựng (Viết thường, đã trim)
-    word_type: VocabType = VocabType.NOUN            # Loại từ (n, v, adj...)
-    translation_vi: str = ""         # Bản dịch tiếng Việt của từ gốc
-    definition_vi: str = ""          # Định nghĩa / giải nghĩa tiếng Việt
-    phonetic: str = ""               # Cách phát âm (IPA)
-    audio_url: str = ""              # Đường dẫn file phát âm
-    example_sentence: str = ""       # Câu ví dụ mẫu
-
-    # Thông tin nguồn
-    source_api: Optional[str] = ""    # Tên API nguồn lấy dữ liệu
+    word: str = ""
+    word_type: VocabType = VocabType.NOUN
+    translation_vi: str = ""
+    definition_vi: str = ""
+    phonetic: str = ""
+    audio_url: str = ""
+    example_sentence: str = ""
+    source_api: Optional[str] = ""
+    all_meanings: List[Dict[str, str]] = field(default_factory=list)  # [{part_of_speech, definition_vi, example_sentence}]
 
     def __post_init__(self):
         if not self.word:
