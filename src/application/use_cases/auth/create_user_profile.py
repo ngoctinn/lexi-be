@@ -20,7 +20,7 @@ class CreateUserProfileUseCase:
         # 1. Validation & Mapping (DTO -> Entity)
         try:
             current_level = ProficiencyLevel(request.current_level)
-            learning_goal = ProficiencyLevel(request.learning_goal)
+            target_level = ProficiencyLevel(request.target_level)
         except ValueError as e:
             return Result.failure(f"Dữ liệu trình độ không hợp lệ: {str(e)}")
 
@@ -31,7 +31,7 @@ class CreateUserProfileUseCase:
             display_name=request.display_name or request.email.split("@")[0],
             avatar_url=request.avatar_url,
             current_level=current_level,
-            learning_goal=learning_goal
+            target_level=target_level
         )
 
         # 3. Lưu trữ qua Port (Repository)

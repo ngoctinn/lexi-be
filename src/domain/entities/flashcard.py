@@ -60,6 +60,33 @@ class FlashCard:
             
         self.next_review_at = now + timedelta(days=self.interval_days)
 
+    def apply_review(self, rating: str) -> None:
+        """
+        Cập nhật SRS dựa trên đánh giá của người dùng (string rating).
+        
+        rating: "forgot" | "hard" | "good" | "easy"
+        """
+        VALID_RATINGS = {"forgot", "hard", "good", "easy"}
+        if rating not in VALID_RATINGS:
+            raise ValueError(f"Rating không hợp lệ '{rating}'. Phải là một trong: {VALID_RATINGS}")
+
+        now = datetime.now(timezone.utc)
+        old_interval = self.interval_days
+
+        if rating == "forgot":
+            new_interval = 1
+        elif rating == "hard":
+            new_interval = max(1, round(old_interval * 1.2))
+        elif rating == "good":
+            new_interval = round(old_interval * 2.5)
+        else:  # easy
+            new_interval = round(old_interval * 3.0)
+
+        self.interval_days = new_interval
+        self.last_reviewed_at = now
+        self.next_review_at = now + timedelta(days=new_interval)
+        self.review_count += 1
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, FlashCard):
             return False

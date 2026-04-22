@@ -55,7 +55,7 @@ def _is_user_turn(turn: Turn) -> bool:
 
 def _scenario_roles(scenario: Scenario) -> list[str]:
     roles: list[str] = []
-    for role in [scenario.my_character, scenario.ai_character, *scenario.user_roles, *scenario.ai_roles]:
+    for role in scenario.roles:
         cleaned = str(role).strip()
         if cleaned and cleaned not in roles:
             roles.append(cleaned)
@@ -141,8 +141,11 @@ class CreateSpeakingSessionUseCase:
             if invalid_goals:
                 return Result.failure("Selected goals phải nằm trong danh sách goals của kịch bản.")
 
-            learner_role_id = (request.learner_role_id or scenario.my_character or allowed_roles[0]).strip()
-            ai_role_id = (request.ai_role_id or scenario.ai_character or allowed_roles[1]).strip()
+            learner_role_id = (request.learner_role_id or allowed_roles[0]).strip()
+            if request.ai_role_id:
+                ai_role_id = request.ai_role_id.strip()
+            else:
+                ai_role_id = next((role for role in allowed_roles if role != learner_role_id), "")
             if learner_role_id == ai_role_id:
                 return Result.failure("learner_role_id và ai_role_id phải khác nhau.")
             if learner_role_id not in allowed_roles or ai_role_id not in allowed_roles:

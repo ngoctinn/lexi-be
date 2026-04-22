@@ -28,13 +28,13 @@ class UpdateProfileUseCase:
 
         # 2. Xử lý validation kiểu dữ liệu trước khi đẩy vào Domain
         new_level = None
-        new_goal = None
+        new_target_level = None
         
         try:
             if request.current_level:
                 new_level = ProficiencyLevel(request.current_level)
-            if request.learning_goal:
-                new_goal = ProficiencyLevel(request.learning_goal)
+            if request.target_level:
+                new_target_level = ProficiencyLevel(request.target_level)
         except ValueError:
             return Result.failure(f"Dữ liệu trình độ không hợp lệ.")
 
@@ -43,7 +43,7 @@ class UpdateProfileUseCase:
             display_name=request.display_name,
             avatar_url=request.avatar_url,
             current_level=new_level,
-            learning_goal=new_goal,
+            target_level=new_target_level,
             is_new_user=request.is_new_user
         )
 

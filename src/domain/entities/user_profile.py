@@ -15,7 +15,7 @@ class UserProfile:
     
     # Quá trình học tập
     current_level: ProficiencyLevel = ProficiencyLevel.A1 # Trình độ hiện tại
-    learning_goal: ProficiencyLevel = ProficiencyLevel.B2 # Mục tiêu học tập 
+    target_level: ProficiencyLevel = ProficiencyLevel.B2 # Trình độ muốn đạt
     role: Role = Role.LEARNER        # Vai trò trong hệ thống
     is_active: bool = True           # Trạng thái tài khoản
     is_new_user: bool = True         # Flag đánh dấu người dùng mới (chưa onboarding)
@@ -40,18 +40,19 @@ class UserProfile:
         """Nâng cấp trình độ của người dùng."""
         self.current_level = new_level
 
-    def update_profile_info(self, display_name: str = None, avatar_url: str = None, 
-                            current_level: ProficiencyLevel = None, learning_goal: ProficiencyLevel = None,
+    def update_profile_info(self, display_name: str = None, avatar_url: str = None,
+                            current_level: ProficiencyLevel = None, target_level: ProficiencyLevel = None,
                             is_new_user: bool = None):
         """Cập nhật thông tin profile cơ bản."""
         if display_name:
             self.display_name = display_name
-        if avatar_url:
+        # Dùng `is not None` để cho phép xóa avatar bằng cách gửi ""
+        if avatar_url is not None:
             self.avatar_url = avatar_url
         if current_level:
             self.current_level = current_level
-        if learning_goal:
-            self.learning_goal = learning_goal
+        if target_level:
+            self.target_level = target_level
         if is_new_user is not None:
             self.is_new_user = is_new_user
 

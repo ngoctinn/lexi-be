@@ -13,17 +13,12 @@ def _scenario(
     usage_count: int,
     is_active: bool = True,
 ) -> Scenario:
-    learner_role = roles[0] if roles else "Learner"
-    ai_role = roles[1] if len(roles) > 1 else "AI Assistant"
     return Scenario(
         scenario_id=scenario_id,
         scenario_title=scenario_title,
         context=context,
-        my_character=learner_role,
-        ai_character=ai_role,
+        roles=list(roles),
         goals=goals,
-        user_roles=list(roles),
-        ai_roles=list(roles),
         is_active=is_active,
         usage_count=usage_count,
     )
@@ -51,8 +46,17 @@ class StaticScenarioRepository(ScenarioRepository):
     def list_active(self) -> List[Scenario]:
         return [scenario for scenario in self._scenarios.values() if scenario.is_active]
 
+    def list_all(self) -> List[Scenario]:
+        return list(self._scenarios.values())
+
     def get_by_id(self, scenario_id: str) -> Optional[Scenario]:
         return self._scenarios.get(str(scenario_id))
 
     def save(self, scenario: Scenario) -> None:
+        self._scenarios[str(scenario.scenario_id)] = scenario
+
+    def create(self, scenario: Scenario) -> None:
+        self._scenarios[str(scenario.scenario_id)] = scenario
+
+    def update(self, scenario: Scenario) -> None:
         self._scenarios[str(scenario.scenario_id)] = scenario

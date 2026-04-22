@@ -8,7 +8,7 @@ from application.use_cases.speaking_session_use_cases import (
     SubmitSpeakingTurnUseCase,
 )
 from infrastructure.persistence.dynamo_scoring_repo import DynamoScoringRepo
-from infrastructure.persistence.static_scenario_repo import StaticScenarioRepository
+from infrastructure.persistence.dynamo_scenario_repo import DynamoScenarioRepository
 from infrastructure.persistence.dynamo_session_repo import DynamoSessionRepo
 from infrastructure.persistence.dynamo_turn_repo import DynamoTurnRepo
 from infrastructure.services.speaking_pipeline_services import (
@@ -31,7 +31,7 @@ def build_session_controller(
     session_repo = session_repo or DynamoSessionRepo()
     turn_repo = turn_repo or DynamoTurnRepo()
     scoring_repo = scoring_repo or DynamoScoringRepo()
-    scenario_repo = scenario_repo or StaticScenarioRepository()
+    scenario_repo = scenario_repo or DynamoScenarioRepository()
     transcript_analysis_service = transcript_analysis_service or ComprehendTranscriptAnalysisService()
     conversation_generation_service = conversation_generation_service or RuleBasedConversationGenerationService()
     speech_synthesis_service = speech_synthesis_service or PollySpeechSynthesisService()

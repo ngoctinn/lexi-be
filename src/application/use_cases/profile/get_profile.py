@@ -28,7 +28,7 @@ class GetProfileUseCase:
             display_name=profile.display_name,
             avatar_url=profile.avatar_url,
             current_level=profile.current_level.value if hasattr(profile.current_level, 'value') else profile.current_level,
-            learning_goal=profile.learning_goal.value if hasattr(profile.learning_goal, 'value') else profile.learning_goal,
+            target_level=profile.target_level.value if hasattr(profile.target_level, 'value') else profile.target_level,
             current_streak=profile.current_streak,
             total_words_learned=profile.total_words_learned,
             role=profile.role.value if hasattr(profile.role, 'value') else profile.role,

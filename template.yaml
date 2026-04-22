@@ -51,6 +51,128 @@ Resources:
 
   # --- 4. CÁC DỊCH VỤ (LAMBDA FUNCTIONS) ---
 
+  # [MÔ-ĐUN ONBOARDING] - Hoàn tất thông tin ban đầu cho user mới
+  CompleteOnboardingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.onboarding.complete_onboarding_handler.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+      Events:
+        CompleteOnboarding:
+          Type: Api
+          Properties:
+            Path: /onboarding/complete
+            Method: POST
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
+  # [MÔ-ĐUN ADMIN] - Quản lý người dùng và kịch bản
+  ListAdminUsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.admin.list_admin_users_handler.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+      Events:
+        ListAdminUsers:
+          Type: Api
+          Properties:
+            Path: /admin/users
+            Method: GET
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
+  UpdateAdminUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.admin.update_admin_user_handler.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+      Events:
+        UpdateAdminUser:
+          Type: Api
+          Properties:
+            Path: /admin/users/{user_id}
+            Method: PATCH
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
+  ListAdminScenariosFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.admin.list_admin_scenarios_handler.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+      Events:
+        ListAdminScenarios:
+          Type: Api
+          Properties:
+            Path: /admin/scenarios
+            Method: GET
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
+  CreateAdminScenarioFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.admin.create_admin_scenario_handler.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+      Events:
+        CreateAdminScenario:
+          Type: Api
+          Properties:
+            Path: /admin/scenarios
+            Method: POST
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
+  UpdateAdminScenarioFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.admin.update_admin_scenario_handler.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+      Events:
+        UpdateAdminScenario:
+          Type: Api
+          Properties:
+            Path: /admin/scenarios/{scenario_id}
+            Method: PATCH
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
   # [MÔ-ĐUN HỒ SƠ] - Quản lý thông tin người dùng
   GetProfileFunction:
     Type: AWS::Serverless::Function
@@ -175,6 +297,86 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
 
+  ListDueCardsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.flashcard.list_due_cards_handler.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+      Events:
+        ListDueCards:
+          Type: Api
+          Properties:
+            Path: /flashcards/due
+            Method: GET
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
+  ReviewFlashcardFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.flashcard.review_flashcard_handler.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+      Events:
+        ReviewFlashcard:
+          Type: Api
+          Properties:
+            Path: /flashcards/{flashcard_id}/review
+            Method: POST
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
+  ListFlashcardsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.flashcard.list_flashcards_handler.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+      Events:
+        ListFlashcards:
+          Type: Api
+          Properties:
+            Path: /flashcards
+            Method: GET
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
+  GetFlashcardFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.flashcard.get_flashcard_handler.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+      Events:
+        GetFlashcard:
+          Type: Api
+          Properties:
+            Path: /flashcards/{flashcard_id}
+            Method: GET
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
   ListScenariosFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -209,6 +411,8 @@ Resources:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
           SPEAKING_AUDIO_BUCKET_NAME: !Ref SpeakingAudioBucket
+          COGNITO_USER_POOL_ID: !GetAtt AuthModule.Outputs.UserPoolId
+          COGNITO_APP_CLIENT_ID: !GetAtt AuthModule.Outputs.UserPoolClientId
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -297,7 +501,7 @@ Outputs:
 
   UserPoolId:
     Description: "ID của Cognito User Pool"
-    Value: !GetAtt AuthModule.Outputs.UserPoolArn
+    Value: !GetAtt AuthModule.Outputs.UserPoolId
 
   UserPoolClientId:
     Description: "Client ID cho ứng dụng Frontend"

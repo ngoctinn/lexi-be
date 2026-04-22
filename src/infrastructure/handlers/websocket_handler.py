@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import json
 import os
 from dataclasses import dataclass, replace
@@ -9,6 +8,7 @@ from typing import Any, Callable
 
 import boto3
 from botocore.exceptions import ClientError
+from jwt import InvalidTokenError, PyJWKClient, decode
 
 from application.dtos.speaking_session_dtos import (
     CompleteSpeakingSessionCommand,
@@ -28,8 +28,6 @@ from infrastructure.services.speaking_pipeline_services import (
     RuleBasedConversationGenerationService,
 )
 from shared.utils.ulid_util import new_ulid
-
-MOCK_SESSION_TOKEN = "mock-session-token"
 
 
 def _response(status: int, body: dict[str, Any]) -> dict[str, Any]:
@@ -52,18 +50,55 @@ def _parse_json_body(body: Any) -> dict[str, Any]:
         return {}
 
 
-def _decode_jwt_payload(token: str) -> dict[str, Any]:
-    parts = token.split(".")
-    if len(parts) < 2:
-        return {}
+def _extract_bearer_token(headers: dict[str, Any]) -> str:
+    if not headers:
+        return ""
 
-    payload = parts[1]
-    payload += "=" * (-len(payload) % 4)
+    auth_value = headers.get("Authorization") or headers.get("authorization") or ""
+    if not isinstance(auth_value, str):
+        return ""
+
+    if auth_value.startswith("Bearer "):
+        return auth_value[7:].strip()
+    return auth_value.strip()
+
+
+def _verify_cognito_jwt(token: str) -> dict[str, Any]:
+    if not token:
+        raise ValueError("Token không hợp lệ.")
+
+    region = os.environ.get("AWS_REGION", "")
+    user_pool_id = os.environ.get("COGNITO_USER_POOL_ID", "")
+    app_client_id = os.environ.get("COGNITO_APP_CLIENT_ID", "")
+    if not region or not user_pool_id:
+        raise ValueError("Thiếu cấu hình Cognito để xác thực token.")
+
+    issuer = f"https://cognito-idp.{region}.amazonaws.com/{user_pool_id}"
+    jwks_client = PyJWKClient(f"{issuer}/.well-known/jwks.json")
+
     try:
-        decoded = base64.urlsafe_b64decode(payload.encode("utf-8"))
-        return json.loads(decoded.decode("utf-8"))
-    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
-        return {}
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        claims = decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            issuer=issuer,
+            options={"require": ["exp", "iss", "token_use", "sub"]},
+        )
+    except InvalidTokenError as exc:
+        raise ValueError("Token không hợp lệ.") from exc
+
+    token_use = claims.get("token_use")
+    if token_use not in {"access", "id"}:
+        raise ValueError("token_use không hợp lệ.")
+
+    if app_client_id:
+        if token_use == "access" and claims.get("client_id") != app_client_id:
+            raise ValueError("client_id không hợp lệ.")
+        if token_use == "id" and claims.get("aud") != app_client_id:
+            raise ValueError("aud không hợp lệ.")
+
+    return claims
 
 
 def _session_gateway_endpoint(event: dict[str, Any]) -> str:
@@ -82,30 +117,29 @@ class WebSocketSessionController:
     complete_use_case: CompleteSpeakingSessionUseCase
     build_upload_payload: Callable[[str], tuple[str, str]]
     send_message: Callable[[dict[str, Any]], None]
+    verify_token: Callable[[str], dict[str, Any]]
 
     def connect(self, session_id: str, token: str, connection_id: str) -> dict[str, Any]:
-        print(f"[WS-CONNECT] session_id={session_id}, token_len={len(token)}, connection_id={connection_id}")
         if not session_id:
             return _response(400, {"message": "Thiếu session_id."})
 
         session = self.session_repo.get_by_id(session_id)
         if not session:
-            print(f"[WS-CONNECT] Session {session_id} not found")
             return _response(404, {"message": "Session không tồn tại."})
 
-        if token != MOCK_SESSION_TOKEN:
-            claims = _decode_jwt_payload(token)
-            user_id = claims.get("sub")
-            print(f"[WS-CONNECT] claims_sub={user_id}, session_user_id={session.user_id}")
-            if not user_id:
-                return _response(401, {"message": "Token không hợp lệ."})
-            if session.user_id != user_id:
-                print(f"[WS-CONNECT] User mismatch: {user_id} != {session.user_id}")
-                return _response(403, {"message": "Session không thuộc về người dùng này."})
+        try:
+            claims = self.verify_token(token)
+        except ValueError as exc:
+            return _response(401, {"message": str(exc)})
+
+        user_id = str(claims.get("sub") or "")
+        if not user_id:
+            return _response(401, {"message": "Token không hợp lệ."})
+        if session.user_id != user_id:
+            return _response(403, {"message": "Session không thuộc về người dùng này."})
 
         session.connection_id = connection_id
         self.session_repo.save(session)
-        print(f"[WS-CONNECT] Success")
         return _response(200, {"message": "Connected"})
 
     def disconnect(self, session_id: str | None, connection_id: str) -> dict[str, Any]:
@@ -285,6 +319,7 @@ def get_websocket_controller() -> WebSocketSessionController:
         complete_use_case=complete_use_case,
         build_upload_payload=_build_upload_payload,
         send_message=lambda payload: None,
+        verify_token=_verify_cognito_jwt,
     )
 
 
@@ -307,19 +342,18 @@ def _make_sender(event: dict[str, Any], connection_id: str) -> Callable[[dict[st
 
 
 def handler(event, context):
-    print(f"[WS-HANDLER] event={json.dumps(event)}")
     base_controller = get_websocket_controller()
     route_key = (event.get("requestContext") or {}).get("routeKey", "")
     connection_id = (event.get("requestContext") or {}).get("connectionId", "")
     body = _parse_json_body(event.get("body"))
-    
+    headers = event.get("headers") or {}
+
     # Extract params from queryStringParameters or body
     query_params = event.get("queryStringParameters") or {}
     session_id = body.get("session_id") or query_params.get("session_id")
-    token = query_params.get("token", "")
-    
+    token = _extract_bearer_token(headers)
+
     action = route_key if route_key not in {"$default"} else str(body.get("action") or "")
-    print(f"[WS-HANDLER] route_key={route_key}, session_id={session_id}, token_len={len(token)}")
 
     controller = replace(base_controller, send_message=_make_sender(event, connection_id))
 

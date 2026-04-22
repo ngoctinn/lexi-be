@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 import os
+import logging
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -8,6 +9,8 @@ from boto3.dynamodb.conditions import Key
 from application.repositories.session_repository import SessionRepository
 from domain.entities.session import Session
 from domain.value_objects.enums import Gender, ProficiencyLevel
+
+logger = logging.getLogger(__name__)
 
 
 class DynamoSessionRepo(SessionRepository):
@@ -65,7 +68,7 @@ class DynamoSessionRepo(SessionRepository):
             return self._to_entity(item)
         except Exception as exc:
             # Malformed item in DB, log and return None instead of raising
-            print(f"[DynamoSessionRepo] get_by_id: malformed item for session_id={session_id}: {exc}")
+            logger.warning("get_by_id malformed item for session_id=%s: %s", session_id, exc)
             return None
 
     def get_active_session(self, user_id: str) -> Optional[Session]:
@@ -80,7 +83,7 @@ class DynamoSessionRepo(SessionRepository):
             try:
                 session = self._to_entity(item)
             except Exception as exc:
-                print(f"[DynamoSessionRepo] get_active_session: skipping malformed item: {exc}")
+                logger.warning("get_active_session skipping malformed item: %s", exc)
                 continue
 
             if session.status != "COMPLETED":
@@ -101,7 +104,7 @@ class DynamoSessionRepo(SessionRepository):
                 sessions.append(self._to_entity(item))
             except Exception as exc:
                 # Log and skip malformed DB records instead of failing the whole request
-                print(f"[DynamoSessionRepo] list_by_user: skipping malformed item: {exc}")
+                logger.warning("list_by_user skipping malformed item: %s", exc)
                 continue
 
         return sessions

@@ -80,6 +80,8 @@ Resources:
               - updated_at
 
         # GSI2: Phục vụ thuật toán ôn tập từ vựng (SRS)
+        # Dùng ProjectionType: ALL để đơn giản và tránh thiếu attributes
+        # Trade-off: Storage cost cao hơn một chút nhưng maintenance đơn giản hơn nhiều
         - IndexName: GSI2-SRS-ReviewQueue
           KeySchema:
             - AttributeName: GSI2PK
@@ -87,21 +89,7 @@ Resources:
             - AttributeName: GSI2SK
               KeyType: RANGE
           Projection:
-            ProjectionType: INCLUDE
-            NonKeyAttributes:
-              - EntityType
-              - word
-              - word_type
-              - definition_vi
-              - phonetic
-              - audio_s3_key
-              - example_sentence
-              - review_count
-              - easiness_factor
-              - interval_days
-              - difficulty
-              - last_reviewed_at
-              - next_review_at
+            ProjectionType: ALL
 
         # GSI3: Hỗ trợ Admin liệt kê danh sách thực thể
         - IndexName: GSI3-Admin-EntityList
@@ -117,7 +105,7 @@ Resources:
               - display_name
               - role
               - is_active
-              - is_onboarded
+              - is_new_user
               - title
               - recommended_level
               - usage_count

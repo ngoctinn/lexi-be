@@ -115,6 +115,10 @@ Outputs:
     Description: "ARN của User Pool để gắn vào API Gateway"
     Value: !GetAtt LexiUserPool.Arn
 
+  UserPoolId:
+    Description: "ID của User Pool"
+    Value: !Ref LexiUserPool
+
   UserPoolClientId:
     Description: "Client ID để Frontend tích hợp"
     Value: !Ref LexiUserPoolClient

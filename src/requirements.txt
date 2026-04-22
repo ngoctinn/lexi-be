@@ -6,4 +6,5 @@ boto3>=1.26.0
 # AWS Powertools for structured logging/tracing/metrics
 aws-lambda-powertools>=2.43.1
 email-validator>=1.1.3
+PyJWT[crypto]>=2.8.0
 

@@ -7,7 +7,7 @@ class UpdateProfileCommand(BaseDTO):
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
     current_level: Optional[str] = None
-    learning_goal: Optional[str] = None
+    target_level: Optional[str] = None
     is_new_user: Optional[bool] = None
 
 

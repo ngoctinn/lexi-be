@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional, Tuple
 import os
 import boto3
+from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 from application.repositories.user_profile_repository import UserProfileRepository
 from domain.entities.user_profile import UserProfile
@@ -40,7 +41,7 @@ class DynamoDBUserRepo(UserProfileRepository):
                     "is_active": profile.is_active,
                     "is_new_user": profile.is_new_user,
                     "current_level": profile.current_level.value if hasattr(profile.current_level, "value") else profile.current_level,
-                    "learning_goal": profile.learning_goal.value if hasattr(profile.learning_goal, "value") else profile.learning_goal,
+                    "target_level": profile.target_level.value if hasattr(profile.target_level, "value") else profile.target_level,
                     "current_streak": profile.current_streak,
                     "last_completed_at": profile.last_completed_at,
                     "total_words_learned": profile.total_words_learned,
@@ -65,24 +66,42 @@ class DynamoDBUserRepo(UserProfileRepository):
         item = response.get("Item")
         if not item:
             return None
+        return self._to_entity(item, user_id)
 
-        # Map từ DB sang Entity (Lưu ý: Bạn cần import các Enum tương ứng)
+    def _to_entity(self, item: dict, fallback_user_id: str = "") -> UserProfile:
+        """Map DynamoDB item sang UserProfile entity."""
         from domain.value_objects.enums import ProficiencyLevel, Role
-
         return UserProfile(
-            user_id=item.get("user_id", user_id),
+            user_id=item.get("user_id", fallback_user_id),
             email=item.get("email", ""),
             display_name=item.get("display_name", ""),
             avatar_url=item.get("avatar_url", ""),
             current_level=ProficiencyLevel(item.get("current_level", "A1")),
-            learning_goal=ProficiencyLevel(item.get("learning_goal", "B2")),
+            target_level=ProficiencyLevel(item.get("target_level", "B2")),
             role=Role(item.get("role", "LEARNER")),
             is_active=item.get("is_active", True),
             is_new_user=item.get("is_new_user", True),
             current_streak=item.get("current_streak", 0),
             last_completed_at=item.get("last_completed_at", ""),
-            total_words_learned=item.get("total_words_learned", 0)
+            total_words_learned=item.get("total_words_learned", 0),
         )
+
+    def list_learners(
+        self, limit: int = 20, last_key: Optional[dict] = None
+    ) -> Tuple[List[UserProfile], Optional[dict]]:
+        """Liệt kê tất cả user profiles qua GSI3 — dùng cho Admin."""
+        kwargs = {
+            "IndexName": "GSI3-Admin-EntityList",
+            "KeyConditionExpression": Key("EntityType").eq("USER_PROFILE"),
+            "ScanIndexForward": False,
+            "Limit": limit,
+        }
+        if last_key:
+            kwargs["ExclusiveStartKey"] = last_key
+
+        response = self._table.query(**kwargs)
+        profiles = [self._to_entity(item) for item in response.get("Items", [])]
+        return profiles, response.get("LastEvaluatedKey")
 
     def update(self, profile: UserProfile) -> None:
         """Cập nhật profile hiện có (chỉ các trường thay đổi)."""
@@ -91,13 +110,13 @@ class DynamoDBUserRepo(UserProfileRepository):
                 "PK": f"USER#{profile.user_id}",
                 "SK": "PROFILE"
             },
-            UpdateExpression="SET display_name = :dn, avatar_url = :au, current_level = :cl, learning_goal = :lg, is_new_user = :inu, current_streak = :cs, last_completed_at = :lc, total_words_learned = :tw",
+            UpdateExpression="SET display_name = :dn, avatar_url = :au, current_level = :cl, target_level = :tl, is_new_user = :inu, current_streak = :cs, last_completed_at = :lc, total_words_learned = :tw",
             ExpressionAttributeValues={
                 ":dn": profile.display_name,
                 ":au": profile.avatar_url,
-                # Support both Enum and plain-string values for level/goal
+                # Support both Enum and plain-string values for level.
                 ":cl": profile.current_level.value if hasattr(profile.current_level, "value") else profile.current_level,
-                ":lg": profile.learning_goal.value if hasattr(profile.learning_goal, "value") else profile.learning_goal,
+                ":tl": profile.target_level.value if hasattr(profile.target_level, "value") else profile.target_level,
                 ":inu": profile.is_new_user,
                 ":cs": profile.current_streak,
                 ":lc": profile.last_completed_at,

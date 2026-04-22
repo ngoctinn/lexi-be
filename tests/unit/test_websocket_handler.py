@@ -98,11 +98,12 @@ def build_controller(session: Session):
         complete_use_case=complete_use_case,
         build_upload_payload=lambda session_id: ("https://upload.example.com", f"sessions/{session_id}/audio.webm"),
         send_message=lambda payload: sender_payloads.append(payload),
+        verify_token=lambda token: {"sub": "user-1"} if token == "valid-token" else (_ for _ in ()).throw(ValueError("Token không hợp lệ.")),
     )
     return controller, session_repo, turn_repo, scoring_repo, sender_payloads
 
 
-def test_connect_accepts_mock_token_and_persists_connection_id():
+def test_connect_accepts_valid_token_and_persists_connection_id():
     session = Session(
         session_id=new_ulid(),
         scenario_id="scenario-1",
@@ -116,7 +117,7 @@ def test_connect_accepts_mock_token_and_persists_connection_id():
     )
     controller, session_repo, _, _, _ = build_controller(session)
 
-    response = controller.connect(str(session.session_id), "mock-session-token", "conn-1")
+    response = controller.connect(str(session.session_id), "valid-token", "conn-1")
 
     assert response["statusCode"] == 200
     assert session_repo.saved_sessions[-1].connection_id == "conn-1"

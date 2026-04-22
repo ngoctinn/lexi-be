@@ -3,6 +3,7 @@ from typing import List, Optional
 import os
 
 import boto3
+from boto3.dynamodb.conditions import Key
 
 from application.repositories.flash_card_repository import FlashCardRepository
 from domain.entities.flashcard import FlashCard
@@ -20,6 +21,8 @@ class DynamoFlashCardRepository(FlashCardRepository):
         item = {
             "PK": f"FLASHCARD#{card.user_id}",
             "SK": f"CARD#{card.flashcard_id}",
+            "GSI2PK": card.user_id,
+            "GSI2SK": card.next_review_at.isoformat(),
             "EntityType": "FLASHCARD",
             "flashcard_id": card.flashcard_id,
             "user_id": card.user_id,
@@ -56,21 +59,12 @@ class DynamoFlashCardRepository(FlashCardRepository):
         """Lấy danh sách flashcard đến hạn ôn tập."""
         now = datetime.now(timezone.utc).isoformat()
         response = self._table.query(
-            KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
-            ExpressionAttributeValues={
-                ":pk": f"FLASHCARD#{user_id}",
-                ":sk_prefix": "CARD#",
-            },
+            IndexName="GSI2-SRS-ReviewQueue",
+            KeyConditionExpression=Key("GSI2PK").eq(user_id) & Key("GSI2SK").lte(now),
         )
 
         items = response.get("Items", [])
-        cards = []
-        for item in items:
-            card = self._to_entity(item)
-            # Chỉ lấy thẻ đã đến hạn ôn tập
-            if card.next_review_at.isoformat() <= now:
-                cards.append(card)
-
+        cards = [self._to_entity(item) for item in items]
         return cards
 
     def get_by_user_and_word(self, user_id: str, word: str) -> Optional[FlashCard]:
@@ -79,6 +73,58 @@ class DynamoFlashCardRepository(FlashCardRepository):
         # Tạm thời trả về None để cho phép tạo mới
         # TODO: Implement GSI hoặc scan nếu cần check trùng lặp
         return None
+
+    def get_by_user_and_id(self, user_id: str, flashcard_id: str) -> Optional[FlashCard]:
+        """Lấy thẻ theo user_id + flashcard_id (dùng PK + SK trực tiếp)."""
+        response = self._table.get_item(
+            Key={
+                "PK": f"FLASHCARD#{user_id}",
+                "SK": f"CARD#{flashcard_id}"
+            }
+        )
+        item = response.get("Item")
+        return self._to_entity(item) if item else None
+
+    def list_by_user(
+        self, user_id: str, last_key: Optional[dict], limit: int
+    ) -> tuple[List[FlashCard], Optional[dict]]:
+        """Liệt kê tất cả thẻ của user với cursor-based pagination."""
+        kwargs = {
+            "KeyConditionExpression": Key("PK").eq(f"FLASHCARD#{user_id}") & Key("SK").begins_with("CARD#"),
+            "Limit": limit,
+        }
+        if last_key:
+            kwargs["ExclusiveStartKey"] = last_key
+        
+        response = self._table.query(**kwargs)
+        cards = [self._to_entity(item) for item in response.get("Items", [])]
+        next_key = response.get("LastEvaluatedKey")
+        return cards, next_key
+
+    def update(self, card: FlashCard) -> None:
+        """Cập nhật thẻ đã tồn tại (bao gồm GSI2SK)."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._table.update_item(
+            Key={
+                "PK": f"FLASHCARD#{card.user_id}",
+                "SK": f"CARD#{card.flashcard_id}"
+            },
+            UpdateExpression="""
+                SET review_count = :rc,
+                    interval_days = :id,
+                    last_reviewed_at = :lr,
+                    next_review_at = :nr,
+                    GSI2SK = :nr,
+                    updated_at = :ua
+            """,
+            ExpressionAttributeValues={
+                ":rc": card.review_count,
+                ":id": card.interval_days,
+                ":lr": card.last_reviewed_at.isoformat() if card.last_reviewed_at else None,
+                ":nr": card.next_review_at.isoformat(),
+                ":ua": now,
+            },
+        )
 
     def _to_entity(self, item: dict) -> FlashCard:
         """Chuyển đổi DynamoDB item thành FlashCard entity."""

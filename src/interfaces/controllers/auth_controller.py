@@ -1,7 +1,10 @@
 from typing import Dict, Any
+import logging
 from pydantic import ValidationError
 from interfaces.mapper.auth_mapper import AuthMapper
 from application.use_cases.auth.create_user_profile import CreateUserProfileUseCase
+
+logger = logging.getLogger(__name__)
 
 class AuthController:
     """
@@ -28,13 +31,13 @@ class AuthController:
             
             # 3. Ghi log kết quả (Sử dụng cho CloudWatch)
             if result.is_success:
-                print(f"BÁO CÁO: {result.value.message} - User: {result.value.user_id}")
+                logger.info("%s - User: %s", result.value.message, result.value.user_id)
             else:
-                print(f"CẢNH BÁO: {result.error}")
+                logger.warning("%s", result.error)
         
         except ValidationError as e:
-            print(f"LỖI: Dữ liệu từ Cognito không hợp lệ. {str(e)}")
+            logger.warning("Dữ liệu từ Cognito không hợp lệ: %s", str(e))
         except Exception as e:
-            print(f"LỖI HỆ THỐNG trong AuthController: {str(e)}")
+            logger.exception("Lỗi hệ thống trong AuthController: %s", str(e))
             
         return event  # AWS Cognito yêu cầu trả lại nguyên vẹn event để tiếp tục luồng

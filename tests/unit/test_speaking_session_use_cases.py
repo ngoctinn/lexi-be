@@ -140,11 +140,8 @@ def test_create_speaking_session_persists_assignment_and_prompt_snapshot():
         scenario_id="scenario-1",
         scenario_title="Gọi cà phê",
         context="Tại quán cà phê",
-        my_character="Khách hàng",
-        ai_character="Barista",
+        roles=["Khách hàng", "Barista"],
         goals=["Chọn đồ uống", "Chọn size", "Hỏi về giá"],
-        user_roles=["Khách hàng", "Barista"],
-        ai_roles=["Khách hàng", "Barista"],
         is_active=True,
         usage_count=1,
     )

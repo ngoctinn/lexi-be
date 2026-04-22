@@ -8,7 +8,7 @@ class CreateUserProfileCommand(BaseDTO):
     display_name: str = ""
     avatar_url: str = ""
     current_level: str = "A1"
-    learning_goal: str = "B2"
+    target_level: str = "B2"
 
 class CreateUserProfileResponse(BaseDTO):
     """DTO đầu ra trả về cho Client."""

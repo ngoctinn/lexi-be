@@ -7,7 +7,7 @@ class GetProfileResponse(BaseDTO):
     display_name: str
     avatar_url: str = ""
     current_level: str
-    learning_goal: str
+    target_level: str
     current_streak: int
     total_words_learned: int
     role: str

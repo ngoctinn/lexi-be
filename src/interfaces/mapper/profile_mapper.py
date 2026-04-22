@@ -10,6 +10,6 @@ class ProfileMapper:
             display_name=body.get("display_name"),
             avatar_url=body.get("avatar_url"),
             current_level=body.get("current_level"),
-            learning_goal=body.get("learning_goal"),
+            target_level=body.get("target_level"),
             is_new_user=body.get("is_new_user")
         )

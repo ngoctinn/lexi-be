@@ -41,3 +41,20 @@ class FlashCardRepository(ABC):
         Xác định xem người dùng đã tạo thẻ ghi nhớ cho từ vựng này chưa.
         """
         ...
+
+    @abstractmethod
+    def get_by_user_and_id(self, user_id: str, flashcard_id: str) -> Optional[FlashCard]:
+        """Lấy thẻ theo user_id + flashcard_id (dùng PK + SK trực tiếp)."""
+        ...
+
+    @abstractmethod
+    def list_by_user(
+        self, user_id: str, last_key: Optional[dict], limit: int
+    ) -> tuple[list[FlashCard], Optional[dict]]:
+        """Liệt kê tất cả thẻ của user với cursor-based pagination."""
+        ...
+
+    @abstractmethod
+    def update(self, card: FlashCard) -> None:
+        """Cập nhật thẻ đã tồn tại (bao gồm GSI2SK)."""
+        ...
