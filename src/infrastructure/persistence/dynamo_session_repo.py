@@ -61,7 +61,12 @@ class DynamoSessionRepo(SessionRepository):
         if not item:
             return None
 
-        return self._to_entity(item)
+        try:
+            return self._to_entity(item)
+        except Exception as exc:
+            # Malformed item in DB, log and return None instead of raising
+            print(f"[DynamoSessionRepo] get_by_id: malformed item for session_id={session_id}: {exc}")
+            return None
 
     def get_active_session(self, user_id: str) -> Optional[Session]:
         response = self._table.query(
@@ -72,7 +77,12 @@ class DynamoSessionRepo(SessionRepository):
         )
 
         for item in response.get("Items", []):
-            session = self._to_entity(item)
+            try:
+                session = self._to_entity(item)
+            except Exception as exc:
+                print(f"[DynamoSessionRepo] get_active_session: skipping malformed item: {exc}")
+                continue
+
             if session.status != "COMPLETED":
                 return session
 
@@ -85,7 +95,16 @@ class DynamoSessionRepo(SessionRepository):
             ScanIndexForward=False,
             Limit=limit,
         )
-        return [self._to_entity(item) for item in response.get("Items", [])]
+        sessions: list[Session] = []
+        for item in response.get("Items", []):
+            try:
+                sessions.append(self._to_entity(item))
+            except Exception as exc:
+                # Log and skip malformed DB records instead of failing the whole request
+                print(f"[DynamoSessionRepo] list_by_user: skipping malformed item: {exc}")
+                continue
+
+        return sessions
 
     def _to_entity(self, item: dict) -> Session:
         return Session(

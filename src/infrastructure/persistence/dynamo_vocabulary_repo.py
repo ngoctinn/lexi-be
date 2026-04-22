@@ -29,12 +29,13 @@ class DynamoVocabularyRepo(VocabularyRepository):
 
     def save(self, vocabulary: Vocabulary) -> None:
         now = datetime.now(timezone.utc).isoformat()
+        normalized_word = (vocabulary.word or "").strip().lower()
         self._table.put_item(
             Item={
-                "PK": f"VOCAB#{vocabulary.word}",
+                "PK": f"VOCAB#{normalized_word}",
                 "SK": "META",
                 "EntityType": "VOCABULARY",
-                "word": vocabulary.word,
+                "word": normalized_word,
                 "word_type": vocabulary.word_type.value if hasattr(vocabulary.word_type, "value") else vocabulary.word_type,
                 "translation_vi": vocabulary.translation_vi,
                 "definition_vi": vocabulary.definition_vi,

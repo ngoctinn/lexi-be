@@ -34,6 +34,21 @@ Resources:
             Identity:
               Header: Authorization
 
+  SpeakingWebSocketApi:
+    Type: AWS::Serverless::WebSocketApi
+    Properties:
+      StageName: Prod
+      RouteSelectionExpression: "$request.body.action"
+      Auth:
+        AuthType: NONE
+      Routes:
+        $connect:
+          FunctionArn: !GetAtt SpeakingWebSocketFunction.Arn
+        $disconnect:
+          FunctionArn: !GetAtt SpeakingWebSocketFunction.Arn
+        $default:
+          FunctionArn: !GetAtt SpeakingWebSocketFunction.Arn
+
   # --- 4. CÁC DỊCH VỤ (LAMBDA FUNCTIONS) ---
 
   # [MÔ-ĐUN HỒ SƠ] - Quản lý thông tin người dùng
@@ -102,6 +117,38 @@ Resources:
                 - translate:TranslateText
               Resource: "*"
 
+  AnalyzeVocabularySentenceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.vocabulary.analyze_sentence_handler.handler
+      Runtime: python3.12
+      Events:
+        AnalyzeVocabularySentence:
+          Type: Api
+          Properties:
+            Path: /vocabulary/analyze
+            Method: POST
+            RestApiId: !Ref LexiApi
+            Auth:
+              Authorizer: NONE
+
+  ListScenariosFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.scenarios_handler.handler
+      Runtime: python3.12
+      Events:
+        ListScenarios:
+          Type: Api
+          Properties:
+            Path: /scenarios
+            Method: GET
+            RestApiId: !Ref LexiApi
+            Auth:
+              Authorizer: NONE
+
   SpeakingAudioBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -109,6 +156,35 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+
+  SpeakingWebSocketFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.websocket_handler.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          SPEAKING_AUDIO_BUCKET_NAME: !Ref SpeakingAudioBucket
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+        - S3CrudPolicy:
+            BucketName: !Ref SpeakingAudioBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - execute-api:ManageConnections
+              Resource:
+                # Use a wildcard for the API identifier to avoid circular dependency
+                - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/POST/@connections/*
+            - Effect: Allow
+              Action:
+                - comprehend:DetectKeyPhrases
+                - comprehend:DetectSyntax
+                - polly:SynthesizeSpeech
+              Resource: "*"
 
   SpeakingSessionFunction:
     Type: AWS::Serverless::Function
@@ -172,6 +248,10 @@ Outputs:
   ApiUrl:
     Description: "URL của API Gateway"
     Value: !Sub "https://${LexiApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+
+  WebSocketUrl:
+    Description: "URL của WebSocket API"
+    Value: !Sub "wss://${SpeakingWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
 
   UserPoolId:
     Description: "ID của Cognito User Pool"

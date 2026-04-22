@@ -1,5 +1,6 @@
 from typing import Any, Dict
 
+from application.dtos.vocabulary.analyze.analyze_sentence_command import AnalyzeSentenceCommand
 from application.dtos.vocabulary.translate.translate_vocabulary_command import TranslateVocabularyCommand
 
 
@@ -9,3 +10,7 @@ class VocabularyMapper:
     @staticmethod
     def to_translate_command(body: Dict[str, Any]) -> TranslateVocabularyCommand:
         return TranslateVocabularyCommand(word=body.get("word", ""))
+
+    @staticmethod
+    def to_analyze_sentence_command(body: Dict[str, Any]) -> AnalyzeSentenceCommand:
+        return AnalyzeSentenceCommand(text=body.get("text", ""))

@@ -8,6 +8,7 @@ from application.exceptions.vocabulary_errors import (
     VocabularyNotFoundError,
     VocabularyPersistenceError,
 )
+from application.use_cases.vocabulary.analyze_sentence import AnalyzeSentenceUC
 from application.use_cases.vocabulary.translate_vocabulary import TranslateVocabularyUC
 from interfaces.mapper.vocabulary_mapper import VocabularyMapper
 
@@ -19,8 +20,13 @@ class VocabularyController:
     Tầng này chỉ lo parse request, gọi use case và map HTTP response.
     """
 
-    def __init__(self, translate_use_case: TranslateVocabularyUC):
+    def __init__(
+        self,
+        translate_use_case: TranslateVocabularyUC | None = None,
+        analyze_use_case: AnalyzeSentenceUC | None = None,
+    ):
         self._translate_use_case = translate_use_case
+        self._analyze_use_case = analyze_use_case
 
     def _response(self, status: int, body: Dict[str, Any]) -> Dict[str, Any]:
         return {
@@ -33,6 +39,9 @@ class VocabularyController:
         }
 
     def translate(self, body_str: str | None) -> Dict[str, Any]:
+        if not self._translate_use_case:
+            return self._response(500, {"error": "Translate use case chưa được cấu hình."})
+
         try:
             body = json.loads(body_str or "{}")
         except json.JSONDecodeError:
@@ -51,6 +60,29 @@ class VocabularyController:
                 if isinstance(error, VocabularyPersistenceError):
                     return self._response(500, {"error": str(error)})
                 return self._response(422, {"error": str(error)})
+
+            return self._response(200, result.value.model_dump())
+
+        except ValidationError as exc:
+            return self._response(400, {"error": "Dữ liệu yêu cầu không hợp lệ.", "details": exc.errors()})
+        except Exception as exc:
+            return self._response(500, {"error": f"Lỗi hệ thống: {str(exc)}"})
+
+    def analyze(self, body_str: str | None) -> Dict[str, Any]:
+        if not self._analyze_use_case:
+            return self._response(500, {"error": "Analyze use case chưa được cấu hình."})
+
+        try:
+            body = json.loads(body_str or "{}")
+        except json.JSONDecodeError:
+            return self._response(400, {"error": "Định dạng JSON không hợp lệ."})
+
+        try:
+            command = VocabularyMapper.to_analyze_sentence_command(body)
+            result = self._analyze_use_case.execute(command)
+
+            if not result.is_success:
+                return self._response(422, {"error": str(result.error)})
 
             return self._response(200, result.value.model_dump())
 

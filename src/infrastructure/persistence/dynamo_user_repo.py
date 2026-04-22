@@ -14,10 +14,10 @@ class DynamoDBUserRepo(UserProfileRepository):
     def create(self, profile: UserProfile) -> bool:
         """
         Tạo mới bộ hồ sơ người dùng trong DynamoDB.
-        
+
         Args:
             profile: Thực thể UserProfile cần lưu.
-            
+
         Returns:
             bool: True nếu tạo mới thành công, False nếu hồ sơ đã tồn tại.
         """
@@ -65,10 +65,10 @@ class DynamoDBUserRepo(UserProfileRepository):
         item = response.get("Item")
         if not item:
             return None
-            
+
         # Map từ DB sang Entity (Lưu ý: Bạn cần import các Enum tương ứng)
         from domain.value_objects.enums import ProficiencyLevel, Role
-        
+
         return UserProfile(
             user_id=item.get("user_id", user_id),
             email=item.get("email", ""),
@@ -95,8 +95,9 @@ class DynamoDBUserRepo(UserProfileRepository):
             ExpressionAttributeValues={
                 ":dn": profile.display_name,
                 ":au": profile.avatar_url,
-                ":cl": profile.current_level.value,
-                ":lg": profile.learning_goal.value,
+                # Support both Enum and plain-string values for level/goal
+                ":cl": profile.current_level.value if hasattr(profile.current_level, "value") else profile.current_level,
+                ":lg": profile.learning_goal.value if hasattr(profile.learning_goal, "value") else profile.learning_goal,
                 ":inu": profile.is_new_user,
                 ":cs": profile.current_streak,
                 ":lc": profile.last_completed_at,
