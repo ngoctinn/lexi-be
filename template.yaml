@@ -261,22 +261,6 @@ Resources:
                 - translate:TranslateText
               Resource: "*"
 
-  AnalyzeVocabularySentenceFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src/
-      Handler: infrastructure.handlers.vocabulary.analyze_sentence_handler.handler
-      Runtime: python3.12
-      Events:
-        AnalyzeVocabularySentence:
-          Type: Api
-          Properties:
-            Path: /vocabulary/analyze
-            Method: POST
-            RestApiId: !Ref LexiApi
-            Auth:
-              Authorizer: NONE
-
   CreateFlashcardFunction:
     Type: AWS::Serverless::Function
     Properties:

@@ -121,4 +121,4 @@ Outputs:
     Description: "Tên của bảng LexiApp"
     Value: !Ref LexiAppTable
     Export:
-      Name: !Sub "${AWS::StackName}-LexiAppTableName"
+      Name: !Sub "${AWS::StackName}-LexiAppTableName"scenarios_handler
