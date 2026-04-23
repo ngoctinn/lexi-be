@@ -52,7 +52,19 @@ def _parse_json_body(body: Any) -> dict[str, Any]:
         return {}
 
 
-def _extract_bearer_token(headers: dict[str, Any]) -> str:
+def _extract_bearer_token(headers: dict[str, Any], query_params: dict[str, Any] | None = None) -> str:
+    """Extract bearer token from headers or query parameters.
+    
+    For WebSocket connections, token is passed as query parameter.
+    For HTTP requests, token is passed in Authorization header.
+    """
+    # Try query parameters first (WebSocket connections)
+    if query_params:
+        token = query_params.get("token") or ""
+        if isinstance(token, str) and token.strip():
+            return token.strip()
+    
+    # Fall back to Authorization header (HTTP requests)
     if not headers:
         return ""
 
@@ -72,33 +84,53 @@ def _verify_cognito_jwt(token: str) -> dict[str, Any]:
     region = os.environ.get("AWS_REGION", "")
     user_pool_id = os.environ.get("COGNITO_USER_POOL_ID", "")
     app_client_id = os.environ.get("COGNITO_APP_CLIENT_ID", "")
+    
+    print(f"[ws] Token verification: region={region}, user_pool_id={user_pool_id}, app_client_id={app_client_id}")
+    
     if not region or not user_pool_id:
         raise ValueError("Thiếu cấu hình Cognito để xác thực token.")
 
     issuer = f"https://cognito-idp.{region}.amazonaws.com/{user_pool_id}"
-    jwks_client = PyJWKClient(f"{issuer}/.well-known/jwks.json")
-
+    print(f"[ws] Issuer: {issuer}")
+    
     try:
+        jwks_client = PyJWKClient(f"{issuer}/.well-known/jwks.json")
         signing_key = jwks_client.get_signing_key_from_jwt(token)
+        
+        # Decode without audience validation first to check token_use
         claims = decode(
             token,
             signing_key.key,
             algorithms=["RS256"],
             issuer=issuer,
-            options={"require": ["exp", "iss", "token_use", "sub"]},
+            options={"require": ["exp", "iss", "token_use", "sub"], "verify_aud": False},
         )
+        print(f"[ws] Token decoded: token_use={claims.get('token_use')}, aud={claims.get('aud')}, sub={claims.get('sub')}")
     except InvalidTokenError as exc:
+        print(f"[ws] JWT decode error: {exc}")
+        raise ValueError("Token không hợp lệ.") from exc
+    except Exception as exc:
+        print(f"[ws] Unexpected error during token verification: {exc}")
         raise ValueError("Token không hợp lệ.") from exc
 
     token_use = claims.get("token_use")
     if token_use not in {"access", "id"}:
+        print(f"[ws] Invalid token_use: {token_use}")
         raise ValueError("token_use không hợp lệ.")
 
+    # For ID tokens, verify aud matches app_client_id
+    # For access tokens, verify client_id matches app_client_id
     if app_client_id:
-        if token_use == "access" and claims.get("client_id") != app_client_id:
-            raise ValueError("client_id không hợp lệ.")
-        if token_use == "id" and claims.get("aud") != app_client_id:
-            raise ValueError("aud không hợp lệ.")
+        if token_use == "id":
+            aud = claims.get("aud")
+            if aud != app_client_id:
+                print(f"[ws] ID token aud mismatch: {aud} != {app_client_id}")
+                raise ValueError("aud không hợp lệ.")
+        elif token_use == "access":
+            client_id = claims.get("client_id")
+            if client_id != app_client_id:
+                print(f"[ws] Access token client_id mismatch: {client_id} != {app_client_id}")
+                raise ValueError("client_id không hợp lệ.")
 
     return claims
 
@@ -134,16 +166,20 @@ class WebSocketSessionController:
         try:
             claims = self.verify_token(token)
         except ValueError as exc:
+            print(f"[ws] Token verification failed: {exc} (token_length={len(token) if token else 0})")
             return _response(401, {"message": str(exc)})
 
         user_id = str(claims.get("sub") or "")
         if not user_id:
+            print(f"[ws] Token missing 'sub' claim")
             return _response(401, {"message": "Token không hợp lệ."})
         if session.user_id != user_id:
+            print(f"[ws] Session user_id mismatch: session.user_id={session.user_id} token.sub={user_id}")
             return _response(403, {"message": "Session không thuộc về người dùng này."})
 
         session.connection_id = connection_id
         self.session_repo.save(session)
+        print(f"[ws] Connected: session_id={session_id} user_id={user_id} connection_id={connection_id}")
         return _response(200, {"message": "Connected"})
 
     def disconnect(self, session_id: str | None, connection_id: str) -> dict[str, Any]:
@@ -363,17 +399,45 @@ class WebSocketSessionController:
 
 def _build_upload_payload(session_id: str) -> tuple[str, str]:
     bucket_name = os.environ.get("SPEAKING_AUDIO_BUCKET_NAME")
+    region = os.environ.get("AWS_REGION", "ap-southeast-1")
+    
     if not bucket_name:
         raise RuntimeError("Thiếu SPEAKING_AUDIO_BUCKET_NAME.")
 
     upload_key = f"speaking/audio/{session_id}/{new_ulid()}.webm"
-    client = boto3.client("s3")
-    upload_url = client.generate_presigned_url(
-        ClientMethod="put_object",
-        Params={"Bucket": bucket_name, "Key": upload_key},
-        ExpiresIn=900,
-    )
-    return upload_url, upload_key
+    
+    try:
+        # Create S3 client with explicit configuration for presigned URLs
+        # Use signature version 4 and virtual-hosted style addressing (AWS best practices)
+        from botocore.config import Config
+        
+        config = Config(
+            signature_version='s3v4',
+            s3={'addressing_style': 'virtual'},
+            region_name=region
+        )
+        
+        client = boto3.client("s3", config=config)
+        
+        # Generate presigned URL WITHOUT ContentType parameter
+        # This allows the client to send any Content-Type header without signature mismatch
+        # The Content-Type will be determined by what the client sends
+        upload_url = client.generate_presigned_url(
+            ClientMethod="put_object",
+            Params={
+                "Bucket": bucket_name,
+                "Key": upload_key,
+                # DO NOT include ContentType here - it causes signature mismatch
+                # if the client's Content-Type header doesn't match exactly
+            },
+            ExpiresIn=900,
+            HttpMethod="PUT",
+        )
+        print(f"[s3] Presigned URL generated: key={upload_key}, bucket={bucket_name}, region={region}, signature=s3v4, url_length={len(upload_url)}")
+        return upload_url, upload_key
+    except Exception as exc:
+        print(f"[s3] Error generating presigned URL: {exc}")
+        raise
 
 
 @lru_cache(maxsize=1)
@@ -426,11 +490,11 @@ def handler(event, context):
     connection_id = (event.get("requestContext") or {}).get("connectionId", "")
     body = _parse_json_body(event.get("body"))
     headers = event.get("headers") or {}
+    query_params = event.get("queryStringParameters") or {}
 
     # Extract params from queryStringParameters or body
-    query_params = event.get("queryStringParameters") or {}
     session_id = body.get("session_id") or query_params.get("session_id")
-    token = _extract_bearer_token(headers)
+    token = _extract_bearer_token(headers, query_params)
 
     action = route_key if route_key not in {"$default"} else str(body.get("action") or "")
 

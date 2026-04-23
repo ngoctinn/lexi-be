@@ -7,4 +7,8 @@ boto3>=1.26.0
 aws-lambda-powertools>=2.43.1
 email-validator>=1.1.3
 PyJWT[crypto]>=2.8.0
+# Amazon Transcribe Streaming SDK for real-time transcription
+# Note: Boto3 does NOT support Transcribe Streaming, must use this async SDK
+# Docs: https://github.com/awslabs/amazon-transcribe-streaming-sdk
+amazon-transcribe>=0.6.2
 
