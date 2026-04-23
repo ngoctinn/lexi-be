@@ -1,6 +1,7 @@
 import json
 
 from infrastructure.persistence.dynamo_scenario_repo import DynamoScenarioRepository
+from shared.http_utils import dumps
 
 
 def _response(status_code: int, body: dict):
@@ -10,7 +11,7 @@ def _response(status_code: int, body: dict):
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
         },
-        "body": json.dumps(body),
+        "body": dumps(body),
     }
 
 

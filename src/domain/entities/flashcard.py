@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-import ulid
 
 @dataclass
 class FlashCard:
@@ -71,7 +70,8 @@ class FlashCard:
             raise ValueError(f"Rating không hợp lệ '{rating}'. Phải là một trong: {VALID_RATINGS}")
 
         now = datetime.now(timezone.utc)
-        old_interval = self.interval_days
+        # Cast sang int để tránh lỗi Decimal * float khi đọc từ DynamoDB
+        old_interval = int(self.interval_days)
 
         if rating == "forgot":
             new_interval = 1

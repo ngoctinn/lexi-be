@@ -1,4 +1,5 @@
 import json
+from shared.http_utils import dumps
 import base64
 import logging
 
@@ -29,13 +30,13 @@ def handler(event, context):
             return {
                 "statusCode": 401,
                 "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-                "body": json.dumps({"error": "Unauthorized"}),
+                "body": dumps({"error": "Unauthorized"}),
             }
     except Exception:
         return {
             "statusCode": 401,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({"error": "Unauthorized"}),
+            "body": dumps({"error": "Unauthorized"}),
         }
 
     # Parse query parameters
@@ -59,7 +60,7 @@ def handler(event, context):
             return {
                 "statusCode": 400,
                 "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-                "body": json.dumps({"error": "Invalid last_key format"}),
+                "body": dumps({"error": "Invalid last_key format"}),
             }
 
     logger.info(f"Listing flashcards for user_id: {user_id}, limit: {limit}")
@@ -95,7 +96,7 @@ def handler(event, context):
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({
+            "body": dumps({
                 "cards": cards_data,
                 "next_key": next_key_encoded,
             }),
@@ -106,5 +107,5 @@ def handler(event, context):
         return {
             "statusCode": 500,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({"error": "Internal server error"}),
+            "body": dumps({"error": "Internal server error"}),
         }

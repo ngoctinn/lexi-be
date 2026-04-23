@@ -3,6 +3,7 @@ import json
 from application.dtos.onboarding.complete_onboarding_command import CompleteOnboardingCommand
 from application.use_cases.onboarding.complete_onboarding_uc import CompleteOnboardingUseCase
 from infrastructure.persistence.dynamo_user_repo import DynamoDBUserRepo
+from shared.http_utils import dumps
 
 # DI - khởi tạo một lần khi Lambda cold start
 _user_repo = DynamoDBUserRepo()
@@ -16,7 +17,7 @@ def _response(status: int, body: dict) -> dict:
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
         },
-        "body": json.dumps(body),
+        "body": dumps(body),
     }
 
 

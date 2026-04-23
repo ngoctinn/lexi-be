@@ -39,8 +39,6 @@ Resources:
     Properties:
       StageName: Prod
       RouteSelectionExpression: "$request.body.action"
-      Auth:
-        AuthType: NONE
       Routes:
         $connect:
           FunctionArn: !GetAtt SpeakingWebSocketFunction.Arn
@@ -367,6 +365,12 @@ Resources:
       CodeUri: src/
       Handler: infrastructure.handlers.scenarios_handler.handler
       Runtime: python3.12
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
       Events:
         ListScenarios:
           Type: Api
@@ -391,6 +395,7 @@ Resources:
       CodeUri: src/
       Handler: infrastructure.handlers.websocket_handler.handler
       Runtime: python3.12
+      Timeout: 29
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -413,7 +418,12 @@ Resources:
               Action:
                 - comprehend:DetectKeyPhrases
                 - comprehend:DetectSyntax
+                - comprehend:DetectDominantLanguage
                 - polly:SynthesizeSpeech
+                - bedrock:InvokeModel
+                - transcribe:StartTranscriptionJob
+                - transcribe:GetTranscriptionJob
+                - transcribe:DeleteTranscriptionJob
               Resource: "*"
 
   SpeakingSessionFunction:
@@ -422,6 +432,7 @@ Resources:
       CodeUri: src/
       Handler: infrastructure.handlers.session_handler.handler
       Runtime: python3.12
+      Timeout: 29
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -468,6 +479,7 @@ Resources:
                 - comprehend:DetectKeyPhrases
                 - comprehend:DetectSyntax
                 - polly:SynthesizeSpeech
+                - bedrock:InvokeModel
               Resource: "*"
 
 Outputs:

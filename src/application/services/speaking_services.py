@@ -13,6 +13,7 @@ class SpeakingAnalysis:
     unique_word_count: int = 0
     sentence_count: int = 0
     syntax_notes: List[str] = field(default_factory=list)
+    dominant_language: str = "en"  # ISO 639-1 code, dùng để detect tiếng Việt
 
 
 class TranscriptAnalysisService(ABC):

@@ -11,6 +11,7 @@ from application.exceptions.vocabulary_errors import (
 from application.use_cases.vocabulary.translate_sentence import TranslateSentenceUC
 from application.use_cases.vocabulary.translate_vocabulary import TranslateVocabularyUC
 from interfaces.mapper.vocabulary_mapper import VocabularyMapper
+from shared.http_utils import dumps
 
 
 class VocabularyController:
@@ -29,7 +30,7 @@ class VocabularyController:
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
             },
-            "body": json.dumps(body, ensure_ascii=False),
+            "body": dumps(body, ensure_ascii=False),
         }
 
     def translate(self, body_str: str | None) -> Dict[str, Any]:

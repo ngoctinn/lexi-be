@@ -1,4 +1,4 @@
-import ulid
+from ulid import ULID
 from application.dtos.flashcard.create.create_flashcard_command import CreateFlashCardCommand
 from application.dtos.flashcard.create.create_flashcard_response import CreateFlashCardResponse
 from application.repositories.flash_card_repository import FlashCardRepository
@@ -30,7 +30,7 @@ class CreateFlashCardUC:
         # 2. Tạo thực thể Domain mới
         try:
             flashcard = FlashCard(
-                flashcard_id=str(ulid.new()),
+                flashcard_id=str(ULID()),
                 user_id=command.user_id,
                 word=command.vocab,
                 translation_vi=command.translation_vi or "",

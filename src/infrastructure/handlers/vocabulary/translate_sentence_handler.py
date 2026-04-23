@@ -1,8 +1,8 @@
 from application.use_cases.vocabulary.translate_sentence import TranslateSentenceUC
+from infrastructure.services.aws_translate_service import AwsTranslateService
 from interfaces.controllers.vocabulary_controller import VocabularyController
 
-
-translate_sentence_uc = TranslateSentenceUC()
+translate_sentence_uc = TranslateSentenceUC(AwsTranslateService())
 vocabulary_controller = VocabularyController(translate_sentence_use_case=translate_sentence_uc)
 
 

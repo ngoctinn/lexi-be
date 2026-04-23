@@ -3,6 +3,7 @@ import json
 from typing import Optional, Tuple
 
 from infrastructure.persistence.dynamo_user_repo import DynamoDBUserRepo
+from shared.http_utils import dumps
 
 
 def _response(status: int, body: dict) -> dict:
@@ -12,7 +13,7 @@ def _response(status: int, body: dict) -> dict:
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
         },
-        "body": json.dumps(body),
+        "body": dumps(body),
     }
 
 

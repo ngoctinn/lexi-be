@@ -1,4 +1,23 @@
 import json
+from decimal import Decimal
+
+
+class DecimalEncoder(json.JSONEncoder):
+    """
+    Custom JSON encoder xử lý kiểu Decimal từ DynamoDB resource interface.
+    Theo boto3 docs: DynamoDB trả về số dưới dạng decimal.Decimal,
+    cần convert sang int hoặc float trước khi json.dumps.
+    """
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            # Giữ nguyên int nếu không có phần thập phân
+            return int(obj) if obj % 1 == 0 else float(obj)
+        return super().default(obj)
+
+
+def dumps(data, ensure_ascii: bool = True) -> str:
+    """json.dumps với DecimalEncoder — dùng thay thế json.dumps trong toàn bộ handlers."""
+    return json.dumps(data, cls=DecimalEncoder, ensure_ascii=ensure_ascii)
 
 
 def parse_body(event: dict) -> dict:

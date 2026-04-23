@@ -22,10 +22,12 @@ from domain.entities.session import Session
 from infrastructure.persistence.dynamo_scoring_repo import DynamoScoringRepo
 from infrastructure.persistence.dynamo_session_repo import DynamoSessionRepo
 from infrastructure.persistence.dynamo_turn_repo import DynamoTurnRepo
+from infrastructure.services.bedrock_scoring_service import BedrockScoringService
 from infrastructure.services.speaking_pipeline_services import (
+    BedrockConversationGenerationService,
     ComprehendTranscriptAnalysisService,
     PollySpeechSynthesisService,
-    RuleBasedConversationGenerationService,
+    TranscribeSTTService,
 )
 from shared.utils.ulid_util import new_ulid
 
@@ -113,6 +115,8 @@ def _session_gateway_endpoint(event: dict[str, Any]) -> str:
 @dataclass
 class WebSocketSessionController:
     session_repo: DynamoSessionRepo
+    turn_repo: DynamoTurnRepo
+    stt_service: TranscribeSTTService
     submit_turn_use_case: SubmitSpeakingTurnUseCase
     complete_use_case: CompleteSpeakingSessionUseCase
     build_upload_payload: Callable[[str], tuple[str, str]]
@@ -176,13 +180,49 @@ class WebSocketSessionController:
             return _response(404, {"message": "Session không tồn tại."})
 
         self._sync_connection(session, connection_id)
-        self.send_message(
-            {
-                "event": "STT_LOW_CONFIDENCE",
-                "confidence": 0.0,
-            }
+
+        s3_key = body.get("s3_key", "")
+        bucket = os.environ.get("SPEAKING_AUDIO_BUCKET_NAME", "")
+
+        if not s3_key or not bucket:
+            self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": 0.0})
+            return _response(400, {"message": "Thiếu s3_key hoặc bucket."})
+
+        # Gọi Transcribe để chuyển audio → text
+        text, confidence = self.stt_service.transcribe(bucket, s3_key)
+
+        if not text or confidence < 0.5:
+            self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": confidence})
+            return _response(200, {"message": "STT low confidence"})
+
+        # Gửi kết quả STT về client
+        self.send_message({"event": "STT_RESULT", "text": text, "confidence": confidence})
+
+        # Tiếp tục pipeline với text đã transcribe
+        result = self.submit_turn_use_case.execute(
+            SubmitSpeakingTurnCommand(
+                user_id=session.user_id,
+                session_id=session_id,
+                text=text,
+                is_hint_used=False,
+                audio_url=f"s3://{bucket}/{s3_key}",
+            )
         )
-        return _response(200, {"message": "Audio uploaded"})
+        if not result.is_success or result.value is None:
+            self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
+            return _response(422, {"message": result.error or "Lỗi xử lý lượt nói."})
+
+        response = result.value
+        self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
+        self.send_message({"event": "AI_TEXT_CHUNK", "chunk": response.ai_turn.content, "done": True})
+        if response.ai_turn.audio_url:
+            self.send_message({
+                "event": "AI_AUDIO_URL",
+                "url": response.ai_turn.audio_url,
+                "text": response.ai_turn.content,
+            })
+
+        return _response(200, {"message": "Audio processed"})
 
     def use_hint(self, session_id: str, connection_id: str) -> dict[str, Any]:
         session = self._get_session(session_id)
@@ -190,9 +230,45 @@ class WebSocketSessionController:
             return _response(404, {"message": "Session không tồn tại."})
 
         self._sync_connection(session, connection_id)
-        hint = self._build_hint(session)
+        turns = self.turn_repo.list_by_session(session_id)
+        hint = self._generate_contextual_hint(session, turns)
         self.send_message({"event": "HINT_TEXT", "hint": hint})
         return _response(200, {"message": "Hint sent"})
+
+    def _generate_contextual_hint(self, session: Session, turns: list) -> str:
+        """Tạo hint có ngữ cảnh dùng Bedrock LLM."""
+        from domain.value_objects.enums import Speaker as SpeakerEnum
+        last_ai = next(
+            (t for t in reversed(turns) if (t.speaker.value if hasattr(t.speaker, "value") else t.speaker) == SpeakerEnum.AI.value),
+            None,
+        )
+        goal = session.selected_goals[0] if session.selected_goals else "continue the conversation"
+        level = session.level.value if hasattr(session.level, "value") else str(session.level)
+
+        hint_prompt = (
+            f"The learner is stuck in an English conversation. "
+            f"Last AI message: '{last_ai.content if last_ai else 'Start of conversation'}'. "
+            f"Current goal: {goal}. Learner level: {level}. "
+            f"Give a 1-sentence hint starting with 'You could say:' using simple English appropriate for {level}."
+        )
+
+        try:
+            import boto3, json
+            bedrock = boto3.client("bedrock-runtime")
+            body = json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 60,
+                "messages": [{"role": "user", "content": hint_prompt}],
+                "temperature": 0.5,
+            })
+            response = bedrock.invoke_model(
+                modelId="anthropic.claude-3-haiku-20240307-v1:0",
+                body=body,
+            )
+            result = json.loads(response["body"].read())
+            return result["content"][0]["text"].strip()
+        except Exception:
+            return f"You could say something about: {goal}"
 
     def send_message_turn(self, session_id: str, connection_id: str, body: dict[str, Any]) -> dict[str, Any]:
         session = self._get_session(session_id)
@@ -279,6 +355,7 @@ class WebSocketSessionController:
             self.session_repo.save(session)
 
     def _build_hint(self, session: Session) -> str:
+        # Kept for backward compatibility — use_hint now calls _generate_contextual_hint
         if session.selected_goals:
             return f"Hãy thử nói ngắn gọn về: {session.selected_goals[0]}"
         return "Hãy trả lời bằng một câu ngắn, rõ ý."
@@ -308,13 +385,15 @@ def get_websocket_controller() -> WebSocketSessionController:
         session_repo,
         turn_repo,
         ComprehendTranscriptAnalysisService(),
-        RuleBasedConversationGenerationService(),
+        BedrockConversationGenerationService(),
         PollySpeechSynthesisService(),
     )
-    complete_use_case = CompleteSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo)
+    complete_use_case = CompleteSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo, BedrockScoringService())
 
     return WebSocketSessionController(
         session_repo=session_repo,
+        turn_repo=turn_repo,
+        stt_service=TranscribeSTTService(),
         submit_turn_use_case=submit_turn_use_case,
         complete_use_case=complete_use_case,
         build_upload_payload=_build_upload_payload,

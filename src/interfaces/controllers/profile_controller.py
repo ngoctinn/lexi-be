@@ -5,6 +5,7 @@ from pydantic import ValidationError
 from interfaces.mapper.profile_mapper import ProfileMapper
 from application.use_cases.profile.get_profile import GetProfileUseCase
 from application.use_cases.profile.update_profile import UpdateProfileUseCase
+from shared.http_utils import dumps
 
 class ProfileController:
     """
@@ -28,7 +29,7 @@ class ProfileController:
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*"
             }, 
-            "body": json.dumps(body)
+            "body": dumps(body)
         }
 
     def get_profile(self, user_id: str) -> Dict[str, Any]:

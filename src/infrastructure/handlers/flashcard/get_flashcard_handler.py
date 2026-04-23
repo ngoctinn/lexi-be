@@ -1,4 +1,5 @@
 import json
+from shared.http_utils import dumps
 import logging
 
 from application.repositories.flash_card_repository import FlashCardRepository
@@ -28,13 +29,13 @@ def handler(event, context):
             return {
                 "statusCode": 401,
                 "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-                "body": json.dumps({"error": "Unauthorized"}),
+                "body": dumps({"error": "Unauthorized"}),
             }
     except Exception:
         return {
             "statusCode": 401,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({"error": "Unauthorized"}),
+            "body": dumps({"error": "Unauthorized"}),
         }
 
     # Lấy flashcard_id từ path parameters
@@ -44,13 +45,13 @@ def handler(event, context):
             return {
                 "statusCode": 400,
                 "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-                "body": json.dumps({"error": "Missing flashcard_id"}),
+                "body": dumps({"error": "Missing flashcard_id"}),
             }
     except Exception:
         return {
             "statusCode": 400,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({"error": "Invalid path parameters"}),
+            "body": dumps({"error": "Invalid path parameters"}),
         }
 
     logger.info(f"Getting flashcard detail - flashcard_id: {flashcard_id}, user_id: {user_id}")
@@ -63,7 +64,7 @@ def handler(event, context):
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({
+            "body": dumps({
                 "flashcard_id": card.flashcard_id,
                 "word": card.word,
                 "translation_vi": card.translation_vi,
@@ -86,7 +87,7 @@ def handler(event, context):
         return {
             "statusCode": 403,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({"error": "Forbidden"}),
+            "body": dumps({"error": "Forbidden"}),
         }
     
     except KeyError:
@@ -94,7 +95,7 @@ def handler(event, context):
         return {
             "statusCode": 404,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({"error": "Flashcard not found"}),
+            "body": dumps({"error": "Flashcard not found"}),
         }
     
     except Exception as e:
@@ -102,5 +103,5 @@ def handler(event, context):
         return {
             "statusCode": 500,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({"error": "Internal server error"}),
+            "body": dumps({"error": "Internal server error"}),
         }

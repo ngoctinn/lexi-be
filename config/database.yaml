@@ -92,6 +92,8 @@ Resources:
             ProjectionType: ALL
 
         # GSI3: Hỗ trợ Admin liệt kê danh sách thực thể
+        # Dùng ProjectionType: ALL vì Admin listing không critical performance
+        # Best practice: ALL cho admin/reporting queries, INCLUDE cho user-facing queries
         - IndexName: GSI3-Admin-EntityList
           KeySchema:
             - AttributeName: EntityType
@@ -99,16 +101,7 @@ Resources:
             - AttributeName: created_at
               KeyType: RANGE
           Projection:
-            ProjectionType: INCLUDE
-            NonKeyAttributes:
-              - email
-              - display_name
-              - role
-              - is_active
-              - is_new_user
-              - title
-              - recommended_level
-              - usage_count
+            ProjectionType: ALL
 
 Outputs:
   LexiAppTableArn:
@@ -121,4 +114,4 @@ Outputs:
     Description: "Tên của bảng LexiApp"
     Value: !Ref LexiAppTable
     Export:
-      Name: !Sub "${AWS::StackName}-LexiAppTableName"scenarios_handler
+      Name: !Sub "${AWS::StackName}-LexiAppTableName"

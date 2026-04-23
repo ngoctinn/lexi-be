@@ -1,12 +1,8 @@
 from application.use_cases.vocabulary.translate_vocabulary import TranslateVocabularyUC
-from infrastructure.persistence.dynamo_vocabulary_repo import DynamoVocabularyRepo
-from infrastructure.services.dictionary_translate_vocabulary_service import DictionaryTranslateVocabularyService
+from infrastructure.services.aws_translate_service import AwsTranslateService
 from interfaces.controllers.vocabulary_controller import VocabularyController
 
-
-vocabulary_repo = DynamoVocabularyRepo()
-vocabulary_source_service = DictionaryTranslateVocabularyService()
-translate_vocabulary_uc = TranslateVocabularyUC(vocabulary_repo, vocabulary_source_service)
+translate_vocabulary_uc = TranslateVocabularyUC(AwsTranslateService())
 vocabulary_controller = VocabularyController(translate_vocabulary_uc)
 
 

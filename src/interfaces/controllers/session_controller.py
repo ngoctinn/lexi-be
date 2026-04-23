@@ -18,6 +18,7 @@ from application.use_cases.speaking_session_use_cases import (
     SubmitSpeakingTurnUseCase,
 )
 from interfaces.mapper.session_mapper import SessionMapper
+from shared.http_utils import dumps
 
 
 class SessionController:
@@ -42,7 +43,7 @@ class SessionController:
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
             },
-            "body": json.dumps(body),
+            "body": dumps(body),
         }
 
     def create_session(self, user_id: str, body_str: str | None) -> Dict[str, Any]:

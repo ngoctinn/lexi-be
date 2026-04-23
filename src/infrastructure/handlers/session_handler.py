@@ -12,10 +12,11 @@ from infrastructure.persistence.dynamo_scenario_repo import DynamoScenarioReposi
 from infrastructure.persistence.dynamo_session_repo import DynamoSessionRepo
 from infrastructure.persistence.dynamo_turn_repo import DynamoTurnRepo
 from infrastructure.services.speaking_pipeline_services import (
+    BedrockConversationGenerationService,
     ComprehendTranscriptAnalysisService,
     PollySpeechSynthesisService,
-    RuleBasedConversationGenerationService,
 )
+from infrastructure.services.bedrock_scoring_service import BedrockScoringService
 from interfaces.controllers.session_controller import SessionController
 
 
@@ -33,7 +34,7 @@ def build_session_controller(
     scoring_repo = scoring_repo or DynamoScoringRepo()
     scenario_repo = scenario_repo or DynamoScenarioRepository()
     transcript_analysis_service = transcript_analysis_service or ComprehendTranscriptAnalysisService()
-    conversation_generation_service = conversation_generation_service or RuleBasedConversationGenerationService()
+    conversation_generation_service = conversation_generation_service or BedrockConversationGenerationService()
     speech_synthesis_service = speech_synthesis_service or PollySpeechSynthesisService()
 
     create_use_case = CreateSpeakingSessionUseCase(session_repo, scenario_repo)
@@ -46,7 +47,7 @@ def build_session_controller(
         conversation_generation_service,
         speech_synthesis_service,
     )
-    complete_use_case = CompleteSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo)
+    complete_use_case = CompleteSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo, BedrockScoringService())
 
     return SessionController(
         create_use_case=create_use_case,

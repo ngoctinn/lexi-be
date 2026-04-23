@@ -12,59 +12,39 @@ class CreateFlashCardCommand(BaseDTO):
 
     # Required fields
     vocab_type: str = Field(...)
-    
+
     # Translation fields
-    translation_vi: Optional[str] = Field(default="")  # Bản dịch ngắn gọn
-    definition_vi: str = Field(...)                     # Định nghĩa chi tiết
+    translation_vi: Optional[str] = Field(default="")
+    definition_vi: str = Field(...)
 
     # Optional fields
     phonetic: Optional[str] = Field(default="")
     audio_url: Optional[str] = Field(default="")
     example_sentence: str = Field(default="", max_length=500)
     source_api: Optional[str] = Field(default="internal")
-    
+
     # Source tracking (từ session)
     source_session_id: Optional[str] = Field(default=None)
     source_turn_index: Optional[int] = Field(default=None)
 
-    @field_validator('vocab')
+    @field_validator("vocab")
     @classmethod
-    def validate_no_special_chars(cls, v: str):
-        if not re.match(r'^[a-zA-Z\s\-]+$', v):
-            raise ValueError('Vocabulary should only contain letters, spaces, or hyphens')
+    def validate_no_special_chars(cls, v: str) -> str:
+        if not re.match(r"^[a-zA-Z\s\-]+$", v):
+            raise ValueError("Vocabulary should only contain letters, spaces, or hyphens")
         return v.lower()
 
-    @field_validator('vocab_type')
+    @field_validator("vocab_type")
     @classmethod
     def validate_vocab_type(cls, v: str) -> str:
         if not isinstance(v, str):
-            raise ValueError('vocab_type must be a string')
+            raise ValueError("vocab_type must be a string")
         normalized = v.strip().lower()
         valid_types = {
-            'noun', 'verb', 'adjective', 'adverb', 'pronoun', 'preposition',
-            'conjunction', 'interjection', 'phrase', 'idiom',
-            'n', 'v', 'adj', 'adv', 'prep', 'conj', 'int', 'pron'
+            "noun", "verb", "adjective", "adverb", "pronoun", "preposition",
+            "conjunction", "interjection", "phrase", "idiom",
+            "n", "v", "adj", "adv", "prep", "conj", "int", "pron",
         }
         if normalized not in valid_types:
             raise ValueError(f"Invalid vocab_type. Must be one of {sorted(valid_types)}")
         return normalized
-$', v):
-            raise ValueError('Vocabulary should only contain letters, spaces, or hyphens')
-        return v.lower()
-
-    @field_validator('vocab_type')
-    @classmethod
-    def validate_vocab_type(cls, v: str) -> str:
-        if not isinstance(v, str):
-            raise ValueError('vocab_type must be a string')
-        normalized = v.strip().lower()
-        valid_types = {
-            'noun', 'verb', 'adjective', 'adverb', 'pronoun', 'preposition',
-            'conjunction', 'interjection', 'phrase', 'idiom',
-            'n', 'v', 'adj', 'adv', 'prep', 'conj', 'int', 'pron'
-        }
-        if normalized not in valid_types:
-            raise ValueError(f"Invalid vocab_type. Must be one of {sorted(valid_types)}")
-        return normalized
-
-

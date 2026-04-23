@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -18,6 +19,8 @@ from application.dtos.speaking_session_dtos import (
     SubmitSpeakingTurnResponse,
 )
 from application.repositories.scoring_repository import ScoringRepository
+
+logger = logging.getLogger(__name__)
 from application.repositories.scenario_repository import ScenarioRepository
 from application.repositories.session_repository import SessionRepository
 from application.repositories.turn_repository import TurnRepository
@@ -358,10 +361,12 @@ class CompleteSpeakingSessionUseCase:
         session_repo: SessionRepository,
         turn_repo: TurnRepository,
         scoring_repo: ScoringRepository,
+        llm_scoring_service: "LlmScoringService | None" = None,
     ):
         self._session_repo = session_repo
         self._turn_repo = turn_repo
         self._scoring_repo = scoring_repo
+        self._llm_scoring_service = llm_scoring_service
 
     def execute(
         self, request: CompleteSpeakingSessionCommand
@@ -395,6 +400,54 @@ class CompleteSpeakingSessionUseCase:
             return Result.failure(str(exc))
 
     def _build_scoring(self, session: Session, turns: List[Turn]) -> Scoring:
+        """LLM scoring nếu có service, fallback về heuristic."""
+        if self._llm_scoring_service is not None:
+            try:
+                return self._build_scoring_llm(session, turns)
+            except Exception:
+                logger.exception("LLM scoring failed, falling back to heuristic")
+
+        return self._build_scoring_heuristic(session, turns)
+
+    def _build_scoring_llm(self, session: Session, turns: List[Turn]) -> Scoring:
+        """Dùng LlmScoringService (port) — không phụ thuộc trực tiếp vào AWS."""
+        from application.services.llm_scoring_service import LlmScoringService
+
+        user_turns = [t for t in turns if _is_user_turn(t)]
+        learner_transcript = "\n".join(
+            f"Turn {t.turn_index}: {t.content}" for t in user_turns
+        )
+
+        scenario_title = "English conversation"
+        if "Scenario:" in session.prompt_snapshot:
+            try:
+                scenario_title = session.prompt_snapshot.split("Scenario:")[1].split("\n")[0].strip()
+            except Exception:
+                pass
+
+        level = _enum_value(session.level)
+        goals = ", ".join(session.selected_goals) if session.selected_goals else "general conversation"
+
+        result = self._llm_scoring_service.score_session(
+            scenario_title=scenario_title,
+            level=level,
+            goals=goals,
+            learner_transcript=learner_transcript,
+        )
+
+        return Scoring(
+            scoring_id=new_ulid(),
+            session_id=session.session_id,
+            user_id=session.user_id,
+            fluency_score=_clamp(result.fluency),
+            pronunciation_score=_clamp(result.fluency),
+            grammar_score=_clamp(result.grammar),
+            vocabulary_score=_clamp(result.vocabulary),
+            overall_score=_clamp(result.overall),
+            feedback=result.feedback,
+        )
+
+    def _build_scoring_heuristic(self, session: Session, turns: List[Turn]) -> Scoring:
         user_turns = [turn for turn in turns if _is_user_turn(turn)]
         user_text = " ".join(turn.content for turn in user_turns).strip()
         words = re.findall(r"[A-Za-z']+", user_text.lower())

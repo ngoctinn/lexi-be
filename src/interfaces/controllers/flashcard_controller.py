@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from application.exceptions.vocabulary_errors import VocabularyLookupError
 from application.use_cases.flashcard.create_flashcard_uc import CreateFlashCardUC
 from interfaces.mapper.flashcard_mapper import FlashCardMapper
+from shared.http_utils import dumps
 
 
 class FlashCardController:
@@ -22,7 +23,7 @@ class FlashCardController:
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
             },
-            "body": json.dumps(body),
+            "body": dumps(body),
         }
 
     def create(self, event: Dict[str, Any], user_id: str) -> Dict[str, Any]:
@@ -39,7 +40,7 @@ class FlashCardController:
 
         result = self.create_flashcard_usecase.execute(command)
 
-        if result.is_failure():
+        if not result.is_success:
             error_msg = str(result.error) if result.error else "Không thể tạo flashcard."
             return self._response(400, {"error": error_msg})
 

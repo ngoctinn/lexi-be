@@ -1,4 +1,5 @@
 import json
+from shared.http_utils import dumps
 import logging
 
 from application.repositories.flash_card_repository import FlashCardRepository
@@ -28,13 +29,13 @@ def handler(event, context):
             return {
                 "statusCode": 401,
                 "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-                "body": json.dumps({"error": "Unauthorized"}),
+                "body": dumps({"error": "Unauthorized"}),
             }
     except Exception:
         return {
             "statusCode": 401,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({"error": "Unauthorized"}),
+            "body": dumps({"error": "Unauthorized"}),
         }
 
     logger.info(f"Listing due cards for user_id: {user_id}")
@@ -64,7 +65,7 @@ def handler(event, context):
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({"cards": cards_data}),
+            "body": dumps({"cards": cards_data}),
         }
     
     except Exception as e:
@@ -72,5 +73,5 @@ def handler(event, context):
         return {
             "statusCode": 500,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": json.dumps({"error": "Internal server error"}),
+            "body": dumps({"error": "Internal server error"}),
         }
