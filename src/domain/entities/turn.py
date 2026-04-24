@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Optional
 from ulid import ULID
 
@@ -20,11 +21,11 @@ class Turn:
     is_hint_used: bool = False       # Lượt này có phải là kết quả của một gợi ý không
     
     # Phase 5: Performance Metrics
-    ttft_ms: Optional[float] = None              # Time to first token (milliseconds)
-    latency_ms: Optional[float] = None           # Total latency (milliseconds)
+    ttft_ms: Optional[Decimal] = None            # Time to first token (milliseconds)
+    latency_ms: Optional[Decimal] = None         # Total latency (milliseconds)
     input_tokens: int = 0                        # Input tokens used
     output_tokens: int = 0                       # Output tokens generated
-    cost_usd: float = 0.0                        # Cost for this turn
+    cost_usd: Decimal = Decimal("0.0")           # Cost for this turn
     delivery_cue: str = ""                       # Delivery cue used (e.g., "[warmly]")
 
     def __post_init__(self):

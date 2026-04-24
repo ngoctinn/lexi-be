@@ -4,6 +4,8 @@ import json
 from dataclasses import dataclass
 from typing import Optional
 
+from shared.http_utils import dumps
+
 
 @dataclass
 class DashboardWidget:
@@ -419,7 +421,7 @@ Monitor fallback rates to ensure model quality and cost efficiency.
         
         return {
             "DashboardName": title.replace(" ", "-").lower(),
-            "DashboardBody": json.dumps(dashboard_body)
+            "DashboardBody": dumps(dashboard_body)
         }
     
     @staticmethod

@@ -8,6 +8,8 @@ import json
 import logging
 from typing import List, Optional
 
+from shared.http_utils import dumps
+
 import boto3
 
 from domain.entities.turn import Turn
@@ -74,7 +76,7 @@ Respond in JSON format only:
         try:
             response = self.bedrock_client.invoke_model(
                 modelId="anthropic.claude-3-5-sonnet-20241022",
-                body=json.dumps(
+                body=dumps(
                     {
                         "anthropic_version": "bedrock-2023-05-31",
                         "max_tokens": 500,

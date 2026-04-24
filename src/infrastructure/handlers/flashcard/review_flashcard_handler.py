@@ -1,26 +1,40 @@
 import json
-from functools import lru_cache
 from shared.http_utils import dumps
 import logging
 
 from application.repositories.flash_card_repository import FlashCardRepository
-from application.use_cases.flashcard.review_flashcard_uc import ReviewFlashcardUC
+from application.use_cases.flashcard_use_cases import ReviewFlashcardUseCase
 from infrastructure.persistence.dynamo_flashcard_repo import DynamoFlashCardRepository
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Module-level singleton (AWS best practice)
+# Initialized once per Lambda container, reused across invocations
+_review_flashcard_uc = None
+
 
 def build_review_flashcard_uc():
     """Build review flashcard use case with dependencies."""
     flashcard_repo: FlashCardRepository = DynamoFlashCardRepository()
-    return ReviewFlashcardUC(flashcard_repo)
+    return ReviewFlashcardUseCase(flashcard_repo)
 
 
-@lru_cache(maxsize=1)
-def get_review_flashcard_uc():
-    """Get cached use case (reuse across invocations)."""
-    return build_review_flashcard_uc()
+def _get_or_build_review_flashcard_uc():
+    """
+    Lazy initialization of review flashcard use case (singleton pattern).
+    
+    AWS best practice: Initialize SDK clients and dependencies outside handler
+    to take advantage of execution environment reuse.
+    
+    Returns:
+        ReviewFlashcardUseCase: Reusable use case instance
+    """
+    global _review_flashcard_uc
+    if _review_flashcard_uc is None:
+        logger.info("Building review flashcard use case (first invocation in this container)")
+        _review_flashcard_uc = build_review_flashcard_uc()
+    return _review_flashcard_uc
 
 
 def _unauthorized_response():
@@ -74,7 +88,7 @@ def handler(event, context):
     logger.info(f"Reviewing flashcard_id: {flashcard_id}, rating: {rating}, user_id: {user_id}")
 
     try:
-        uc = get_review_flashcard_uc()
+        uc = _get_or_build_review_flashcard_uc()
         card = uc.execute(user_id, flashcard_id, rating)
         
         logger.info(f"Review successful - flashcard_id: {flashcard_id}, interval: {card.interval_days}")
@@ -83,12 +97,15 @@ def handler(event, context):
             "statusCode": 200,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
             "body": dumps({
-                "flashcard_id": card.flashcard_id,
-                "word": card.word,
-                "interval_days": card.interval_days,
-                "review_count": card.review_count,
-                "last_reviewed_at": card.last_reviewed_at.isoformat() if card.last_reviewed_at else None,
-                "next_review_at": card.next_review_at.isoformat(),
+                "success": True,
+                "data": {
+                    "flashcard_id": card.flashcard_id,
+                    "word": card.word,
+                    "interval_days": card.interval_days,
+                    "review_count": card.review_count,
+                    "last_reviewed_at": card.last_reviewed_at.isoformat() if card.last_reviewed_at else None,
+                    "next_review_at": card.next_review_at.isoformat(),
+                }
             }),
         }
     

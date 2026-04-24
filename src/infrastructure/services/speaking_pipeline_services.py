@@ -9,6 +9,8 @@ import time
 import urllib.request
 from typing import List
 
+from shared.http_utils import dumps
+
 import boto3
 from botocore.exceptions import ClientError
 
@@ -208,7 +210,7 @@ class BedrockConversationGenerationService(ConversationGenerationService):
                 "Gently remind them to use English and provide a simple English prompt.]"
             )
 
-        body = json.dumps({
+        body = dumps({
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 150,
             "system": system_prompt,

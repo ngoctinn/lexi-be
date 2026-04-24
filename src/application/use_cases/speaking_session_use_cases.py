@@ -265,7 +265,11 @@ class ListSpeakingSessionsUseCase:
                 session_responses.append(_session_to_response(session, [], scoring))
 
             return Result.success(
-                ListSpeakingSessionsResponse(success=True, sessions=session_responses)
+                ListSpeakingSessionsResponse(
+                    success=True, 
+                    sessions=session_responses,
+                    total=len(session_responses)
+                )
             )
         except Exception as exc:
             logger.exception(f"ListSpeakingSessionsUseCase failed: {exc}")

@@ -1,26 +1,40 @@
 import json
-from functools import lru_cache
 from shared.http_utils import dumps
 import logging
 
 from application.repositories.flash_card_repository import FlashCardRepository
-from application.use_cases.flashcard.list_due_cards_uc import ListDueCardsUC
+from application.use_cases.flashcard_use_cases import ListDueCardsUseCase
 from infrastructure.persistence.dynamo_flashcard_repo import DynamoFlashCardRepository
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Module-level singleton (AWS best practice)
+# Initialized once per Lambda container, reused across invocations
+_list_due_cards_uc = None
+
 
 def build_list_due_cards_uc():
     """Build list due cards use case with dependencies."""
     flashcard_repo: FlashCardRepository = DynamoFlashCardRepository()
-    return ListDueCardsUC(flashcard_repo)
+    return ListDueCardsUseCase(flashcard_repo)
 
 
-@lru_cache(maxsize=1)
-def get_list_due_cards_uc():
-    """Get cached use case (reuse across invocations)."""
-    return build_list_due_cards_uc()
+def _get_or_build_list_due_cards_uc():
+    """
+    Lazy initialization of list due cards use case (singleton pattern).
+    
+    AWS best practice: Initialize SDK clients and dependencies outside handler
+    to take advantage of execution environment reuse.
+    
+    Returns:
+        ListDueCardsUseCase: Reusable use case instance
+    """
+    global _list_due_cards_uc
+    if _list_due_cards_uc is None:
+        logger.info("Building list due cards use case (first invocation in this container)")
+        _list_due_cards_uc = build_list_due_cards_uc()
+    return _list_due_cards_uc
 
 
 def _unauthorized_response():
@@ -43,7 +57,7 @@ def handler(event, context):
     logger.info(f"Listing due cards for user_id: {user_id}")
 
     try:
-        uc = get_list_due_cards_uc()
+        uc = _get_or_build_list_due_cards_uc()
         cards = uc.execute(user_id)
         
         cards_data = [
@@ -66,7 +80,7 @@ def handler(event, context):
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": dumps({"cards": cards_data}),
+            "body": dumps({"success": True, "data": {"cards": cards_data}}),
         }
     
     except Exception as e:

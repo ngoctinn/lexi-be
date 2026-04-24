@@ -1,27 +1,41 @@
 import json
-from functools import lru_cache
 from shared.http_utils import dumps
 import base64
 import logging
 
 from application.repositories.flash_card_repository import FlashCardRepository
-from application.use_cases.flashcard.list_user_flashcards_uc import ListUserFlashcardsUC
+from application.use_cases.flashcard_use_cases import ListUserFlashcardsUseCase
 from infrastructure.persistence.dynamo_flashcard_repo import DynamoFlashCardRepository
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Module-level singleton (AWS best practice)
+# Initialized once per Lambda container, reused across invocations
+_list_flashcards_uc = None
+
 
 def build_list_flashcards_uc():
     """Build list flashcards use case with dependencies."""
     flashcard_repo: FlashCardRepository = DynamoFlashCardRepository()
-    return ListUserFlashcardsUC(flashcard_repo)
+    return ListUserFlashcardsUseCase(flashcard_repo)
 
 
-@lru_cache(maxsize=1)
-def get_list_flashcards_uc():
-    """Get cached use case (reuse across invocations)."""
-    return build_list_flashcards_uc()
+def _get_or_build_list_flashcards_uc():
+    """
+    Lazy initialization of list flashcards use case (singleton pattern).
+    
+    AWS best practice: Initialize SDK clients and dependencies outside handler
+    to take advantage of execution environment reuse.
+    
+    Returns:
+        ListUserFlashcardsUseCase: Reusable use case instance
+    """
+    global _list_flashcards_uc
+    if _list_flashcards_uc is None:
+        logger.info("Building list flashcards use case (first invocation in this container)")
+        _list_flashcards_uc = build_list_flashcards_uc()
+    return _list_flashcards_uc
 
 
 def _unauthorized_response():
@@ -65,7 +79,7 @@ def handler(event, context):
     logger.info(f"Listing flashcards for user_id: {user_id}, limit: {limit}")
 
     try:
-        uc = get_list_flashcards_uc()
+        uc = _get_or_build_list_flashcards_uc()
         cards, next_key = uc.execute(user_id, last_key, limit)
         
         cards_data = [
@@ -88,14 +102,17 @@ def handler(event, context):
         
         next_key_encoded = None
         if next_key:
-            next_key_encoded = base64.b64encode(json.dumps(next_key).encode("utf-8")).decode("utf-8")
+            next_key_encoded = base64.b64encode(dumps(next_key).encode("utf-8")).decode("utf-8")
         
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
             "body": dumps({
-                "cards": cards_data,
-                "next_key": next_key_encoded,
+                "success": True,
+                "data": {
+                    "cards": cards_data,
+                    "next_key": next_key_encoded,
+                }
             }),
         }
     

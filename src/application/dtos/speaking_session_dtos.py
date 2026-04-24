@@ -113,3 +113,4 @@ class GetSpeakingSessionResponse(BaseDTO):
 class ListSpeakingSessionsResponse(BaseDTO):
     success: bool = True
     sessions: List[SpeakingSessionResponse] = Field(default_factory=list)
+    total: int = 0

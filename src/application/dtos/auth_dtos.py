@@ -16,5 +16,14 @@ class CreateUserProfileResponse(BaseDTO):
     """DTO đầu ra trả về cho Client."""
     user_id: str
     email: str
-    is_created: bool
-    message: str
+    display_name: str
+    avatar_url: str = ""
+    current_level: str
+    target_level: str
+    current_streak: int = 0
+    total_words_learned: int = 0
+    role: str = "LEARNER"
+    is_active: bool = True
+    is_new_user: bool = True
+    is_created: bool = True
+    message: str = "Profile created successfully"

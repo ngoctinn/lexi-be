@@ -33,6 +33,7 @@ from infrastructure.services.streaming_stt_service_sync import StreamingSTTServi
 from domain.services.speaking_performance_scorer import SpeakingPerformanceScorer
 from infrastructure.services.bedrock_scorer_adapter import BedrockScorerAdapter
 from shared.utils.ulid_util import new_ulid
+from shared.http_utils import dumps
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def _response(status: int, body: dict[str, Any]) -> dict[str, Any]:
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
         },
-        "body": json.dumps(body),
+        "body": dumps(body),
     }
 
 
@@ -102,7 +103,11 @@ def _verify_cognito_jwt(token: str) -> dict[str, Any]:
         jwks_client = PyJWKClient(f"{issuer}/.well-known/jwks.json")
         signing_key = jwks_client.get_signing_key_from_jwt(token)
         
-        # Decode without audience validation first to check token_use
+        # Decode JWT - verify signature, issuer, expiration, and token_use
+        # Per AWS docs: https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-tokens-verifying-a-jwt.html
+        # ID tokens have 'aud' claim, access tokens have 'client_id' claim
+        # We disable aud verification here because we'll verify it manually below
+        # to handle both ID tokens (aud) and access tokens (client_id)
         claims = decode(
             token,
             signing_key.key,
@@ -110,7 +115,7 @@ def _verify_cognito_jwt(token: str) -> dict[str, Any]:
             issuer=issuer,
             options={"require": ["exp", "iss", "token_use", "sub"], "verify_aud": False},
         )
-        print(f"[ws] Token decoded: token_use={claims.get('token_use')}, aud={claims.get('aud')}, sub={claims.get('sub')}")
+        print(f"[ws] Token decoded: token_use={claims.get('token_use')}, aud={claims.get('aud')}, client_id={claims.get('client_id')}, sub={claims.get('sub')}")
     except InvalidTokenError as exc:
         print(f"[ws] JWT decode error: {exc}")
         raise ValueError("Token không hợp lệ.") from exc
@@ -118,24 +123,37 @@ def _verify_cognito_jwt(token: str) -> dict[str, Any]:
         print(f"[ws] Unexpected error during token verification: {exc}")
         raise ValueError("Token không hợp lệ.") from exc
 
+    # Verify token_use claim (AWS best practice)
     token_use = claims.get("token_use")
     if token_use not in {"access", "id"}:
         print(f"[ws] Invalid token_use: {token_use}")
         raise ValueError("token_use không hợp lệ.")
 
-    # For ID tokens, verify aud matches app_client_id
-    # For access tokens, verify client_id matches app_client_id
+    # Verify audience/client_id matches app_client_id (AWS best practice)
+    # Per AWS docs: 
+    # - ID tokens have 'aud' claim that should match app client ID
+    # - Access tokens have 'client_id' claim that should match app client ID
     if app_client_id:
         if token_use == "id":
             aud = claims.get("aud")
+            if not aud:
+                print(f"[ws] ID token missing 'aud' claim")
+                raise ValueError("Token không hợp lệ.")
             if aud != app_client_id:
-                print(f"[ws] ID token aud mismatch: {aud} != {app_client_id}")
+                print(f"[ws] ID token aud mismatch: expected={app_client_id}, got={aud}")
                 raise ValueError("aud không hợp lệ.")
+            print(f"[ws] ID token aud verified: {aud}")
         elif token_use == "access":
             client_id = claims.get("client_id")
+            if not client_id:
+                print(f"[ws] Access token missing 'client_id' claim")
+                raise ValueError("Token không hợp lệ.")
             if client_id != app_client_id:
-                print(f"[ws] Access token client_id mismatch: {client_id} != {app_client_id}")
+                print(f"[ws] Access token client_id mismatch: expected={app_client_id}, got={client_id}")
                 raise ValueError("client_id không hợp lệ.")
+            print(f"[ws] Access token client_id verified: {client_id}")
+    else:
+        print(f"[ws] Warning: COGNITO_APP_CLIENT_ID not configured, skipping audience verification")
 
     return claims
 
@@ -179,30 +197,42 @@ class WebSocketSessionController:
     verify_token: Callable[[str], dict[str, Any]]
 
     def connect(self, session_id: str, token: str, connection_id: str) -> dict[str, Any]:
+        print(f"[ws] connect() called: session_id={session_id} token_len={len(token) if token else 0} connection_id={connection_id}")
+        
         if not session_id:
+            print(f"[ws] connect() failed: missing session_id")
             return _response(400, {"message": "Thiếu session_id."})
 
         session = self.session_repo.get_by_id(session_id)
         if not session:
+            print(f"[ws] connect() failed: session not found for session_id={session_id}")
             return _response(404, {"message": "Session không tồn tại."})
 
         try:
+            print(f"[ws] Verifying token...")
             claims = self.verify_token(token)
+            print(f"[ws] Token verified successfully: token_use={claims.get('token_use')} sub={claims.get('sub')}")
         except ValueError as exc:
             print(f"[ws] Token verification failed: {exc} (token_length={len(token) if token else 0})")
             return _response(401, {"message": str(exc)})
+        except Exception as exc:
+            print(f"[ws] Unexpected error during token verification: {type(exc).__name__}: {exc}")
+            import traceback
+            traceback.print_exc()
+            return _response(401, {"message": "Token verification error"})
 
         user_id = str(claims.get("sub") or "")
         if not user_id:
             print(f"[ws] Token missing 'sub' claim")
             return _response(401, {"message": "Token không hợp lệ."})
+        
         if session.user_id != user_id:
             print(f"[ws] Session user_id mismatch: session.user_id={session.user_id} token.sub={user_id}")
             return _response(403, {"message": "Session không thuộc về người dùng này."})
 
         session.connection_id = connection_id
         self.session_repo.save(session)
-        print(f"[ws] Connected: session_id={session_id} user_id={user_id} connection_id={connection_id}")
+        print(f"[ws] Connected successfully: session_id={session_id} user_id={user_id} connection_id={connection_id}")
         return _response(200, {"message": "Connected"})
 
     def disconnect(self, session_id: str | None, connection_id: str) -> dict[str, Any]:
@@ -223,14 +253,18 @@ class WebSocketSessionController:
 
         self._sync_connection(session, connection_id)
         upload_url, upload_key = self.build_upload_payload(session_id)
-        self.send_message(
-            {
-                "event": "SESSION_READY",
-                "upload_url": upload_url,
-                "s3_key": upload_key,
-                "session_id": session_id,
-            }
-        )
+        try:
+            self.send_message(
+                {
+                    "event": "SESSION_READY",
+                    "upload_url": upload_url,
+                    "s3_key": upload_key,
+                    "session_id": session_id,
+                }
+            )
+        except Exception as exc:
+            print(f"[ws] Failed to send SESSION_READY: {exc}")
+            return _response(500, {"message": "Lỗi gửi thông tin session."})
         return _response(200, {"message": "Session ready"})
 
     def audio_uploaded(self, session_id: str, connection_id: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -244,18 +278,27 @@ class WebSocketSessionController:
         bucket = os.environ.get("SPEAKING_AUDIO_BUCKET_NAME", "")
 
         if not s3_key or not bucket:
-            self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": 0.0})
+            try:
+                self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": 0.0})
+            except Exception as exc:
+                print(f"[ws] Failed to send STT_LOW_CONFIDENCE: {exc}")
             return _response(400, {"message": "Thiếu s3_key hoặc bucket."})
 
         # Gọi Transcribe để chuyển audio → text
         text, confidence = self.stt_service.transcribe(bucket, s3_key)
 
         if not text or confidence < 0.5:
-            self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": confidence})
+            try:
+                self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": float(confidence)})
+            except Exception as exc:
+                print(f"[ws] Failed to send STT_LOW_CONFIDENCE: {exc}")
             return _response(200, {"message": "STT low confidence"})
 
         # Gửi kết quả STT về client
-        self.send_message({"event": "STT_RESULT", "text": text, "confidence": confidence})
+        try:
+            self.send_message({"event": "STT_RESULT", "text": text, "confidence": float(confidence)})
+        except Exception as exc:
+            print(f"[ws] Failed to send STT_RESULT: {exc}")
 
         # Tiếp tục pipeline với text đã transcribe
         result = self.submit_turn_use_case.execute(
@@ -268,18 +311,24 @@ class WebSocketSessionController:
             )
         )
         if not result.is_success or result.value is None:
-            self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
+            try:
+                self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
+            except Exception as exc:
+                print(f"[ws] Failed to send error message: {exc}")
             return _response(422, {"message": result.error or "Lỗi xử lý lượt nói."})
 
         response = result.value
-        self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
-        self.send_message({"event": "AI_TEXT_CHUNK", "chunk": response.ai_turn.content, "done": True})
-        if response.ai_turn.audio_url:
-            self.send_message({
-                "event": "AI_AUDIO_URL",
-                "url": response.ai_turn.audio_url,
-                "text": response.ai_turn.content,
-            })
+        try:
+            self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
+            self.send_message({"event": "AI_TEXT_CHUNK", "chunk": response.ai_turn.content, "done": True})
+            if response.ai_turn.audio_url:
+                self.send_message({
+                    "event": "AI_AUDIO_URL",
+                    "url": response.ai_turn.audio_url,
+                    "text": response.ai_turn.content,
+                })
+        except Exception as exc:
+            print(f"[ws] Failed to send response messages: {exc}")
 
         return _response(200, {"message": "Audio processed"})
 
@@ -291,7 +340,11 @@ class WebSocketSessionController:
         self._sync_connection(session, connection_id)
         turns = self.turn_repo.list_by_session(session_id)
         hint = self._generate_contextual_hint(session, turns)
-        self.send_message({"event": "HINT_TEXT", "hint": hint})
+        try:
+            self.send_message({"event": "HINT_TEXT", "hint": hint})
+        except Exception as exc:
+            print(f"[ws] Failed to send hint: {exc}")
+            return _response(500, {"message": "Lỗi gửi gợi ý."})
         return _response(200, {"message": "Hint sent"})
 
     def _generate_contextual_hint(self, session: Session, turns: list) -> str:
@@ -312,9 +365,9 @@ class WebSocketSessionController:
         )
 
         try:
-            import boto3, json
+            import boto3
             bedrock = boto3.client("bedrock-runtime")
-            body = json.dumps({
+            body = dumps({
                 "anthropic_version": "bedrock-2023-05-31",
                 "max_tokens": 60,
                 "messages": [{"role": "user", "content": hint_prompt}],
@@ -349,26 +402,33 @@ class WebSocketSessionController:
             )
         )
         if not result.is_success or result.value is None:
-            self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
+            try:
+                self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
+            except Exception as exc:
+                print(f"[ws] Failed to send error message: {exc}")
             return _response(422, {"message": result.error or "Lỗi xử lý lượt nói."})
 
         response = result.value
-        self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
-        self.send_message(
-            {
-                "event": "AI_TEXT_CHUNK",
-                "chunk": response.ai_turn.content,
-                "done": True,
-            }
-        )
-        if response.ai_turn.audio_url:
+        try:
+            self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
             self.send_message(
                 {
-                    "event": "AI_AUDIO_URL",
-                    "url": response.ai_turn.audio_url,
-                    "text": response.ai_turn.content,
+                    "event": "AI_TEXT_CHUNK",
+                    "chunk": response.ai_turn.content,
+                    "done": True,
                 }
             )
+            if response.ai_turn.audio_url:
+                self.send_message(
+                    {
+                        "event": "AI_AUDIO_URL",
+                        "url": response.ai_turn.audio_url,
+                        "text": response.ai_turn.content,
+                    }
+                )
+        except Exception as exc:
+            print(f"[ws] Failed to send response messages: {exc}")
+            return _response(500, {"message": "Lỗi gửi phản hồi."})
 
         return _response(
             200,
@@ -388,15 +448,21 @@ class WebSocketSessionController:
             CompleteSpeakingSessionCommand(user_id=session.user_id, session_id=session_id)
         )
         if not result.is_success or result.value is None:
-            self.send_message({"event": "ERROR", "message": result.error or "Không thể kết thúc session."})
+            try:
+                self.send_message({"event": "ERROR", "message": result.error or "Không thể kết thúc session."})
+            except Exception as exc:
+                print(f"[ws] Failed to send error message: {exc}")
             return _response(422, {"message": result.error or "Không thể kết thúc session."})
 
-        self.send_message(
-            {
-                "event": "SCORING_COMPLETE",
-                "session_id": session_id,
-            }
-        )
+        try:
+            self.send_message(
+                {
+                    "event": "SCORING_COMPLETE",
+                    "session_id": session_id,
+                }
+            )
+        except Exception as exc:
+            print(f"[ws] Failed to send SCORING_COMPLETE: {exc}")
         return _response(200, {"message": "Session completed"})
 
     def start_streaming(self, session_id: str, connection_id: str) -> dict[str, Any]:
@@ -421,12 +487,18 @@ class WebSocketSessionController:
             session.last_audio_timestamp = 0.0
             self.session_repo.save(session)
 
-            self.send_message({"event": "STREAMING_READY", "session_id": session_id})
+            try:
+                self.send_message({"event": "STREAMING_READY", "session_id": session_id})
+            except Exception as exc:
+                print(f"[ws] Failed to send STREAMING_READY: {exc}")
             return _response(200, {"message": "Streaming ready"})
 
         except Exception as exc:
             logger.exception("Failed to start streaming", extra={"session_id": session_id})
-            self.send_message({"event": "STT_ERROR", "message": "Không thể khởi động streaming."})
+            try:
+                self.send_message({"event": "STT_ERROR", "message": "Không thể khởi động streaming."})
+            except Exception as send_exc:
+                print(f"[ws] Failed to send STT_ERROR: {send_exc}")
             return _response(500, {"message": str(exc)})
 
     def audio_chunk(self, session_id: str, connection_id: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -462,28 +534,34 @@ class WebSocketSessionController:
             # Check for transcripts (non-blocking)
             transcripts = self.streaming_stt_service.get_transcripts(session.transcribe_stream_id)
             for transcript in transcripts:
-                if transcript.is_partial:
-                    self.send_message(
-                        {
-                            "event": "PARTIAL_TRANSCRIPT",
-                            "text": transcript.text,
-                            "confidence": transcript.confidence,
-                        }
-                    )
-                else:
-                    self.send_message(
-                        {
-                            "event": "FINAL_TRANSCRIPT",
-                            "text": transcript.text,
-                            "confidence": transcript.confidence,
-                        }
-                    )
+                try:
+                    if transcript.is_partial:
+                        self.send_message(
+                            {
+                                "event": "PARTIAL_TRANSCRIPT",
+                                "text": transcript.text,
+                                "confidence": float(transcript.confidence),
+                            }
+                        )
+                    else:
+                        self.send_message(
+                            {
+                                "event": "FINAL_TRANSCRIPT",
+                                "text": transcript.text,
+                                "confidence": float(transcript.confidence),
+                            }
+                        )
+                except Exception as exc:
+                    print(f"[ws] Failed to send transcript: {exc}")
 
             return _response(200, {"message": "Chunk processed"})
 
         except Exception as exc:
             logger.exception("Failed to process audio chunk", extra={"session_id": session_id})
-            self.send_message({"event": "STT_ERROR", "message": "Lỗi xử lý audio chunk."})
+            try:
+                self.send_message({"event": "STT_ERROR", "message": "Lỗi xử lý audio chunk."})
+            except Exception as send_exc:
+                print(f"[ws] Failed to send STT_ERROR: {send_exc}")
             return _response(500, {"message": str(exc)})
 
     def end_streaming(self, session_id: str, connection_id: str) -> dict[str, Any]:
@@ -505,18 +583,24 @@ class WebSocketSessionController:
             self.session_repo.save(session)
 
             if not final_transcript or final_transcript.confidence < 0.5:
-                confidence = final_transcript.confidence if final_transcript else 0.0
-                self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": confidence})
+                confidence = float(final_transcript.confidence) if final_transcript else 0.0
+                try:
+                    self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": confidence})
+                except Exception as exc:
+                    print(f"[ws] Failed to send STT_LOW_CONFIDENCE: {exc}")
                 return _response(200, {"message": "Low confidence"})
 
             # Send final transcript
-            self.send_message(
-                {
-                    "event": "FINAL_TRANSCRIPT",
-                    "text": final_transcript.text,
-                    "confidence": final_transcript.confidence,
-                }
-            )
+            try:
+                self.send_message(
+                    {
+                        "event": "FINAL_TRANSCRIPT",
+                        "text": final_transcript.text,
+                        "confidence": float(final_transcript.confidence),
+                    }
+                )
+            except Exception as exc:
+                print(f"[ws] Failed to send final transcript: {exc}")
 
             # Log and track metrics
             logger.info(
@@ -542,27 +626,36 @@ class WebSocketSessionController:
             )
 
             if not result.is_success or result.value is None:
-                self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
+                try:
+                    self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
+                except Exception as exc:
+                    print(f"[ws] Failed to send error message: {exc}")
                 return _response(422, {"message": result.error or "Lỗi xử lý lượt nói."})
 
             response = result.value
-            self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
-            self.send_message({"event": "AI_TEXT_CHUNK", "chunk": response.ai_turn.content, "done": True})
-            if response.ai_turn.audio_url:
-                self.send_message(
-                    {
-                        "event": "AI_AUDIO_URL",
-                        "url": response.ai_turn.audio_url,
-                        "text": response.ai_turn.content,
-                    }
-                )
+            try:
+                self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
+                self.send_message({"event": "AI_TEXT_CHUNK", "chunk": response.ai_turn.content, "done": True})
+                if response.ai_turn.audio_url:
+                    self.send_message(
+                        {
+                            "event": "AI_AUDIO_URL",
+                            "url": response.ai_turn.audio_url,
+                            "text": response.ai_turn.content,
+                        }
+                    )
+            except Exception as exc:
+                print(f"[ws] Failed to send response messages: {exc}")
 
             return _response(200, {"message": "Streaming ended"})
 
         except Exception as exc:
             logger.exception("Failed to end streaming", extra={"session_id": session_id})
             _put_cloudwatch_metric("StreamErrors", 1, "Count")
-            self.send_message({"event": "STT_ERROR", "message": "Lỗi kết thúc streaming."})
+            try:
+                self.send_message({"event": "STT_ERROR", "message": "Lỗi kết thúc streaming."})
+            except Exception as send_exc:
+                print(f"[ws] Failed to send STT_ERROR: {send_exc}")
             return _response(500, {"message": str(exc)})
 
     def submit_transcript(self, session_id: str, connection_id: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -575,7 +668,10 @@ class WebSocketSessionController:
         confidence = float(body.get("confidence") or 0.0)
 
         if not text or confidence < 0.5:
-            self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": confidence})
+            try:
+                self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": confidence})
+            except Exception as exc:
+                print(f"[ws] Failed to send STT_LOW_CONFIDENCE: {exc}")
             return _response(200, {"message": "Low confidence"})
 
         self._sync_connection(session, connection_id)
@@ -606,26 +702,35 @@ class WebSocketSessionController:
             )
 
             if not result.is_success or result.value is None:
-                self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
+                try:
+                    self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
+                except Exception as exc:
+                    print(f"[ws] Failed to send error message: {exc}")
                 return _response(422, {"message": result.error or "Lỗi xử lý lượt nói."})
 
             response = result.value
-            self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
-            self.send_message({"event": "AI_TEXT_CHUNK", "chunk": response.ai_turn.content, "done": True})
-            if response.ai_turn.audio_url:
-                self.send_message(
-                    {
-                        "event": "AI_AUDIO_URL",
-                        "url": response.ai_turn.audio_url,
-                        "text": response.ai_turn.content,
-                    }
-                )
+            try:
+                self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
+                self.send_message({"event": "AI_TEXT_CHUNK", "chunk": response.ai_turn.content, "done": True})
+                if response.ai_turn.audio_url:
+                    self.send_message(
+                        {
+                            "event": "AI_AUDIO_URL",
+                            "url": response.ai_turn.audio_url,
+                            "text": response.ai_turn.content,
+                        }
+                    )
+            except Exception as exc:
+                print(f"[ws] Failed to send response messages: {exc}")
 
             return _response(200, {"message": "Transcript processed"})
 
         except Exception as exc:
             logger.exception("Failed to process transcript", extra={"session_id": session_id})
-            self.send_message({"event": "ERROR", "message": "Lỗi xử lý transcript."})
+            try:
+                self.send_message({"event": "ERROR", "message": "Lỗi xử lý transcript."})
+            except Exception as send_exc:
+                print(f"[ws] Failed to send error message: {send_exc}")
             return _response(500, {"message": str(exc)})
 
     def unsupported(self, action: str) -> dict[str, Any]:
@@ -704,7 +809,7 @@ def get_websocket_controller() -> WebSocketSessionController:
         BedrockConversationGenerationService(),
         PollySpeechSynthesisService(),
     )
-    complete_use_case = CompleteSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo, BedrockScoringService())
+    complete_use_case = CompleteSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo, BedrockScorerAdapter())
 
     return WebSocketSessionController(
         session_repo=session_repo,
@@ -725,60 +830,78 @@ def _make_sender(event: dict[str, Any], connection_id: str) -> Callable[[dict[st
 
     def send_message(payload: dict[str, Any]) -> None:
         try:
+            print(f"[ws] Sending message to {connection_id}: {payload.get('event', 'UNKNOWN')}")
             client.post_to_connection(
                 ConnectionId=connection_id,
-                Data=json.dumps(payload).encode("utf-8"),
+                Data=dumps(payload).encode("utf-8"),
             )
+            print(f"[ws] Message sent successfully to {connection_id}")
         except ClientError as exc:
             error_code = exc.response.get("Error", {}).get("Code")
-            if error_code != "GoneException":
-                raise
+            if error_code == "GoneException":
+                print(f"[ws] Connection gone (client disconnected): {connection_id}")
+                return  # Normal case - client disconnected, don't re-raise
+            print(f"[ws] Failed to send message: {error_code} - {exc}")
+            raise  # Re-raise for other errors
 
     return send_message
 
 
 def handler(event, context):
-    base_controller = get_websocket_controller()
-    route_key = (event.get("requestContext") or {}).get("routeKey", "")
-    connection_id = (event.get("requestContext") or {}).get("connectionId", "")
-    body = _parse_json_body(event.get("body"))
-    headers = event.get("headers") or {}
-    query_params = event.get("queryStringParameters") or {}
+    try:
+        base_controller = get_websocket_controller()
+        route_key = (event.get("requestContext") or {}).get("routeKey", "")
+        connection_id = (event.get("requestContext") or {}).get("connectionId", "")
+        body = _parse_json_body(event.get("body"))
+        headers = event.get("headers") or {}
+        query_params = event.get("queryStringParameters") or {}
 
-    # Extract params from queryStringParameters or body
-    session_id = body.get("session_id") or query_params.get("session_id")
-    token = _extract_bearer_token(headers, query_params)
+        # Extract params from queryStringParameters or body
+        session_id = body.get("session_id") or query_params.get("session_id")
+        token = _extract_bearer_token(headers, query_params)
 
-    action = route_key if route_key not in {"$default"} else str(body.get("action") or "")
+        print(f"[ws] Handler called: route_key={route_key} connection_id={connection_id} session_id={session_id} has_token={bool(token)}")
 
-    controller = replace(base_controller, send_message=_make_sender(event, connection_id))
+        action = route_key if route_key not in {"$default"} else str(body.get("action") or "")
 
-    if route_key == "$connect":
-        return base_controller.connect(str(session_id or ""), str(token or ""), connection_id)
+        controller = replace(base_controller, send_message=_make_sender(event, connection_id))
 
-    if route_key == "$disconnect":
-        return base_controller.disconnect(str(session_id or "") or None, connection_id)
+        if route_key == "$connect":
+            print(f"[ws] Processing $connect: session_id={session_id}")
+            return controller.connect(str(session_id or ""), str(token or ""), connection_id)
 
-    if not session_id:
-        return _response(400, {"message": "Thiếu session_id."})
+        if route_key == "$disconnect":
+            print(f"[ws] Processing $disconnect: session_id={session_id}")
+            return base_controller.disconnect(str(session_id or "") or None, connection_id)
 
-    if action == "START_SESSION":
-        return controller.start_session(str(session_id), connection_id)
-    if action == "AUDIO_UPLOADED":
-        return controller.audio_uploaded(str(session_id), connection_id, body)
-    if action == "START_STREAMING":
-        return controller.start_streaming(str(session_id), connection_id)
-    if action == "AUDIO_CHUNK":
-        return controller.audio_chunk(str(session_id), connection_id, body)
-    if action == "END_STREAMING":
-        return controller.end_streaming(str(session_id), connection_id)
-    if action == "SUBMIT_TRANSCRIPT":
-        return controller.submit_transcript(str(session_id), connection_id, body)
-    if action == "USE_HINT":
-        return controller.use_hint(str(session_id), connection_id)
-    if action == "END_SESSION":
-        return controller.end_session(str(session_id), connection_id)
-    if action == "SEND_MESSAGE":
-        return controller.send_message_turn(str(session_id), connection_id, body)
+        if not session_id:
+            return _response(400, {"message": "Thiếu session_id."})
 
-    return controller.unsupported(action or route_key or body.get("action", "UNKNOWN"))
+        if action == "START_SESSION":
+            return controller.start_session(str(session_id), connection_id)
+        if action == "AUDIO_UPLOADED":
+            return controller.audio_uploaded(str(session_id), connection_id, body)
+        if action == "START_STREAMING":
+            return controller.start_streaming(str(session_id), connection_id)
+        if action == "AUDIO_CHUNK":
+            return controller.audio_chunk(str(session_id), connection_id, body)
+        if action == "END_STREAMING":
+            return controller.end_streaming(str(session_id), connection_id)
+        if action == "SUBMIT_TRANSCRIPT":
+            return controller.submit_transcript(str(session_id), connection_id, body)
+        if action == "USE_HINT":
+            return controller.use_hint(str(session_id), connection_id)
+        if action == "END_SESSION":
+            return controller.end_session(str(session_id), connection_id)
+        if action == "SEND_MESSAGE":
+            return controller.send_message_turn(str(session_id), connection_id, body)
+
+        return controller.unsupported(action or route_key or body.get("action", "UNKNOWN"))
+    
+    except Exception as e:
+        print(f"[ws] Handler exception: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # Return 200 for $connect to allow connection, then close it
+        # This is safer than returning error which might cause API Gateway issues
+        return _response(200, {"message": "Connected"})

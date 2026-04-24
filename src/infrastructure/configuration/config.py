@@ -8,10 +8,15 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
+# Load environment variables only in development
+# In Lambda, environment variables are set by AWS and .env files are not available
+if os.getenv("ENVIRONMENT", "development") == "development":
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        # dotenv not installed in development environment
+        pass
 
 
 class Environment(Enum):
@@ -32,12 +37,12 @@ class Config:
     LEXI_TABLE_NAME = os.getenv("LEXI_TABLE_NAME", "lexi-table")
     
     # Services
-    BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0")
+    BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-micro-v1:0")
     TRANSLATE_SERVICE_REGION = os.getenv("TRANSLATE_SERVICE_REGION", "ap-southeast-1")
     
     # Logging
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-    LOG_DIR = Path(os.getenv("LOG_DIR", "logs"))
+    LOG_DIR = Path(os.getenv("LOG_DIR", "/tmp/logs"))
     
     # Feature flags
     ENABLE_STREAMING = os.getenv("ENABLE_STREAMING", "true").lower() == "true"

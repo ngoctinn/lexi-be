@@ -2,8 +2,7 @@
 
 from typing import List, Optional
 from ulid import ULID
-from application.dtos.flashcard.create.create_flashcard_command import CreateFlashCardCommand
-from application.dtos.flashcard.create.create_flashcard_response import CreateFlashCardResponse
+from application.dtos.flashcard_dtos import CreateFlashCardCommand, CreateFlashCardResponse
 from application.repositories.flash_card_repository import FlashCardRepository
 from domain.entities.flashcard import FlashCard
 from shared.result import Result

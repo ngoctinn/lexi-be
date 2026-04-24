@@ -1,26 +1,40 @@
 import json
-from functools import lru_cache
 from shared.http_utils import dumps
 import logging
 
 from application.repositories.flash_card_repository import FlashCardRepository
-from application.use_cases.flashcard.get_flashcard_detail_uc import GetFlashcardDetailUC
+from application.use_cases.flashcard_use_cases import GetFlashcardDetailUseCase
 from infrastructure.persistence.dynamo_flashcard_repo import DynamoFlashCardRepository
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Module-level singleton (AWS best practice)
+# Initialized once per Lambda container, reused across invocations
+_flashcard_detail_uc = None
+
 
 def build_flashcard_detail_controller():
     """Build flashcard detail controller with dependencies."""
     flashcard_repo: FlashCardRepository = DynamoFlashCardRepository()
-    return GetFlashcardDetailUC(flashcard_repo)
+    return GetFlashcardDetailUseCase(flashcard_repo)
 
 
-@lru_cache(maxsize=1)
-def get_flashcard_detail_uc():
-    """Get cached use case (reuse across invocations)."""
-    return build_flashcard_detail_controller()
+def _get_or_build_flashcard_detail_uc():
+    """
+    Lazy initialization of flashcard detail use case (singleton pattern).
+    
+    AWS best practice: Initialize SDK clients and dependencies outside handler
+    to take advantage of execution environment reuse.
+    
+    Returns:
+        GetFlashcardDetailUseCase: Reusable use case instance
+    """
+    global _flashcard_detail_uc
+    if _flashcard_detail_uc is None:
+        logger.info("Building flashcard detail use case (first invocation in this container)")
+        _flashcard_detail_uc = build_flashcard_detail_controller()
+    return _flashcard_detail_uc
 
 
 def _unauthorized_response():
@@ -58,27 +72,30 @@ def handler(event, context):
     logger.info(f"Getting flashcard detail - flashcard_id: {flashcard_id}, user_id: {user_id}")
 
     try:
-        uc = get_flashcard_detail_uc()
+        uc = _get_or_build_flashcard_detail_uc()
         card = uc.execute(user_id, flashcard_id)
         
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
             "body": dumps({
-                "flashcard_id": card.flashcard_id,
-                "word": card.word,
-                "translation_vi": card.translation_vi,
-                "definition_vi": card.definition_vi,
-                "phonetic": card.phonetic,
-                "audio_url": card.audio_url,
-                "example_sentence": card.example_sentence,
-                "review_count": card.review_count,
-                "interval_days": card.interval_days,
-                "difficulty": card.difficulty,
-                "last_reviewed_at": card.last_reviewed_at.isoformat() if card.last_reviewed_at else None,
-                "next_review_at": card.next_review_at.isoformat(),
-                "source_session_id": card.source_session_id,
-                "source_turn_index": card.source_turn_index,
+                "success": True,
+                "data": {
+                    "flashcard_id": card.flashcard_id,
+                    "word": card.word,
+                    "translation_vi": card.translation_vi,
+                    "definition_vi": card.definition_vi,
+                    "phonetic": card.phonetic,
+                    "audio_url": card.audio_url,
+                    "example_sentence": card.example_sentence,
+                    "review_count": card.review_count,
+                    "interval_days": card.interval_days,
+                    "difficulty": card.difficulty,
+                    "last_reviewed_at": card.last_reviewed_at.isoformat() if card.last_reviewed_at else None,
+                    "next_review_at": card.next_review_at.isoformat(),
+                    "source_session_id": card.source_session_id,
+                    "source_turn_index": card.source_turn_index,
+                }
             }),
         }
     

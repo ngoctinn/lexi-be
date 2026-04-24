@@ -54,4 +54,9 @@ class CreateFlashCardResponse(BaseDTO):
     """DTO đầu ra cho CreateFlashCardUC."""
     flashcard_id: str
     word: str
-    message: str
+    translation_vi: str = ""
+    definition_vi: str = ""
+    phonetic: str = ""
+    audio_url: str = ""
+    example_sentence: str = ""
+    created_at: str = ""

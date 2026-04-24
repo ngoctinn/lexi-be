@@ -1,4 +1,4 @@
-from functools import lru_cache
+import logging
 
 from application.use_cases.speaking_session_use_cases import (
     CompleteSpeakingSessionUseCase,
@@ -25,7 +25,17 @@ from infrastructure.services.speaking_pipeline_services import (
     PollySpeechSynthesisService,
 )
 from infrastructure.services.bedrock_scorer_adapter import BedrockScorerAdapter
+from infrastructure.logging.config import configure_logging
 from interfaces.controllers.session_controller import SessionController
+from interfaces.presenters.http_presenter import HttpPresenter
+
+# Configure logging
+configure_logging("lambda")
+logger = logging.getLogger(__name__)
+
+# Module-level singleton (AWS best practice)
+# Initialized once per Lambda container, reused across invocations
+_session_controller = None
 
 
 def build_session_controller(
@@ -90,9 +100,22 @@ def build_session_controller(
     )
 
 
-@lru_cache(maxsize=1)
-def get_session_controller() -> SessionController:
-    return build_session_controller()
+def _get_or_build_controller() -> SessionController:
+    """
+    Lazy initialization of session controller (singleton pattern).
+    
+    AWS best practice: Initialize SDK clients and dependencies outside handler
+    to take advantage of execution environment reuse. This function is called
+    once per Lambda container and the result is cached for subsequent invocations.
+    
+    Returns:
+        SessionController: Reusable controller instance
+    """
+    global _session_controller
+    if _session_controller is None:
+        logger.info("Building session controller (first invocation in this container)")
+        _session_controller = build_session_controller()
+    return _session_controller
 
 
 def _unauthorized_response():
@@ -107,10 +130,14 @@ def _unauthorized_response():
 
 
 def handler(event, context):
-    session_controller = get_session_controller()
+    session_controller = _get_or_build_controller()
+    presenter = HttpPresenter()
+    
     try:
         user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
+        logger.info("Session handler invoked", extra={"context": {"user_id": user_id}})
     except KeyError:
+        logger.warning("Unauthorized access attempt")
         return _unauthorized_response()
 
     method = event.get("httpMethod", "").upper()
@@ -118,38 +145,50 @@ def handler(event, context):
     path_parameters = event.get("pathParameters") or {}
     query_parameters = event.get("queryStringParameters") or {}
 
-    if method == "POST" and resource == "/sessions":
-        return session_controller.create_session(user_id, event.get("body"))
+    try:
+        if method == "POST" and resource == "/sessions":
+            result = session_controller.create_session(user_id, event.get("body"))
+            if result.is_success:
+                return presenter.present_created(result.success)
+            else:
+                return presenter._format_response(400, {"error": result.error.message, "code": result.error.code})
 
-    if method == "GET" and resource == "/sessions":
-        limit = int(query_parameters.get("limit", 10) or 10)
-        return session_controller.list_sessions(user_id, limit)
+        if method == "GET" and resource == "/sessions":
+            limit = int(query_parameters.get("limit", 10) or 10)
+            result = session_controller.list_sessions(user_id, limit)
+            if result.is_success:
+                return presenter.present_success(result.success)
+            else:
+                return presenter._format_response(400, {"error": result.error.message, "code": result.error.code})
 
-    session_id = path_parameters.get("session_id") or path_parameters.get("id")
-    if not session_id:
-        return {
-            "statusCode": 404,
-            "headers": {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-            },
-            "body": '{"error": "Not Found"}',
-        }
+        session_id = path_parameters.get("session_id") or path_parameters.get("id")
+        if not session_id:
+            logger.warning("Session ID not provided")
+            return presenter.present_not_found("Session not found")
 
-    if method == "GET" and resource == "/sessions/{session_id}":
-        return session_controller.get_session(user_id, session_id)
+        if method == "GET" and resource == "/sessions/{session_id}":
+            result = session_controller.get_session(user_id, session_id)
+            if result.is_success:
+                return presenter.present_success(result.success)
+            else:
+                return presenter._format_response(400, {"error": result.error.message, "code": result.error.code})
 
-    if method == "POST" and resource == "/sessions/{session_id}/turns":
-        return session_controller.submit_turn(user_id, session_id, event.get("body"))
+        if method == "POST" and resource == "/sessions/{session_id}/turns":
+            result = session_controller.submit_turn(user_id, session_id, event.get("body"))
+            if result.is_success:
+                return presenter.present_success(result.success)
+            else:
+                return presenter._format_response(400, {"error": result.error.message, "code": result.error.code})
 
-    if method == "POST" and resource == "/sessions/{session_id}/complete":
-        return session_controller.complete_session(user_id, session_id)
+        if method == "POST" and resource == "/sessions/{session_id}/complete":
+            result = session_controller.complete_session(user_id, session_id)
+            if result.is_success:
+                return presenter.present_success(result.success)
+            else:
+                return presenter._format_response(400, {"error": result.error.message, "code": result.error.code})
 
-    return {
-        "statusCode": 404,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-        },
-        "body": '{"error": "Not Found"}',
-    }
+        logger.warning("Route not found", extra={"context": {"method": method, "resource": resource}})
+        return presenter.present_not_found("Not Found")
+    except Exception as e:
+        logger.exception("Error in session handler", extra={"context": {"user_id": user_id, "error": str(e)}})
+        return presenter._format_response(500, {"success": False, "message": "Internal server error", "error": str(e)})

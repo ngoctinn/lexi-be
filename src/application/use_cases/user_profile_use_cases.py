@@ -1,14 +1,16 @@
 """User Profile Use Cases - Consolidated from auth and profile modules."""
 
 from application.repositories.user_profile_repository import UserProfileRepository
-from application.dtos.auth.create_profile.create_profile_command import CreateUserProfileCommand, CreateUserProfileResponse
-from application.dtos.profile.get.get_profile_response import GetProfileResponse
-from application.dtos.profile.update.update_profile_command import UpdateProfileCommand
-from application.dtos.profile.update.update_profile_response import UpdateProfileResponse
+from application.dtos.auth_dtos import CreateUserProfileCommand, CreateUserProfileResponse
+from application.dtos.profile_dtos import GetProfileResponse, UpdateProfileCommand, UpdateProfileResponse
 from domain.entities.user_profile import UserProfile
 from domain.value_objects.enums import ProficiencyLevel
 from shared.result import Result
 
+
+def _enum_to_str(value: object) -> str:
+    """Helper function to convert enum to string value."""
+    return value.value if hasattr(value, 'value') else str(value)
 
 class CreateUserProfileUseCase:
     """
@@ -52,8 +54,15 @@ class CreateUserProfileUseCase:
         response = CreateUserProfileResponse(
             user_id=profile.user_id,
             email=profile.email,
-            is_created=is_new,
-            message=message
+            display_name=profile.display_name,
+            avatar_url=profile.avatar_url,
+            current_level=_enum_to_str(profile.current_level),
+            target_level=_enum_to_str(profile.target_level),
+            current_streak=profile.current_streak,
+            total_words_learned=profile.total_words_learned,
+            role=_enum_to_str(profile.role),
+            is_active=profile.is_active,
+            is_new_user=profile.is_new_user,
         )
         return Result.success(response)
 
@@ -83,11 +92,11 @@ class GetProfileUseCase:
             email=profile.email,
             display_name=profile.display_name,
             avatar_url=profile.avatar_url,
-            current_level=profile.current_level.value if hasattr(profile.current_level, 'value') else profile.current_level,
-            target_level=profile.target_level.value if hasattr(profile.target_level, 'value') else profile.target_level,
+            current_level=_enum_to_str(profile.current_level),
+            target_level=_enum_to_str(profile.target_level),
             current_streak=profile.current_streak,
             total_words_learned=profile.total_words_learned,
-            role=profile.role.value if hasattr(profile.role, 'value') else profile.role,
+            role=_enum_to_str(profile.role),
             is_active=profile.is_active,
             is_new_user=profile.is_new_user
         )
@@ -140,6 +149,21 @@ class UpdateProfileUseCase:
         # 4. Lưu lại
         try:
             self._repo.update(profile)
-            return Result.success(UpdateProfileResponse(is_success=True, message="Cập nhật thành công"))
+            response = UpdateProfileResponse(
+                is_success=True,
+                message="Cập nhật thành công",
+                user_id=profile.user_id,
+                email=profile.email,
+                display_name=profile.display_name,
+                avatar_url=profile.avatar_url,
+                current_level=_enum_to_str(profile.current_level),
+                target_level=_enum_to_str(profile.target_level),
+                current_streak=profile.current_streak,
+                total_words_learned=profile.total_words_learned,
+                role=_enum_to_str(profile.role),
+                is_active=profile.is_active,
+                is_new_user=profile.is_new_user,
+            )
+            return Result.success(response)
         except Exception as e:
             return Result.failure(f"Lỗi khi cập nhật cơ sở dữ liệu: {str(e)}")

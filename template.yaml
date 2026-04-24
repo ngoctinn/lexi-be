@@ -180,8 +180,6 @@ Resources:
       Runtime: python3.12
       MemorySize: 256
       Timeout: 15
-      TracingConfig:
-        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -205,8 +203,6 @@ Resources:
       Runtime: python3.12
       MemorySize: 256
       Timeout: 15
-      TracingConfig:
-        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -277,8 +273,6 @@ Resources:
       Runtime: python3.12
       MemorySize: 256
       Timeout: 15
-      TracingConfig:
-        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -302,8 +296,6 @@ Resources:
       Runtime: python3.12
       MemorySize: 256
       Timeout: 15
-      TracingConfig:
-        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -327,8 +319,6 @@ Resources:
       Runtime: python3.12
       MemorySize: 256
       Timeout: 15
-      TracingConfig:
-        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -352,8 +342,6 @@ Resources:
       Runtime: python3.12
       MemorySize: 256
       Timeout: 15
-      TracingConfig:
-        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -377,8 +365,6 @@ Resources:
       Runtime: python3.12
       MemorySize: 256
       Timeout: 15
-      TracingConfig:
-        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -448,10 +434,8 @@ Resources:
       Runtime: python3.12
       Timeout: 29
       MemorySize: 512
-      EphemeralStorage: 1024
-      ReservedConcurrentExecutions: 100
-      TracingConfig:
-        Mode: Active
+      EphemeralStorage:
+        Size: 1024
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -483,6 +467,7 @@ Resources:
                 - transcribe:StartStreamTranscription
                 - xray:PutTraceSegments
                 - xray:PutTelemetryRecords
+                - cloudwatch:PutMetricData
               Resource: "*"
 
   SpeakingSessionFunction:
@@ -493,10 +478,8 @@ Resources:
       Runtime: python3.12
       Timeout: 29
       MemorySize: 512
-      EphemeralStorage: 1024
-      ReservedConcurrentExecutions: 100
-      TracingConfig:
-        Mode: Active
+      EphemeralStorage:
+        Size: 1024
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -548,6 +531,31 @@ Resources:
                 - xray:PutTraceSegments
                 - xray:PutTelemetryRecords
               Resource: "*"
+
+  # WebSocket Lambda Permissions
+  WebSocketConnectPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SpeakingWebSocketFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SpeakingWebSocketApi}/*"
+
+  WebSocketDisconnectPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SpeakingWebSocketFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SpeakingWebSocketApi}/*"
+
+  WebSocketDefaultPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SpeakingWebSocketFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SpeakingWebSocketApi}/*"
 
 Outputs:
   Region:

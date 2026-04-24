@@ -31,3 +31,14 @@ class UpdateProfileResponse(BaseDTO):
     """DTO đầu ra cho UpdateProfileUseCase."""
     is_success: bool
     message: str
+    user_id: str
+    email: str
+    display_name: str
+    avatar_url: str = ""
+    current_level: str
+    target_level: str
+    current_streak: int = 0
+    total_words_learned: int = 0
+    role: str = "LEARNER"
+    is_active: bool = True
+    is_new_user: bool = True

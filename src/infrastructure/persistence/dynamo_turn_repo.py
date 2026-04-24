@@ -37,7 +37,6 @@ class DynamoTurnRepo(TurnRepository):
                 "output_tokens": turn.output_tokens,
                 "cost_usd": turn.cost_usd,
                 "delivery_cue": turn.delivery_cue,
-                "quality_score": turn.quality_score,
                 "created_at": now,
                 "updated_at": now,
             }
@@ -60,6 +59,7 @@ class DynamoTurnRepo(TurnRepository):
                 batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
 
     def _to_entity(self, item: dict) -> Turn:
+        from decimal import Decimal
         return Turn(
             session_id=item.get("session_id", ""),
             turn_index=int(item.get("turn_index", 0)),
@@ -68,12 +68,11 @@ class DynamoTurnRepo(TurnRepository):
             audio_url=item.get("audio_url", ""),
             translated_content=item.get("translated_content", ""),
             is_hint_used=item.get("is_hint_used", False),
-            # Metrics (Phase 5)
+            # Metrics (Phase 5) - DynamoDB returns Decimal, keep as Decimal
             ttft_ms=item.get("ttft_ms"),
             latency_ms=item.get("latency_ms"),
             input_tokens=int(item.get("input_tokens", 0)),
             output_tokens=int(item.get("output_tokens", 0)),
-            cost_usd=float(item.get("cost_usd", 0.0)),
+            cost_usd=item.get("cost_usd") or Decimal("0.0"),
             delivery_cue=item.get("delivery_cue", ""),
-            quality_score=float(item.get("quality_score", 0.0)),
         )
