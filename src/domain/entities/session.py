@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Optional
 from ulid import ULID
 from domain.value_objects.enums import Gender, ProficiencyLevel
@@ -35,10 +36,10 @@ class Session:
     
     # Phase 5: Model Assignment & Metrics
     assigned_model: str = ""                    # Model assigned to this session (e.g., "amazon.nova-micro-v1:0")
-    avg_ttft_ms: float = 0.0                    # Average time to first token (milliseconds)
-    avg_latency_ms: float = 0.0                 # Average total latency (milliseconds)
+    avg_ttft_ms: Decimal = Decimal("0.0")       # Average time to first token (milliseconds)
+    avg_latency_ms: Decimal = Decimal("0.0")    # Average total latency (milliseconds)
     avg_output_tokens: int = 0                  # Average output tokens per turn
-    total_cost_usd: float = 0.0                 # Total cost for this session
+    total_cost_usd: Decimal = Decimal("0.0")    # Total cost for this session
 
     def __post_init__(self):
         if not self.user_id or not self.scenario_id:

@@ -120,22 +120,22 @@ class DynamoSessionRepo(SessionRepository):
 
     def _to_entity(self, item: dict) -> Session:
         last_audio_timestamp = item.get("last_audio_timestamp", 0.0)
-        # Convert Decimal to float if needed
+        # Convert Decimal to float if needed (for timestamp which is float)
         if isinstance(last_audio_timestamp, Decimal):
             last_audio_timestamp = float(last_audio_timestamp)
         
-        # Phase 5: Model Assignment & Metrics
-        avg_ttft_ms = item.get("avg_ttft_ms", 0.0)
-        if isinstance(avg_ttft_ms, Decimal):
-            avg_ttft_ms = float(avg_ttft_ms)
+        # Phase 5: Model Assignment & Metrics - Keep Decimal values as-is
+        avg_ttft_ms = item.get("avg_ttft_ms", Decimal("0.0"))
+        if not isinstance(avg_ttft_ms, Decimal):
+            avg_ttft_ms = Decimal(str(avg_ttft_ms))
         
-        avg_latency_ms = item.get("avg_latency_ms", 0.0)
-        if isinstance(avg_latency_ms, Decimal):
-            avg_latency_ms = float(avg_latency_ms)
+        avg_latency_ms = item.get("avg_latency_ms", Decimal("0.0"))
+        if not isinstance(avg_latency_ms, Decimal):
+            avg_latency_ms = Decimal(str(avg_latency_ms))
         
-        total_cost_usd = item.get("total_cost_usd", 0.0)
-        if isinstance(total_cost_usd, Decimal):
-            total_cost_usd = float(total_cost_usd)
+        total_cost_usd = item.get("total_cost_usd", Decimal("0.0"))
+        if not isinstance(total_cost_usd, Decimal):
+            total_cost_usd = Decimal(str(total_cost_usd))
         
         return Session(
             session_id=item.get("session_id", ""),

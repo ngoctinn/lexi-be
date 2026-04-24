@@ -831,9 +831,11 @@ def _make_sender(event: dict[str, Any], connection_id: str) -> Callable[[dict[st
     def send_message(payload: dict[str, Any]) -> None:
         try:
             print(f"[ws] Sending message to {connection_id}: {payload.get('event', 'UNKNOWN')}")
+            # Use dumps() which includes DecimalEncoder to convert Decimal → float
+            json_str = dumps(payload)
             client.post_to_connection(
                 ConnectionId=connection_id,
-                Data=dumps(payload).encode("utf-8"),
+                Data=json_str.encode("utf-8"),
             )
             print(f"[ws] Message sent successfully to {connection_id}")
         except ClientError as exc:

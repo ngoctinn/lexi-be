@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import List, Optional
 
 from pydantic import Field
@@ -14,14 +15,14 @@ class SpeakingTurnResponse(BaseDTO):
     is_hint_used: bool = False
     is_saved_to_flashcard: bool = False
     is_pending: bool = False
-    # Phase 5: Metrics fields
-    ttft_ms: float | None = None
-    latency_ms: float | None = None
+    # Phase 5: Metrics fields - Accept Decimal from DynamoDB
+    ttft_ms: Decimal | None = None
+    latency_ms: Decimal | None = None
     input_tokens: int = 0
     output_tokens: int = 0
-    cost_usd: float = 0.0
+    cost_usd: Decimal = Decimal("0.0")
     delivery_cue: str = ""
-    quality_score: float = 0.0
+    quality_score: Decimal = Decimal("0.0")
 
 
 class SpeakingScoringResponse(BaseDTO):
@@ -52,12 +53,12 @@ class SpeakingSessionResponse(BaseDTO):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     status: str = "ACTIVE"
-    # Metrics (Phase 5)
+    # Metrics (Phase 5) - Accept Decimal from DynamoDB
     assigned_model: str = ""
-    avg_ttft_ms: float = 0.0
-    avg_latency_ms: float = 0.0
+    avg_ttft_ms: Decimal = Decimal("0.0")
+    avg_latency_ms: Decimal = Decimal("0.0")
     avg_output_tokens: int = 0
-    total_cost_usd: float = 0.0
+    total_cost_usd: Decimal = Decimal("0.0")
 
 
 class CreateSpeakingSessionCommand(BaseDTO):

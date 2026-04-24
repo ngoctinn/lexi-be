@@ -73,7 +73,7 @@ def _turn_to_response(turn: Turn) -> SpeakingTurnResponse:
         translated_content=turn.translated_content,
         audio_url=turn.audio_url,
         is_hint_used=turn.is_hint_used,
-        # Metrics (Phase 5)
+        # Metrics (Phase 5) - Keep Decimal, DecimalEncoder will handle JSON serialization
         ttft_ms=turn.ttft_ms,
         latency_ms=turn.latency_ms,
         input_tokens=turn.input_tokens,
@@ -119,7 +119,7 @@ def _session_to_response(
         created_at=session.created_at or None,
         updated_at=session.updated_at or None,
         status=session.status,
-        # Metrics (Phase 5)
+        # Metrics (Phase 5) - Keep Decimal, DecimalEncoder will handle JSON serialization
         assigned_model=session.assigned_model,
         avg_ttft_ms=session.avg_ttft_ms,
         avg_latency_ms=session.avg_latency_ms,
@@ -393,6 +393,8 @@ class SubmitSpeakingTurnUseCase:
         Update session metrics with new AI turn metrics.
         Calculates running averages for TTFT, latency, and total cost.
         """
+        from decimal import Decimal
+        
         # Count AI turns (every other turn starting from index 1)
         ai_turn_count = (session.total_turns + 1) // 2
         
@@ -402,12 +404,12 @@ class SubmitSpeakingTurnUseCase:
         # Update TTFT average
         if ai_turn.ttft_ms is not None:
             old_avg = session.avg_ttft_ms
-            session.avg_ttft_ms = (old_avg * (ai_turn_count - 1) + ai_turn.ttft_ms) / ai_turn_count
+            session.avg_ttft_ms = Decimal(str((float(old_avg) * (ai_turn_count - 1) + float(ai_turn.ttft_ms)) / ai_turn_count))
         
         # Update latency average
         if ai_turn.latency_ms is not None:
             old_avg = session.avg_latency_ms
-            session.avg_latency_ms = (old_avg * (ai_turn_count - 1) + ai_turn.latency_ms) / ai_turn_count
+            session.avg_latency_ms = Decimal(str((float(old_avg) * (ai_turn_count - 1) + float(ai_turn.latency_ms)) / ai_turn_count))
         
         # Update output tokens average
         old_avg = session.avg_output_tokens
@@ -422,12 +424,14 @@ class SubmitSpeakingTurnUseCase:
         user_turn: Turn,
         analysis: SpeakingAnalysis,
         turn_history: list[Turn],
-    ) -> tuple[str, str, float | None, float | None, int, int, float]:
+    ) -> tuple[str, str, Decimal | None, Decimal | None, int, int, Decimal]:
         """
         Generate AI response using orchestrator or fallback service.
         
         Returns: (ai_text, delivery_cue, ttft_ms, latency_ms, input_tokens, output_tokens, cost_usd)
         """
+        from decimal import Decimal
+        
         # Try orchestrator first (Phase 5)
         if self._conversation_orchestrator is not None:
             try:
@@ -465,8 +469,8 @@ class SubmitSpeakingTurnUseCase:
             logger.exception(f"ConversationGenerationService failed: {str(e)}, using default response")
             ai_text = "Thanks. Could you say a bit more about that?"
         
-        # Return with no metrics (fallback mode)
-        return (ai_text, "", None, None, 0, 0, 0.0)
+        # Return with no metrics (fallback mode) - use Decimal for consistency
+        return (ai_text, "", None, None, 0, 0, Decimal("0.0"))
 
 
 class CompleteSpeakingSessionUseCase:
