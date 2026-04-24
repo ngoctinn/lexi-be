@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Optional
 from ulid import ULID
 from domain.value_objects.enums import Gender, ProficiencyLevel
 
@@ -27,6 +28,10 @@ class Session:
     connection_id: str = ""         # Kết nối websocket nếu session đang online
     created_at: str = ""            # Thời điểm tạo session
     updated_at: str = ""            # Thời điểm cập nhật gần nhất
+    
+    # Streaming Transcription (for real-time STT)
+    transcribe_stream_id: Optional[str] = None  # Active Transcribe streaming session ID
+    last_audio_timestamp: float = 0.0           # Timestamp of last audio chunk (for timeout tracking)
 
     def __post_init__(self):
         if not self.user_id or not self.scenario_id:

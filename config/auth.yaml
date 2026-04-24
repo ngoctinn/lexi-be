@@ -110,6 +110,51 @@ Resources:
       Principal: cognito-idp.amazonaws.com
       SourceArn: !GetAtt LexiUserPool.Arn
 
+  # --- 5. COGNITO IDENTITY POOL (for client-side AWS SDK access) ---
+  LexiIdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: LexiIdentityPool
+      AllowUnauthenticatedIdentities: false
+      CognitoIdentityProviders:
+        - ClientId: !Ref LexiUserPoolClient
+          ProviderName: !GetAtt LexiUserPool.ProviderName
+
+  # --- 6. IAM ROLE FOR AUTHENTICATED COGNITO USERS ---
+  CognitoAuthenticatedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                cognito-identity.amazonaws.com:aud: !Ref LexiIdentityPool
+              ForAnyValue:StringLike:
+                cognito-identity.amazonaws.com:amr: authenticated
+      Policies:
+        - PolicyName: TranscribeStreamingAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - transcribe:StartStreamTranscription
+                  - transcribe:StartStreamTranscriptionWebSocket
+                Resource: '*'
+
+  # --- 7. ATTACH ROLE TO IDENTITY POOL ---
+  IdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref LexiIdentityPool
+      Roles:
+        authenticated: !GetAtt CognitoAuthenticatedRole.Arn
+
 Outputs:
   UserPoolArn:
     Description: "ARN của User Pool để gắn vào API Gateway"
@@ -126,3 +171,7 @@ Outputs:
   LoginUrl:
     Description: "Link vào trang Login để lấy Token nhanh"
     Value: !Sub "https://${LexiUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/login?client_id=${LexiUserPoolClient}&response_type=token&scope=email+openid+profile&redirect_uri=https://example.com"
+
+  IdentityPoolId:
+    Description: "ID của Identity Pool cho client-side AWS SDK"
+    Value: !Ref LexiIdentityPool

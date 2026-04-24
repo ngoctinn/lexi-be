@@ -440,6 +440,7 @@ Resources:
                 - transcribe:StartTranscriptionJob
                 - transcribe:GetTranscriptionJob
                 - transcribe:DeleteTranscriptionJob
+                - transcribe:StartStreamTranscription
               Resource: "*"
 
   SpeakingSessionFunction:
@@ -518,3 +519,7 @@ Outputs:
   UserPoolClientId:
     Description: "Client ID cho ứng dụng Frontend"
     Value: !GetAtt AuthModule.Outputs.UserPoolClientId
+
+  IdentityPoolId:
+    Description: "Identity Pool ID cho client-side AWS SDK"
+    Value: !GetAtt AuthModule.Outputs.IdentityPoolId

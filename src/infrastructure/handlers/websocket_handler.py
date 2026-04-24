@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass, replace
 from functools import lru_cache
@@ -29,7 +30,10 @@ from infrastructure.services.speaking_pipeline_services import (
     PollySpeechSynthesisService,
     TranscribeSTTService,
 )
+from infrastructure.services.streaming_stt_service_sync import StreamingSTTServiceSync
 from shared.utils.ulid_util import new_ulid
+
+logger = logging.getLogger(__name__)
 
 
 def _response(status: int, body: dict[str, Any]) -> dict[str, Any]:
@@ -144,11 +148,29 @@ def _session_gateway_endpoint(event: dict[str, Any]) -> str:
     return f"https://{domain_name}/{stage}"
 
 
+def _put_cloudwatch_metric(metric_name: str, value: float, unit: str = "None") -> None:
+    """Put a metric to CloudWatch for monitoring."""
+    try:
+        cloudwatch = boto3.client("cloudwatch")
+        cloudwatch.put_metric_data(
+            Namespace="Lexi/Transcription",
+            MetricData=[
+                {
+                    "MetricName": metric_name,
+                    "Value": value,
+                    "Unit": unit,
+                }
+            ],
+        )
+    except Exception as exc:
+        logger.warning(f"Failed to put CloudWatch metric {metric_name}: {exc}")
+
 @dataclass
 class WebSocketSessionController:
     session_repo: DynamoSessionRepo
     turn_repo: DynamoTurnRepo
     stt_service: TranscribeSTTService
+    streaming_stt_service: StreamingSTTServiceSync
     submit_turn_use_case: SubmitSpeakingTurnUseCase
     complete_use_case: CompleteSpeakingSessionUseCase
     build_upload_payload: Callable[[str], tuple[str, str]]
@@ -376,6 +398,235 @@ class WebSocketSessionController:
         )
         return _response(200, {"message": "Session completed"})
 
+    def start_streaming(self, session_id: str, connection_id: str) -> dict[str, Any]:
+        """Initialize streaming transcription session."""
+        session = self._get_session(session_id)
+        if not session:
+            return _response(404, {"message": "Session không tồn tại."})
+
+        self._sync_connection(session, connection_id)
+
+        try:
+            # Initialize Transcribe stream
+            stream_id = self.streaming_stt_service.start_stream(
+                stream_id=session_id,
+                language_code="en-US",
+                sample_rate=16000,
+                media_encoding="opus",
+            )
+
+            # Store stream_id in session
+            session.transcribe_stream_id = stream_id
+            session.last_audio_timestamp = 0.0
+            self.session_repo.save(session)
+
+            self.send_message({"event": "STREAMING_READY", "session_id": session_id})
+            return _response(200, {"message": "Streaming ready"})
+
+        except Exception as exc:
+            logger.exception("Failed to start streaming", extra={"session_id": session_id})
+            self.send_message({"event": "STT_ERROR", "message": "Không thể khởi động streaming."})
+            return _response(500, {"message": str(exc)})
+
+    def audio_chunk(self, session_id: str, connection_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Forward audio chunk to Transcribe stream."""
+        session = self._get_session(session_id)
+        if not session:
+            return _response(404, {"message": "Session không tồn tại."})
+
+        if not session.transcribe_stream_id:
+            return _response(400, {"message": "No active stream"})
+
+        self._sync_connection(session, connection_id)
+
+        try:
+            audio_data = body.get("data")
+            if not audio_data:
+                return _response(400, {"message": "Missing audio data"})
+
+            # Convert array to bytes
+            audio_bytes = bytes(audio_data)
+
+            # Forward to Transcribe
+            self.streaming_stt_service.send_audio_chunk(
+                stream_id=session.transcribe_stream_id,
+                audio_bytes=audio_bytes,
+            )
+
+            # Update timestamp for timeout tracking
+            import time
+            session.last_audio_timestamp = time.time()
+            self.session_repo.save(session)
+
+            # Check for transcripts (non-blocking)
+            transcripts = self.streaming_stt_service.get_transcripts(session.transcribe_stream_id)
+            for transcript in transcripts:
+                if transcript.is_partial:
+                    self.send_message(
+                        {
+                            "event": "PARTIAL_TRANSCRIPT",
+                            "text": transcript.text,
+                            "confidence": transcript.confidence,
+                        }
+                    )
+                else:
+                    self.send_message(
+                        {
+                            "event": "FINAL_TRANSCRIPT",
+                            "text": transcript.text,
+                            "confidence": transcript.confidence,
+                        }
+                    )
+
+            return _response(200, {"message": "Chunk processed"})
+
+        except Exception as exc:
+            logger.exception("Failed to process audio chunk", extra={"session_id": session_id})
+            self.send_message({"event": "STT_ERROR", "message": "Lỗi xử lý audio chunk."})
+            return _response(500, {"message": str(exc)})
+
+    def end_streaming(self, session_id: str, connection_id: str) -> dict[str, Any]:
+        """Close Transcribe stream and trigger LLM pipeline."""
+        session = self._get_session(session_id)
+        if not session:
+            return _response(404, {"message": "Session không tồn tại."})
+
+        if not session.transcribe_stream_id:
+            return _response(400, {"message": "No active stream"})
+
+        self._sync_connection(session, connection_id)
+
+        try:
+            # Close stream and get final transcript
+            final_transcript = self.streaming_stt_service.close_stream(session.transcribe_stream_id)
+            session.transcribe_stream_id = None
+            session.last_audio_timestamp = 0.0
+            self.session_repo.save(session)
+
+            if not final_transcript or final_transcript.confidence < 0.5:
+                confidence = final_transcript.confidence if final_transcript else 0.0
+                self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": confidence})
+                return _response(200, {"message": "Low confidence"})
+
+            # Send final transcript
+            self.send_message(
+                {
+                    "event": "FINAL_TRANSCRIPT",
+                    "text": final_transcript.text,
+                    "confidence": final_transcript.confidence,
+                }
+            )
+
+            # Log and track metrics
+            logger.info(
+                "Streaming transcription completed",
+                extra={
+                    "session_id": session_id,
+                    "confidence": final_transcript.confidence,
+                    "transcript_length": len(final_transcript.text),
+                },
+            )
+            _put_cloudwatch_metric("TranscriptConfidence", final_transcript.confidence)
+            _put_cloudwatch_metric("TranscriptLength", len(final_transcript.text), "Count")
+
+            # Continue with existing LLM pipeline
+            result = self.submit_turn_use_case.execute(
+                SubmitSpeakingTurnCommand(
+                    user_id=session.user_id,
+                    session_id=session_id,
+                    text=final_transcript.text,
+                    is_hint_used=False,
+                    audio_url=None,  # No S3 URL for streaming
+                )
+            )
+
+            if not result.is_success or result.value is None:
+                self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
+                return _response(422, {"message": result.error or "Lỗi xử lý lượt nói."})
+
+            response = result.value
+            self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
+            self.send_message({"event": "AI_TEXT_CHUNK", "chunk": response.ai_turn.content, "done": True})
+            if response.ai_turn.audio_url:
+                self.send_message(
+                    {
+                        "event": "AI_AUDIO_URL",
+                        "url": response.ai_turn.audio_url,
+                        "text": response.ai_turn.content,
+                    }
+                )
+
+            return _response(200, {"message": "Streaming ended"})
+
+        except Exception as exc:
+            logger.exception("Failed to end streaming", extra={"session_id": session_id})
+            _put_cloudwatch_metric("StreamErrors", 1, "Count")
+            self.send_message({"event": "STT_ERROR", "message": "Lỗi kết thúc streaming."})
+            return _response(500, {"message": str(exc)})
+
+    def submit_transcript(self, session_id: str, connection_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Process final transcript from client-side streaming."""
+        session = self._get_session(session_id)
+        if not session:
+            return _response(404, {"message": "Session không tồn tại."})
+
+        text = str(body.get("text") or "").strip()
+        confidence = float(body.get("confidence") or 0.0)
+
+        if not text or confidence < 0.5:
+            self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": confidence})
+            return _response(200, {"message": "Low confidence"})
+
+        self._sync_connection(session, connection_id)
+
+        try:
+            # Log and track metrics
+            logger.info(
+                "Client-side streaming transcription completed",
+                extra={
+                    "session_id": session_id,
+                    "confidence": confidence,
+                    "transcript_length": len(text),
+                    "mode": "client-side-streaming",
+                },
+            )
+            _put_cloudwatch_metric("TranscriptConfidence", confidence)
+            _put_cloudwatch_metric("TranscriptLength", len(text), "Count")
+
+            # Continue with existing LLM pipeline
+            result = self.submit_turn_use_case.execute(
+                SubmitSpeakingTurnCommand(
+                    user_id=session.user_id,
+                    session_id=session_id,
+                    text=text,
+                    is_hint_used=False,
+                    audio_url=None,  # No S3 URL for streaming
+                )
+            )
+
+            if not result.is_success or result.value is None:
+                self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
+                return _response(422, {"message": result.error or "Lỗi xử lý lượt nói."})
+
+            response = result.value
+            self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
+            self.send_message({"event": "AI_TEXT_CHUNK", "chunk": response.ai_turn.content, "done": True})
+            if response.ai_turn.audio_url:
+                self.send_message(
+                    {
+                        "event": "AI_AUDIO_URL",
+                        "url": response.ai_turn.audio_url,
+                        "text": response.ai_turn.content,
+                    }
+                )
+
+            return _response(200, {"message": "Transcript processed"})
+
+        except Exception as exc:
+            logger.exception("Failed to process transcript", extra={"session_id": session_id})
+            self.send_message({"event": "ERROR", "message": "Lỗi xử lý transcript."})
+            return _response(500, {"message": str(exc)})
+
     def unsupported(self, action: str) -> dict[str, Any]:
         self.send_message({"event": "ERROR", "message": f"Hành động '{action}' chưa được hỗ trợ."})
         return _response(400, {"message": f"Hành động '{action}' chưa được hỗ trợ."})
@@ -458,6 +709,7 @@ def get_websocket_controller() -> WebSocketSessionController:
         session_repo=session_repo,
         turn_repo=turn_repo,
         stt_service=TranscribeSTTService(),
+        streaming_stt_service=StreamingSTTServiceSync(),
         submit_turn_use_case=submit_turn_use_case,
         complete_use_case=complete_use_case,
         build_upload_payload=_build_upload_payload,
@@ -513,6 +765,14 @@ def handler(event, context):
         return controller.start_session(str(session_id), connection_id)
     if action == "AUDIO_UPLOADED":
         return controller.audio_uploaded(str(session_id), connection_id, body)
+    if action == "START_STREAMING":
+        return controller.start_streaming(str(session_id), connection_id)
+    if action == "AUDIO_CHUNK":
+        return controller.audio_chunk(str(session_id), connection_id, body)
+    if action == "END_STREAMING":
+        return controller.end_streaming(str(session_id), connection_id)
+    if action == "SUBMIT_TRANSCRIPT":
+        return controller.submit_transcript(str(session_id), connection_id, body)
     if action == "USE_HINT":
         return controller.use_hint(str(session_id), connection_id)
     if action == "END_SESSION":

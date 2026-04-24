@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 import os
 import logging
+from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -50,6 +51,8 @@ class DynamoSessionRepo(SessionRepository):
                 "connection_id": session.connection_id,
                 "created_at": created_at,
                 "updated_at": updated_at,
+                "transcribe_stream_id": session.transcribe_stream_id,
+                "last_audio_timestamp": Decimal(str(session.last_audio_timestamp)) if session.last_audio_timestamp else Decimal("0"),
             }
         )
 
@@ -110,6 +113,11 @@ class DynamoSessionRepo(SessionRepository):
         return sessions
 
     def _to_entity(self, item: dict) -> Session:
+        last_audio_timestamp = item.get("last_audio_timestamp", 0.0)
+        # Convert Decimal to float if needed
+        if isinstance(last_audio_timestamp, Decimal):
+            last_audio_timestamp = float(last_audio_timestamp)
+        
         return Session(
             session_id=item.get("session_id", ""),
             scenario_id=item.get("scenario_id", ""),
@@ -127,4 +135,6 @@ class DynamoSessionRepo(SessionRepository):
             connection_id=item.get("connection_id", ""),
             created_at=item.get("created_at", ""),
             updated_at=item.get("updated_at", ""),
+            transcribe_stream_id=item.get("transcribe_stream_id"),
+            last_audio_timestamp=last_audio_timestamp,
         )
