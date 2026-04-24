@@ -1,5 +1,5 @@
 from typing import Dict, Any
-from application.dtos.auth.create_profile.create_profile_command import CreateUserProfileCommand
+from application.dtos.auth_dtos import CreateUserProfileCommand
 
 class AuthMapper:
     """Phiên dịch dữ liệu đầu vào từ AWS Cognito Event sang Command DTO của Application."""

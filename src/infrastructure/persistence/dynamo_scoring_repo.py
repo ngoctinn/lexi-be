@@ -54,9 +54,27 @@ class DynamoScoringRepo(ScoringRepository):
         return [self._to_entity(item) for item in response.get("Items", [])]
 
     def _to_entity(self, item: dict) -> Scoring:
+        from ulid import ULID
+        
+        scoring_id = item.get("scoring_id", "")
+        session_id = item.get("session_id", "")
+        
+        # Convert to ULID if string
+        if isinstance(scoring_id, str) and scoring_id:
+            try:
+                scoring_id = ULID.from_str(scoring_id)
+            except Exception:
+                pass  # Keep as string if conversion fails
+        
+        if isinstance(session_id, str) and session_id:
+            try:
+                session_id = ULID.from_str(session_id)
+            except Exception:
+                pass  # Keep as string if conversion fails
+        
         return Scoring(
-            scoring_id=item.get("scoring_id", ""),
-            session_id=item.get("session_id", ""),
+            scoring_id=scoring_id,
+            session_id=session_id,
             user_id=item.get("user_id", ""),
             fluency_score=item.get("fluency_score", 0),
             pronunciation_score=item.get("pronunciation_score", 0),

@@ -1,4 +1,5 @@
 import json
+from functools import lru_cache
 from shared.http_utils import dumps
 import base64
 import logging
@@ -7,49 +8,47 @@ from application.repositories.flash_card_repository import FlashCardRepository
 from application.use_cases.flashcard.list_user_flashcards_uc import ListUserFlashcardsUC
 from infrastructure.persistence.dynamo_flashcard_repo import DynamoFlashCardRepository
 
-
-# Khởi tạo dependencies
-flashcard_repo: FlashCardRepository = DynamoFlashCardRepository()
-list_user_flashcards_uc = ListUserFlashcardsUC(flashcard_repo)
-
-# Setup logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
+def build_list_flashcards_uc():
+    """Build list flashcards use case with dependencies."""
+    flashcard_repo: FlashCardRepository = DynamoFlashCardRepository()
+    return ListUserFlashcardsUC(flashcard_repo)
+
+
+@lru_cache(maxsize=1)
+def get_list_flashcards_uc():
+    """Get cached use case (reuse across invocations)."""
+    return build_list_flashcards_uc()
+
+
+def _unauthorized_response():
+    return {
+        "statusCode": 401,
+        "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
+        "body": dumps({"error": "Unauthorized"}),
+    }
+
+
 def handler(event, context):
-    """
-    Lambda handler cho endpoint GET /flashcards.
-    
-    Liệt kê tất cả flashcard của người dùng với phân trang.
-    """
-    # Lấy user_id từ authorizer context
+    """Lambda handler for GET /flashcards."""
     try:
         user_id = event.get("requestContext", {}).get("authorizer", {}).get("claims", {}).get("sub")
         if not user_id:
-            return {
-                "statusCode": 401,
-                "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-                "body": dumps({"error": "Unauthorized"}),
-            }
+            return _unauthorized_response()
     except Exception:
-        return {
-            "statusCode": 401,
-            "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": dumps({"error": "Unauthorized"}),
-        }
+        return _unauthorized_response()
 
-    # Parse query parameters
     query_params = event.get("queryStringParameters") or {}
     
-    # Parse limit (default 20, max 100)
     try:
         limit = int(query_params.get("limit", "20"))
-        limit = min(max(1, limit), 100)  # Clamp between 1 and 100
+        limit = min(max(1, limit), 100)
     except ValueError:
         limit = 20
     
-    # Parse last_key (base64 encoded JSON)
     last_key = None
     last_key_str = query_params.get("last_key")
     if last_key_str:
@@ -66,10 +65,9 @@ def handler(event, context):
     logger.info(f"Listing flashcards for user_id: {user_id}, limit: {limit}")
 
     try:
-        # Gọi use case
-        cards, next_key = list_user_flashcards_uc.execute(user_id, last_key, limit)
+        uc = get_list_flashcards_uc()
+        cards, next_key = uc.execute(user_id, last_key, limit)
         
-        # Chuyển đổi sang JSON response
         cards_data = [
             {
                 "flashcard_id": card.flashcard_id,
@@ -88,7 +86,6 @@ def handler(event, context):
             for card in cards
         ]
         
-        # Encode next_key nếu có
         next_key_encoded = None
         if next_key:
             next_key_encoded = base64.b64encode(json.dumps(next_key).encode("utf-8")).decode("utf-8")

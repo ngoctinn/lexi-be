@@ -8,8 +8,7 @@ from application.exceptions.vocabulary_errors import (
     VocabularyNotFoundError,
     VocabularyPersistenceError,
 )
-from application.use_cases.vocabulary.translate_sentence import TranslateSentenceUC
-from application.use_cases.vocabulary.translate_vocabulary import TranslateVocabularyUC
+from application.use_cases.vocabulary_use_cases import TranslateSentenceUseCase, TranslateVocabularyUseCase
 from interfaces.mapper.vocabulary_mapper import VocabularyMapper
 from shared.http_utils import dumps
 
@@ -17,8 +16,8 @@ from shared.http_utils import dumps
 class VocabularyController:
     def __init__(
         self,
-        translate_use_case: TranslateVocabularyUC | None = None,
-        translate_sentence_use_case: TranslateSentenceUC | None = None,
+        translate_use_case: TranslateVocabularyUseCase | None = None,
+        translate_sentence_use_case: TranslateSentenceUseCase | None = None,
     ):
         self._translate_use_case = translate_use_case
         self._translate_sentence_use_case = translate_sentence_use_case

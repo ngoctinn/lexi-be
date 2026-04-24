@@ -2,7 +2,7 @@ from typing import Dict, Any
 import logging
 from pydantic import ValidationError
 from interfaces.mapper.auth_mapper import AuthMapper
-from application.use_cases.auth.create_user_profile import CreateUserProfileUseCase
+from application.use_cases.user_profile_use_cases import CreateUserProfileUseCase
 
 logger = logging.getLogger(__name__)
 

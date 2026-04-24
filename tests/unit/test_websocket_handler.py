@@ -6,7 +6,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from application.services.speaking_services import SpeakingAnalysis
+from application.service_ports.speaking_services import SpeakingAnalysis
 from application.use_cases.speaking_session_use_cases import (
     CompleteSpeakingSessionUseCase,
     SubmitSpeakingTurnUseCase,

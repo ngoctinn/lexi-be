@@ -1,4 +1,5 @@
 import json
+from functools import lru_cache
 from shared.http_utils import dumps
 import logging
 
@@ -6,39 +7,39 @@ from application.repositories.flash_card_repository import FlashCardRepository
 from application.use_cases.flashcard.review_flashcard_uc import ReviewFlashcardUC
 from infrastructure.persistence.dynamo_flashcard_repo import DynamoFlashCardRepository
 
-
-# Khởi tạo dependencies
-flashcard_repo: FlashCardRepository = DynamoFlashCardRepository()
-review_flashcard_uc = ReviewFlashcardUC(flashcard_repo)
-
-# Setup logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
+def build_review_flashcard_uc():
+    """Build review flashcard use case with dependencies."""
+    flashcard_repo: FlashCardRepository = DynamoFlashCardRepository()
+    return ReviewFlashcardUC(flashcard_repo)
+
+
+@lru_cache(maxsize=1)
+def get_review_flashcard_uc():
+    """Get cached use case (reuse across invocations)."""
+    return build_review_flashcard_uc()
+
+
+def _unauthorized_response():
+    return {
+        "statusCode": 401,
+        "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
+        "body": dumps({"error": "Unauthorized"}),
+    }
+
+
 def handler(event, context):
-    """
-    Lambda handler cho endpoint POST /flashcards/{flashcard_id}/review.
-    
-    Đánh giá mức độ nhớ flashcard và cập nhật lịch ôn tập.
-    """
-    # Lấy user_id từ authorizer context
+    """Lambda handler for POST /flashcards/{flashcard_id}/review."""
     try:
         user_id = event.get("requestContext", {}).get("authorizer", {}).get("claims", {}).get("sub")
         if not user_id:
-            return {
-                "statusCode": 401,
-                "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-                "body": dumps({"error": "Unauthorized"}),
-            }
+            return _unauthorized_response()
     except Exception:
-        return {
-            "statusCode": 401,
-            "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": dumps({"error": "Unauthorized"}),
-        }
+        return _unauthorized_response()
 
-    # Lấy flashcard_id từ path parameters
     try:
         flashcard_id = event.get("pathParameters", {}).get("flashcard_id")
         if not flashcard_id:
@@ -54,7 +55,6 @@ def handler(event, context):
             "body": dumps({"error": "Invalid path parameters"}),
         }
 
-    # Parse request body
     try:
         body = json.loads(event.get("body", "{}"))
         rating = body.get("rating")
@@ -74,17 +74,11 @@ def handler(event, context):
     logger.info(f"Reviewing flashcard_id: {flashcard_id}, rating: {rating}, user_id: {user_id}")
 
     try:
-        # Capture old_interval trước khi review (để log theo Requirement 12.2)
-        card_before = flashcard_repo.get_by_user_and_id(user_id, flashcard_id)
-        old_interval = card_before.interval_days if card_before else None
+        uc = get_review_flashcard_uc()
+        card = uc.execute(user_id, flashcard_id, rating)
         
-        # Gọi use case
-        card = review_flashcard_uc.execute(user_id, flashcard_id, rating)
+        logger.info(f"Review successful - flashcard_id: {flashcard_id}, interval: {card.interval_days}")
         
-        logger.info(f"Review successful - flashcard_id: {flashcard_id}, "
-                    f"old_interval: {old_interval}, new_interval: {card.interval_days}")
-        
-        # Trả về thẻ đã cập nhật
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},

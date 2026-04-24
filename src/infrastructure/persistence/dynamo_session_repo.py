@@ -53,6 +53,12 @@ class DynamoSessionRepo(SessionRepository):
                 "updated_at": updated_at,
                 "transcribe_stream_id": session.transcribe_stream_id,
                 "last_audio_timestamp": Decimal(str(session.last_audio_timestamp)) if session.last_audio_timestamp else Decimal("0"),
+                # Phase 5: Model Assignment & Metrics
+                "assigned_model": session.assigned_model,
+                "avg_ttft_ms": Decimal(str(session.avg_ttft_ms)) if session.avg_ttft_ms else Decimal("0"),
+                "avg_latency_ms": Decimal(str(session.avg_latency_ms)) if session.avg_latency_ms else Decimal("0"),
+                "avg_output_tokens": session.avg_output_tokens,
+                "total_cost_usd": Decimal(str(session.total_cost_usd)) if session.total_cost_usd else Decimal("0"),
             }
         )
 
@@ -118,6 +124,19 @@ class DynamoSessionRepo(SessionRepository):
         if isinstance(last_audio_timestamp, Decimal):
             last_audio_timestamp = float(last_audio_timestamp)
         
+        # Phase 5: Model Assignment & Metrics
+        avg_ttft_ms = item.get("avg_ttft_ms", 0.0)
+        if isinstance(avg_ttft_ms, Decimal):
+            avg_ttft_ms = float(avg_ttft_ms)
+        
+        avg_latency_ms = item.get("avg_latency_ms", 0.0)
+        if isinstance(avg_latency_ms, Decimal):
+            avg_latency_ms = float(avg_latency_ms)
+        
+        total_cost_usd = item.get("total_cost_usd", 0.0)
+        if isinstance(total_cost_usd, Decimal):
+            total_cost_usd = float(total_cost_usd)
+        
         return Session(
             session_id=item.get("session_id", ""),
             scenario_id=item.get("scenario_id", ""),
@@ -137,4 +156,10 @@ class DynamoSessionRepo(SessionRepository):
             updated_at=item.get("updated_at", ""),
             transcribe_stream_id=item.get("transcribe_stream_id"),
             last_audio_timestamp=last_audio_timestamp,
+            # Phase 5: Model Assignment & Metrics
+            assigned_model=item.get("assigned_model", ""),
+            avg_ttft_ms=avg_ttft_ms,
+            avg_latency_ms=avg_latency_ms,
+            avg_output_tokens=item.get("avg_output_tokens", 0),
+            total_cost_usd=total_cost_usd,
         )

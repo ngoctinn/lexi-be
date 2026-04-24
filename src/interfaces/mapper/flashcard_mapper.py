@@ -1,6 +1,6 @@
 from typing import Any, Dict
 
-from application.dtos.flashcard.create.create_flashcard_command import CreateFlashCardCommand
+from application.dtos.flashcard_dtos import CreateFlashCardCommand
 
 
 class FlashCardMapper:

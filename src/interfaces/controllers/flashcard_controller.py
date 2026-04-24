@@ -4,7 +4,7 @@ from typing import Any, Dict
 from pydantic import ValidationError
 
 from application.exceptions.vocabulary_errors import VocabularyLookupError
-from application.use_cases.flashcard.create_flashcard_uc import CreateFlashCardUC
+from application.use_cases.flashcard_use_cases import CreateFlashCardUseCase
 from interfaces.mapper.flashcard_mapper import FlashCardMapper
 from shared.http_utils import dumps
 
@@ -12,7 +12,7 @@ from shared.http_utils import dumps
 class FlashCardController:
     """Điều phối các request liên quan đến flashcard."""
 
-    def __init__(self, create_flashcard_usecase: CreateFlashCardUC) -> None:
+    def __init__(self, create_flashcard_usecase: CreateFlashCardUseCase) -> None:
         self.create_flashcard_usecase = create_flashcard_usecase
         self.mapper = FlashCardMapper()
 

@@ -1,7 +1,6 @@
 from typing import Any, Dict
 
-from application.dtos.vocabulary.translate.translate_sentence_command import TranslateSentenceCommand
-from application.dtos.vocabulary.translate.translate_vocabulary_command import TranslateVocabularyCommand
+from application.dtos.vocabulary_dtos import TranslateSentenceCommand, TranslateVocabularyCommand
 
 
 class VocabularyMapper:

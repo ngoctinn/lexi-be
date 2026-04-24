@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 from ulid import ULID
 
 from domain.value_objects.enums import Speaker
@@ -17,6 +18,14 @@ class Turn:
     audio_url: str = ""              # Đường dẫn file âm thanh (nếu có)
     translated_content: str = ""      # Bản dịch của nội dung (thường là sang tiếng Việt)
     is_hint_used: bool = False       # Lượt này có phải là kết quả của một gợi ý không
+    
+    # Phase 5: Performance Metrics
+    ttft_ms: Optional[float] = None              # Time to first token (milliseconds)
+    latency_ms: Optional[float] = None           # Total latency (milliseconds)
+    input_tokens: int = 0                        # Input tokens used
+    output_tokens: int = 0                       # Output tokens generated
+    cost_usd: float = 0.0                        # Cost for this turn
+    delivery_cue: str = ""                       # Delivery cue used (e.g., "[warmly]")
 
     def __post_init__(self):
         if not self.session_id:

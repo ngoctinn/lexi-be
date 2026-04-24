@@ -1,4 +1,5 @@
 import json
+from functools import lru_cache
 from shared.http_utils import dumps
 import logging
 
@@ -6,45 +7,45 @@ from application.repositories.flash_card_repository import FlashCardRepository
 from application.use_cases.flashcard.list_due_cards_uc import ListDueCardsUC
 from infrastructure.persistence.dynamo_flashcard_repo import DynamoFlashCardRepository
 
-
-# Khởi tạo dependencies
-flashcard_repo: FlashCardRepository = DynamoFlashCardRepository()
-list_due_cards_uc = ListDueCardsUC(flashcard_repo)
-
-# Setup logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
+def build_list_due_cards_uc():
+    """Build list due cards use case with dependencies."""
+    flashcard_repo: FlashCardRepository = DynamoFlashCardRepository()
+    return ListDueCardsUC(flashcard_repo)
+
+
+@lru_cache(maxsize=1)
+def get_list_due_cards_uc():
+    """Get cached use case (reuse across invocations)."""
+    return build_list_due_cards_uc()
+
+
+def _unauthorized_response():
+    return {
+        "statusCode": 401,
+        "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
+        "body": dumps({"error": "Unauthorized"}),
+    }
+
+
 def handler(event, context):
-    """
-    Lambda handler cho endpoint GET /flashcards/due.
-    
-    Lấy danh sách flashcard đến hạn ôn tập.
-    """
-    # Lấy user_id từ authorizer context
+    """Lambda handler for GET /flashcards/due."""
     try:
         user_id = event.get("requestContext", {}).get("authorizer", {}).get("claims", {}).get("sub")
         if not user_id:
-            return {
-                "statusCode": 401,
-                "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-                "body": dumps({"error": "Unauthorized"}),
-            }
+            return _unauthorized_response()
     except Exception:
-        return {
-            "statusCode": 401,
-            "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": dumps({"error": "Unauthorized"}),
-        }
+        return _unauthorized_response()
 
     logger.info(f"Listing due cards for user_id: {user_id}")
 
     try:
-        # Gọi use case
-        cards = list_due_cards_uc.execute(user_id)
+        uc = get_list_due_cards_uc()
+        cards = uc.execute(user_id)
         
-        # Chuyển đổi sang JSON response
         cards_data = [
             {
                 "flashcard_id": card.flashcard_id,

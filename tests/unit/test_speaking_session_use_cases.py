@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+from unittest.mock import MagicMock
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
@@ -11,7 +12,7 @@ from application.dtos.speaking_session_dtos import (
     CreateSpeakingSessionCommand,
     SubmitSpeakingTurnCommand,
 )
-from application.services.speaking_services import SpeakingAnalysis
+from application.service_ports.speaking_services import SpeakingAnalysis
 from application.use_cases.speaking_session_use_cases import (
     CompleteSpeakingSessionUseCase,
     CreateSpeakingSessionUseCase,
@@ -254,7 +255,21 @@ def test_complete_session_builds_scoring_and_marks_session_completed():
     )
     session_repo = FakeSessionRepository(session)
     scoring_repo = FakeScoringRepository()
-    use_case = CompleteSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo)
+    
+    # Create mock performance scorer
+    mock_scorer = MagicMock()
+    mock_scorer.score_session.return_value = {
+        "fluency_score": 75,
+        "pronunciation_score": 72,
+        "grammar_score": 70,
+        "vocabulary_score": 68,
+        "overall_score": 71,
+        "feedback": "Good effort!",
+    }
+    
+    use_case = CompleteSpeakingSessionUseCase(
+        session_repo, turn_repo, scoring_repo, performance_scorer=mock_scorer
+    )
 
     result = use_case.execute(
         CompleteSpeakingSessionCommand(user_id="user-1", session_id=session_id)

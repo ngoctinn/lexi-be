@@ -4,7 +4,7 @@ import logging
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from application.services.translation_service import TranslationService
+from application.service_ports.translation_service import TranslationService
 
 logger = logging.getLogger(__name__)
 

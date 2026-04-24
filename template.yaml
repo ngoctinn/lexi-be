@@ -178,9 +178,14 @@ Resources:
       CodeUri: src/
       Handler: infrastructure.handlers.profile.get_profile_handler.handler
       Runtime: python3.12
+      MemorySize: 256
+      Timeout: 15
+      TracingConfig:
+        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LOG_LEVEL: INFO
       Events:
         GetProfile:
           Type: Api
@@ -198,9 +203,14 @@ Resources:
       CodeUri: src/
       Handler: infrastructure.handlers.profile.update_profile_handler.handler
       Runtime: python3.12
+      MemorySize: 256
+      Timeout: 15
+      TracingConfig:
+        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LOG_LEVEL: INFO
       Events:
         UpdateProfile:
           Type: Api
@@ -265,9 +275,14 @@ Resources:
       CodeUri: src/
       Handler: infrastructure.handlers.flashcard.create_flashcard_handler.handler
       Runtime: python3.12
+      MemorySize: 256
+      Timeout: 15
+      TracingConfig:
+        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LOG_LEVEL: INFO
       Events:
         CreateFlashcard:
           Type: Api
@@ -285,9 +300,14 @@ Resources:
       CodeUri: src/
       Handler: infrastructure.handlers.flashcard.list_due_cards_handler.handler
       Runtime: python3.12
+      MemorySize: 256
+      Timeout: 15
+      TracingConfig:
+        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LOG_LEVEL: INFO
       Events:
         ListDueCards:
           Type: Api
@@ -305,9 +325,14 @@ Resources:
       CodeUri: src/
       Handler: infrastructure.handlers.flashcard.review_flashcard_handler.handler
       Runtime: python3.12
+      MemorySize: 256
+      Timeout: 15
+      TracingConfig:
+        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LOG_LEVEL: INFO
       Events:
         ReviewFlashcard:
           Type: Api
@@ -325,9 +350,14 @@ Resources:
       CodeUri: src/
       Handler: infrastructure.handlers.flashcard.list_flashcards_handler.handler
       Runtime: python3.12
+      MemorySize: 256
+      Timeout: 15
+      TracingConfig:
+        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LOG_LEVEL: INFO
       Events:
         ListFlashcards:
           Type: Api
@@ -345,9 +375,14 @@ Resources:
       CodeUri: src/
       Handler: infrastructure.handlers.flashcard.get_flashcard_handler.handler
       Runtime: python3.12
+      MemorySize: 256
+      Timeout: 15
+      TracingConfig:
+        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LOG_LEVEL: INFO
       Events:
         GetFlashcard:
           Type: Api
@@ -412,12 +447,18 @@ Resources:
       Handler: infrastructure.handlers.websocket_handler.handler
       Runtime: python3.12
       Timeout: 29
+      MemorySize: 512
+      EphemeralStorage: 1024
+      ReservedConcurrentExecutions: 100
+      TracingConfig:
+        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
           SPEAKING_AUDIO_BUCKET_NAME: !Ref SpeakingAudioBucket
           COGNITO_USER_POOL_ID: !GetAtt AuthModule.Outputs.UserPoolId
           COGNITO_APP_CLIENT_ID: !GetAtt AuthModule.Outputs.UserPoolClientId
+          LOG_LEVEL: INFO
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
@@ -428,7 +469,6 @@ Resources:
               Action:
                 - execute-api:ManageConnections
               Resource:
-                # Use a wildcard for the API identifier to avoid circular dependency
                 - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/POST/@connections/*
             - Effect: Allow
               Action:
@@ -441,6 +481,8 @@ Resources:
                 - transcribe:GetTranscriptionJob
                 - transcribe:DeleteTranscriptionJob
                 - transcribe:StartStreamTranscription
+                - xray:PutTraceSegments
+                - xray:PutTelemetryRecords
               Resource: "*"
 
   SpeakingSessionFunction:
@@ -450,10 +492,16 @@ Resources:
       Handler: infrastructure.handlers.session_handler.handler
       Runtime: python3.12
       Timeout: 29
+      MemorySize: 512
+      EphemeralStorage: 1024
+      ReservedConcurrentExecutions: 100
+      TracingConfig:
+        Mode: Active
       Environment:
         Variables:
           LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
           SPEAKING_AUDIO_BUCKET_NAME: !Ref SpeakingAudioBucket
+          LOG_LEVEL: INFO
       Events:
         CreateSpeakingSession:
           Type: Api
@@ -497,6 +545,8 @@ Resources:
                 - comprehend:DetectSyntax
                 - polly:SynthesizeSpeech
                 - bedrock:InvokeModel
+                - xray:PutTraceSegments
+                - xray:PutTelemetryRecords
               Resource: "*"
 
 Outputs:

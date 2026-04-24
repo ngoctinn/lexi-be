@@ -30,6 +30,14 @@ class DynamoTurnRepo(TurnRepository):
                 "audio_url": turn.audio_url,
                 "translated_content": turn.translated_content,
                 "is_hint_used": turn.is_hint_used,
+                # Metrics (Phase 5)
+                "ttft_ms": turn.ttft_ms,
+                "latency_ms": turn.latency_ms,
+                "input_tokens": turn.input_tokens,
+                "output_tokens": turn.output_tokens,
+                "cost_usd": turn.cost_usd,
+                "delivery_cue": turn.delivery_cue,
+                "quality_score": turn.quality_score,
                 "created_at": now,
                 "updated_at": now,
             }
@@ -60,4 +68,12 @@ class DynamoTurnRepo(TurnRepository):
             audio_url=item.get("audio_url", ""),
             translated_content=item.get("translated_content", ""),
             is_hint_used=item.get("is_hint_used", False),
+            # Metrics (Phase 5)
+            ttft_ms=item.get("ttft_ms"),
+            latency_ms=item.get("latency_ms"),
+            input_tokens=int(item.get("input_tokens", 0)),
+            output_tokens=int(item.get("output_tokens", 0)),
+            cost_usd=float(item.get("cost_usd", 0.0)),
+            delivery_cue=item.get("delivery_cue", ""),
+            quality_score=float(item.get("quality_score", 0.0)),
         )

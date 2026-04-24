@@ -23,7 +23,6 @@ from domain.entities.session import Session
 from infrastructure.persistence.dynamo_scoring_repo import DynamoScoringRepo
 from infrastructure.persistence.dynamo_session_repo import DynamoSessionRepo
 from infrastructure.persistence.dynamo_turn_repo import DynamoTurnRepo
-from infrastructure.services.bedrock_scoring_service import BedrockScoringService
 from infrastructure.services.speaking_pipeline_services import (
     BedrockConversationGenerationService,
     ComprehendTranscriptAnalysisService,
@@ -31,6 +30,8 @@ from infrastructure.services.speaking_pipeline_services import (
     TranscribeSTTService,
 )
 from infrastructure.services.streaming_stt_service_sync import StreamingSTTServiceSync
+from domain.services.speaking_performance_scorer import SpeakingPerformanceScorer
+from infrastructure.services.bedrock_scorer_adapter import BedrockScorerAdapter
 from shared.utils.ulid_util import new_ulid
 
 logger = logging.getLogger(__name__)

@@ -32,6 +32,13 @@ class Session:
     # Streaming Transcription (for real-time STT)
     transcribe_stream_id: Optional[str] = None  # Active Transcribe streaming session ID
     last_audio_timestamp: float = 0.0           # Timestamp of last audio chunk (for timeout tracking)
+    
+    # Phase 5: Model Assignment & Metrics
+    assigned_model: str = ""                    # Model assigned to this session (e.g., "amazon.nova-micro-v1:0")
+    avg_ttft_ms: float = 0.0                    # Average time to first token (milliseconds)
+    avg_latency_ms: float = 0.0                 # Average total latency (milliseconds)
+    avg_output_tokens: int = 0                  # Average output tokens per turn
+    total_cost_usd: float = 0.0                 # Total cost for this session
 
     def __post_init__(self):
         if not self.user_id or not self.scenario_id:

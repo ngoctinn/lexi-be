@@ -3,8 +3,7 @@ from typing import Dict, Any
 from pydantic import ValidationError
 
 from interfaces.mapper.profile_mapper import ProfileMapper
-from application.use_cases.profile.get_profile import GetProfileUseCase
-from application.use_cases.profile.update_profile import UpdateProfileUseCase
+from application.use_cases.user_profile_use_cases import GetProfileUseCase, UpdateProfileUseCase
 from shared.http_utils import dumps
 
 class ProfileController:

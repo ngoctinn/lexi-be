@@ -1,4 +1,5 @@
 import json
+from functools import lru_cache
 from shared.http_utils import dumps
 import logging
 
@@ -6,39 +7,39 @@ from application.repositories.flash_card_repository import FlashCardRepository
 from application.use_cases.flashcard.get_flashcard_detail_uc import GetFlashcardDetailUC
 from infrastructure.persistence.dynamo_flashcard_repo import DynamoFlashCardRepository
 
-
-# Khởi tạo dependencies
-flashcard_repo: FlashCardRepository = DynamoFlashCardRepository()
-get_flashcard_detail_uc = GetFlashcardDetailUC(flashcard_repo)
-
-# Setup logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
+def build_flashcard_detail_controller():
+    """Build flashcard detail controller with dependencies."""
+    flashcard_repo: FlashCardRepository = DynamoFlashCardRepository()
+    return GetFlashcardDetailUC(flashcard_repo)
+
+
+@lru_cache(maxsize=1)
+def get_flashcard_detail_uc():
+    """Get cached use case (reuse across invocations)."""
+    return build_flashcard_detail_controller()
+
+
+def _unauthorized_response():
+    return {
+        "statusCode": 401,
+        "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
+        "body": dumps({"error": "Unauthorized"}),
+    }
+
+
 def handler(event, context):
-    """
-    Lambda handler cho endpoint GET /flashcards/{flashcard_id}.
-    
-    Lấy thông tin chi tiết của một flashcard.
-    """
-    # Lấy user_id từ authorizer context
+    """Lambda handler for GET /flashcards/{flashcard_id}."""
     try:
         user_id = event.get("requestContext", {}).get("authorizer", {}).get("claims", {}).get("sub")
         if not user_id:
-            return {
-                "statusCode": 401,
-                "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-                "body": dumps({"error": "Unauthorized"}),
-            }
+            return _unauthorized_response()
     except Exception:
-        return {
-            "statusCode": 401,
-            "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-            "body": dumps({"error": "Unauthorized"}),
-        }
+        return _unauthorized_response()
 
-    # Lấy flashcard_id từ path parameters
     try:
         flashcard_id = event.get("pathParameters", {}).get("flashcard_id")
         if not flashcard_id:
@@ -57,10 +58,9 @@ def handler(event, context):
     logger.info(f"Getting flashcard detail - flashcard_id: {flashcard_id}, user_id: {user_id}")
 
     try:
-        # Gọi use case
-        card = get_flashcard_detail_uc.execute(user_id, flashcard_id)
+        uc = get_flashcard_detail_uc()
+        card = uc.execute(user_id, flashcard_id)
         
-        # Trả về thông tin đầy đủ
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},

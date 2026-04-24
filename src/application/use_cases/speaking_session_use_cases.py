@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 from application.repositories.scenario_repository import ScenarioRepository
 from application.repositories.session_repository import SessionRepository
 from application.repositories.turn_repository import TurnRepository
-from application.services.speaking_services import (
+from application.service_ports.speaking_services import (
     ConversationGenerationService,
     SpeakingAnalysis,
     SpeechSynthesisService,
@@ -73,6 +73,13 @@ def _turn_to_response(turn: Turn) -> SpeakingTurnResponse:
         translated_content=turn.translated_content,
         audio_url=turn.audio_url,
         is_hint_used=turn.is_hint_used,
+        # Metrics (Phase 5)
+        ttft_ms=turn.ttft_ms,
+        latency_ms=turn.latency_ms,
+        input_tokens=turn.input_tokens,
+        output_tokens=turn.output_tokens,
+        cost_usd=turn.cost_usd,
+        delivery_cue=turn.delivery_cue,
     )
 
 
@@ -112,6 +119,12 @@ def _session_to_response(
         created_at=session.created_at or None,
         updated_at=session.updated_at or None,
         status=session.status,
+        # Metrics (Phase 5)
+        assigned_model=session.assigned_model,
+        avg_ttft_ms=session.avg_ttft_ms,
+        avg_latency_ms=session.avg_latency_ms,
+        avg_output_tokens=session.avg_output_tokens,
+        total_cost_usd=session.total_cost_usd,
     )
 
 
@@ -242,14 +255,20 @@ class ListSpeakingSessionsUseCase:
             sessions = self._session_repo.list_by_user(user_id, limit=limit)
             session_responses = []
             for session in sessions:
-                scoring_items = self._scoring_repo.get_by_session(str(session.session_id))
-                scoring = scoring_items[0] if scoring_items else None
+                try:
+                    scoring_items = self._scoring_repo.get_by_session(str(session.session_id))
+                    scoring = scoring_items[0] if scoring_items else None
+                except Exception as e:
+                    logger.warning(f"Failed to get scoring for session {session.session_id}: {e}")
+                    scoring = None
+                
                 session_responses.append(_session_to_response(session, [], scoring))
 
             return Result.success(
                 ListSpeakingSessionsResponse(success=True, sessions=session_responses)
             )
         except Exception as exc:
+            logger.exception(f"ListSpeakingSessionsUseCase failed: {exc}")
             return Result.failure(str(exc))
 
 
@@ -261,12 +280,14 @@ class SubmitSpeakingTurnUseCase:
         transcript_analysis_service: TranscriptAnalysisService,
         conversation_generation_service: ConversationGenerationService,
         speech_synthesis_service: SpeechSynthesisService,
+        conversation_orchestrator: "ConversationOrchestrator | None" = None,
     ):
         self._session_repo = session_repo
         self._turn_repo = turn_repo
         self._transcript_analysis_service = transcript_analysis_service
         self._conversation_generation_service = conversation_generation_service
         self._speech_synthesis_service = speech_synthesis_service
+        self._conversation_orchestrator = conversation_orchestrator
 
     def execute(
         self, request: SubmitSpeakingTurnCommand
@@ -301,15 +322,13 @@ class SubmitSpeakingTurnUseCase:
             )
             self._turn_repo.save(user_turn)
 
-            try:
-                ai_text = self._conversation_generation_service.generate_reply(
-                    session=session,
-                    user_turn=user_turn,
-                    analysis=analysis,
-                    turn_history=existing_turns,
-                )
-            except Exception:
-                ai_text = "Thanks. Could you say a bit more about that?"
+            # Generate AI response with orchestrator or fallback
+            ai_text, delivery_cue, ttft_ms, latency_ms, input_tokens, output_tokens, cost_usd = self._generate_ai_response(
+                session=session,
+                user_turn=user_turn,
+                analysis=analysis,
+                turn_history=existing_turns,
+            )
 
             try:
                 ai_audio_url = self._speech_synthesis_service.synthesize(
@@ -328,6 +347,13 @@ class SubmitSpeakingTurnUseCase:
                 audio_url=ai_audio_url,
                 translated_content="",
                 is_hint_used=False,
+                # Metrics (Phase 5)
+                delivery_cue=delivery_cue,
+                ttft_ms=ttft_ms,
+                latency_ms=latency_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
             )
             self._turn_repo.save(ai_turn)
 
@@ -340,6 +366,10 @@ class SubmitSpeakingTurnUseCase:
             session.user_turns = user_turn_count
             session.hint_used_count = hint_used_count
             session.updated_at = _now_iso()
+            
+            # Phase 5: Update session metrics (aggregation)
+            self._update_session_metrics(session, ai_turn)
+            
             self._session_repo.save(session)
 
             updated_turns = self._turn_repo.list_by_session(request.session_id)
@@ -354,6 +384,86 @@ class SubmitSpeakingTurnUseCase:
         except Exception as exc:
             return Result.failure(str(exc))
 
+    def _update_session_metrics(self, session: Session, ai_turn: Turn) -> None:
+        """
+        Update session metrics with new AI turn metrics.
+        Calculates running averages for TTFT, latency, and total cost.
+        """
+        # Count AI turns (every other turn starting from index 1)
+        ai_turn_count = (session.total_turns + 1) // 2
+        
+        if ai_turn_count == 0:
+            return
+        
+        # Update TTFT average
+        if ai_turn.ttft_ms is not None:
+            old_avg = session.avg_ttft_ms
+            session.avg_ttft_ms = (old_avg * (ai_turn_count - 1) + ai_turn.ttft_ms) / ai_turn_count
+        
+        # Update latency average
+        if ai_turn.latency_ms is not None:
+            old_avg = session.avg_latency_ms
+            session.avg_latency_ms = (old_avg * (ai_turn_count - 1) + ai_turn.latency_ms) / ai_turn_count
+        
+        # Update output tokens average
+        old_avg = session.avg_output_tokens
+        session.avg_output_tokens = int((old_avg * (ai_turn_count - 1) + ai_turn.output_tokens) / ai_turn_count)
+        
+        # Update total cost
+        session.total_cost_usd += ai_turn.cost_usd
+
+    def _generate_ai_response(
+        self,
+        session: Session,
+        user_turn: Turn,
+        analysis: SpeakingAnalysis,
+        turn_history: list[Turn],
+    ) -> tuple[str, str, float | None, float | None, int, int, float]:
+        """
+        Generate AI response using orchestrator or fallback service.
+        
+        Returns: (ai_text, delivery_cue, ttft_ms, latency_ms, input_tokens, output_tokens, cost_usd)
+        """
+        # Try orchestrator first (Phase 5)
+        if self._conversation_orchestrator is not None:
+            try:
+                from domain.services.conversation_orchestrator import ConversationGenerationRequest
+                
+                orch_request = ConversationGenerationRequest(
+                    session=session,
+                    user_turn=user_turn,
+                    turn_history=turn_history,
+                    analysis=analysis,
+                )
+                orch_response = self._conversation_orchestrator.generate_response(orch_request)
+                
+                return (
+                    orch_response.ai_text,
+                    orch_response.delivery_cue,
+                    orch_response.ttft_ms,
+                    orch_response.latency_ms,
+                    orch_response.input_tokens,
+                    orch_response.output_tokens,
+                    orch_response.cost_usd,
+                )
+            except Exception as e:
+                logger.exception(f"ConversationOrchestrator failed: {str(e)}, using fallback service")
+        
+        # Fallback to conversation_generation_service
+        try:
+            ai_text = self._conversation_generation_service.generate_reply(
+                session=session,
+                user_turn=user_turn,
+                analysis=analysis,
+                turn_history=turn_history,
+            )
+        except Exception as e:
+            logger.exception(f"ConversationGenerationService failed: {str(e)}, using default response")
+            ai_text = "Thanks. Could you say a bit more about that?"
+        
+        # Return with no metrics (fallback mode)
+        return (ai_text, "", None, None, 0, 0, 0.0)
+
 
 class CompleteSpeakingSessionUseCase:
     def __init__(
@@ -361,12 +471,12 @@ class CompleteSpeakingSessionUseCase:
         session_repo: SessionRepository,
         turn_repo: TurnRepository,
         scoring_repo: ScoringRepository,
-        llm_scoring_service: "LlmScoringService | None" = None,
+        performance_scorer=None,
     ):
         self._session_repo = session_repo
         self._turn_repo = turn_repo
         self._scoring_repo = scoring_repo
-        self._llm_scoring_service = llm_scoring_service
+        self._performance_scorer = performance_scorer
 
     def execute(
         self, request: CompleteSpeakingSessionCommand
@@ -379,11 +489,31 @@ class CompleteSpeakingSessionUseCase:
                 return Result.failure("Phiên học không thuộc về người dùng này.")
 
             turns = self._turn_repo.list_by_session(request.session_id)
+            
+            # Check if scoring already exists
             scoring_items = self._scoring_repo.get_by_session(request.session_id)
-            scoring = scoring_items[0] if scoring_items else self._build_scoring(session, turns)
+            if scoring_items:
+                scoring = scoring_items[0]
+            else:
+                # Use domain service for scoring (with optional external scorer)
+                user_turns = [turn for turn in turns if _is_user_turn(turn)]
+                scoring_data = self._performance_scorer.score_session(
+                    user_turns=user_turns,
+                    level=_enum_value(session.level),
+                    scenario_title=str(session.scenario_id),
+                )
+                scoring = Scoring(
+                    scoring_id=new_ulid(),
+                    session_id=session.session_id,
+                    user_id=session.user_id,
+                    fluency_score=scoring_data["fluency_score"],
+                    pronunciation_score=scoring_data["pronunciation_score"],
+                    grammar_score=scoring_data["grammar_score"],
+                    vocabulary_score=scoring_data["vocabulary_score"],
+                    overall_score=scoring_data["overall_score"],
+                    feedback=scoring_data["feedback"],
+                )
 
-            scoring.feedback = scoring.feedback or self._build_feedback(scoring)
-            scoring.calculate_overall()
             self._scoring_repo.save(scoring)
 
             session.status = "COMPLETED"
@@ -397,111 +527,7 @@ class CompleteSpeakingSessionUseCase:
             )
             return Result.success(response)
         except Exception as exc:
+            logger.exception(f"CompleteSpeakingSessionUseCase failed: {exc}")
             return Result.failure(str(exc))
 
-    def _build_scoring(self, session: Session, turns: List[Turn]) -> Scoring:
-        """LLM scoring nếu có service, fallback về heuristic."""
-        if self._llm_scoring_service is not None:
-            try:
-                return self._build_scoring_llm(session, turns)
-            except Exception:
-                logger.exception("LLM scoring failed, falling back to heuristic")
 
-        return self._build_scoring_heuristic(session, turns)
-
-    def _build_scoring_llm(self, session: Session, turns: List[Turn]) -> Scoring:
-        """Dùng LlmScoringService (port) — không phụ thuộc trực tiếp vào AWS."""
-        from application.services.llm_scoring_service import LlmScoringService
-
-        user_turns = [t for t in turns if _is_user_turn(t)]
-        learner_transcript = "\n".join(
-            f"Turn {t.turn_index}: {t.content}" for t in user_turns
-        )
-
-        scenario_title = "English conversation"
-        if "Scenario:" in session.prompt_snapshot:
-            try:
-                scenario_title = session.prompt_snapshot.split("Scenario:")[1].split("\n")[0].strip()
-            except Exception:
-                pass
-
-        level = _enum_value(session.level)
-        goals = ", ".join(session.selected_goals) if session.selected_goals else "general conversation"
-
-        result = self._llm_scoring_service.score_session(
-            scenario_title=scenario_title,
-            level=level,
-            goals=goals,
-            learner_transcript=learner_transcript,
-        )
-
-        return Scoring(
-            scoring_id=new_ulid(),
-            session_id=session.session_id,
-            user_id=session.user_id,
-            fluency_score=_clamp(result.fluency),
-            pronunciation_score=_clamp(result.fluency),
-            grammar_score=_clamp(result.grammar),
-            vocabulary_score=_clamp(result.vocabulary),
-            overall_score=_clamp(result.overall),
-            feedback=result.feedback,
-        )
-
-    def _build_scoring_heuristic(self, session: Session, turns: List[Turn]) -> Scoring:
-        user_turns = [turn for turn in turns if _is_user_turn(turn)]
-        user_text = " ".join(turn.content for turn in user_turns).strip()
-        words = re.findall(r"[A-Za-z']+", user_text.lower())
-        unique_words = len(set(words))
-        word_count = len(words)
-        turn_count = max(1, len(user_turns))
-        sentence_count = max(1, len(re.findall(r"[.!?]", user_text)) or 1)
-
-        fluency_score = _clamp(64 + turn_count * 4 - session.hint_used_count * 3)
-        pronunciation_score = _clamp(68 + min(16, word_count // 3) - session.hint_used_count * 2)
-        grammar_score = _clamp(60 + min(24, unique_words // 2) + min(10, sentence_count * 2))
-        vocabulary_score = _clamp(62 + min(26, unique_words // 2) + min(8, word_count // 20))
-        overall_score = round(
-            (fluency_score + pronunciation_score + grammar_score + vocabulary_score) / 4
-        )
-
-        feedback = self._build_feedback(
-            fluency_score=fluency_score,
-            pronunciation_score=pronunciation_score,
-            grammar_score=grammar_score,
-            vocabulary_score=vocabulary_score,
-        )
-
-        scoring = Scoring(
-            scoring_id=new_ulid(),
-            session_id=session.session_id,
-            user_id=session.user_id,
-            fluency_score=fluency_score,
-            pronunciation_score=pronunciation_score,
-            grammar_score=grammar_score,
-            vocabulary_score=vocabulary_score,
-            overall_score=overall_score,
-            feedback=feedback,
-        )
-        return scoring
-
-    def _build_feedback(
-        self,
-        fluency_score: int,
-        pronunciation_score: int,
-        grammar_score: int,
-        vocabulary_score: int,
-    ) -> str:
-        feedback_parts: List[str] = []
-        if fluency_score < 75:
-            feedback_parts.append("Hãy nói dài hơn và giữ nhịp câu ổn định hơn.")
-        if pronunciation_score < 75:
-            feedback_parts.append("Hãy chú ý nhấn âm rõ hơn khi luyện đọc.")
-        if grammar_score < 75:
-            feedback_parts.append("Hãy kiểm tra lại cấu trúc câu và thì động từ.")
-        if vocabulary_score < 75:
-            feedback_parts.append("Hãy thử dùng thêm từ nối và từ vựng đa dạng hơn.")
-
-        if not feedback_parts:
-            feedback_parts.append("Bạn làm tốt. Hãy tiếp tục luyện để phản xạ tự nhiên hơn.")
-
-        return " ".join(feedback_parts)

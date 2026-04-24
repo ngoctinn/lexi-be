@@ -7,6 +7,14 @@ from application.use_cases.speaking_session_use_cases import (
     ListSpeakingSessionsUseCase,
     SubmitSpeakingTurnUseCase,
 )
+from domain.services.conversation_orchestrator import ConversationOrchestrator
+from domain.services.model_router import ModelRouter
+from domain.services.prompt_builder import OptimizedPromptBuilder
+from domain.services.streaming_response import StreamingResponse
+from domain.services.response_validator import ResponseValidator
+from domain.services.metrics_logger import MetricsLogger
+from domain.services.scaffolding_system import ScaffoldingSystem
+from domain.services.speaking_performance_scorer import SpeakingPerformanceScorer
 from infrastructure.persistence.dynamo_scoring_repo import DynamoScoringRepo
 from infrastructure.persistence.dynamo_scenario_repo import DynamoScenarioRepository
 from infrastructure.persistence.dynamo_session_repo import DynamoSessionRepo
@@ -16,7 +24,7 @@ from infrastructure.services.speaking_pipeline_services import (
     ComprehendTranscriptAnalysisService,
     PollySpeechSynthesisService,
 )
-from infrastructure.services.bedrock_scoring_service import BedrockScoringService
+from infrastructure.services.bedrock_scorer_adapter import BedrockScorerAdapter
 from interfaces.controllers.session_controller import SessionController
 
 
@@ -28,6 +36,8 @@ def build_session_controller(
     transcript_analysis_service=None,
     conversation_generation_service=None,
     speech_synthesis_service=None,
+    conversation_orchestrator=None,
+    performance_scorer=None,
 ) -> SessionController:
     session_repo = session_repo or DynamoSessionRepo()
     turn_repo = turn_repo or DynamoTurnRepo()
@@ -36,6 +46,22 @@ def build_session_controller(
     transcript_analysis_service = transcript_analysis_service or ComprehendTranscriptAnalysisService()
     conversation_generation_service = conversation_generation_service or BedrockConversationGenerationService()
     speech_synthesis_service = speech_synthesis_service or PollySpeechSynthesisService()
+    
+    # Build ConversationOrchestrator (without QualityScorer)
+    if conversation_orchestrator is None:
+        conversation_orchestrator = ConversationOrchestrator(
+            model_router=ModelRouter(),
+            prompt_builder=OptimizedPromptBuilder(),
+            streaming_response=StreamingResponse(),
+            response_validator=ResponseValidator(),
+            metrics_logger=MetricsLogger(),
+            scaffolding_system=ScaffoldingSystem(),
+        )
+    
+    # Build SpeakingPerformanceScorer with Bedrock adapter
+    if performance_scorer is None:
+        bedrock_adapter = BedrockScorerAdapter()
+        performance_scorer = SpeakingPerformanceScorer(external_scorer=bedrock_adapter)
 
     create_use_case = CreateSpeakingSessionUseCase(session_repo, scenario_repo)
     get_use_case = GetSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo)
@@ -46,8 +72,14 @@ def build_session_controller(
         transcript_analysis_service,
         conversation_generation_service,
         speech_synthesis_service,
+        conversation_orchestrator=conversation_orchestrator,
     )
-    complete_use_case = CompleteSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo, BedrockScoringService())
+    complete_use_case = CompleteSpeakingSessionUseCase(
+        session_repo,
+        turn_repo,
+        scoring_repo,
+        performance_scorer=performance_scorer,
+    )
 
     return SessionController(
         create_use_case=create_use_case,

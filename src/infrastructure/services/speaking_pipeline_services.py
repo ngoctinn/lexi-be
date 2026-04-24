@@ -12,7 +12,7 @@ from typing import List
 import boto3
 from botocore.exceptions import ClientError
 
-from application.services.speaking_services import (
+from application.service_ports.speaking_services import (
     ConversationGenerationService,
     SpeakingAnalysis,
     SpeechSynthesisService,
@@ -21,25 +21,17 @@ from application.services.speaking_services import (
 from domain.entities.session import Session
 from domain.entities.turn import Turn
 from domain.value_objects.enums import ProficiencyLevel, Speaker
+from domain.services.prompt_builder import OptimizedPromptBuilder
 from shared.utils.ulid_util import new_ulid
 
 
 logger = logging.getLogger(__name__)
 
-# Model ID từ AWS docs: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-3-haiku.html
-_BEDROCK_MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0"
+# Model ID từ AWS docs: https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html
+_BEDROCK_MODEL_ID = "amazon.nova-micro-v1:0"
 
 # Sliding window: chỉ gửi N turns gần nhất vào LLM context
 _MAX_HISTORY_TURNS = 10
-
-_LEVEL_INSTRUCTIONS = {
-    "A1": "Use very simple words. Max 1-2 short sentences. Speak slowly and clearly.",
-    "A2": "Use simple vocabulary. Max 2 sentences. Ask one simple question.",
-    "B1": "Use everyday vocabulary. 2-3 sentences. Ask follow-up questions.",
-    "B2": "Use varied vocabulary. 2-4 sentences. Discuss ideas naturally.",
-    "C1": "Use sophisticated language. 3-5 sentences. Engage deeply.",
-    "C2": "Use native-level language. Natural conversation flow.",
-}
 
 
 def _enum_value(value: object) -> str:
@@ -47,31 +39,25 @@ def _enum_value(value: object) -> str:
 
 
 def _build_llm_system_prompt(session: Session) -> str:
-    """Xây dựng system prompt cho LLM với off-topic redirect rules và level instructions."""
+    """
+    Build optimized 5-section system prompt using OptimizedPromptBuilder.
+    
+    Replaces old generic prompt with structured format:
+    1. IDENTITY: Role, relationship, purpose
+    2. PERSONALITY: Traits, emotional tone (level-adaptive)
+    3. BEHAVIORS: Conversational patterns
+    4. RESPONSE RULES: Format constraints, delivery cues
+    5. GUARDRAILS: Off-topic, Vietnamese, inappropriate language
+    """
     level = _enum_value(session.level)
-    level_instruction = _LEVEL_INSTRUCTIONS.get(level, _LEVEL_INSTRUCTIONS["B1"])
-    goals_text = ", ".join(session.selected_goals) if session.selected_goals else "general conversation"
-
-    return (
-        f"You are playing the role of {session.ai_role_id} in a roleplay conversation.\n\n"
-        f"SCENARIO CONTEXT: {session.learner_role_id} and {session.ai_role_id} are having a conversation.\n"
-        f"YOUR ROLE: {session.ai_role_id}\n"
-        f"LEARNER'S ROLE: {session.learner_role_id}\n"
-        f"LEARNING GOALS: {goals_text}\n\n"
-        f"LANGUAGE LEVEL: {level}\n"
-        f"{level_instruction}\n\n"
-        f"CONVERSATION RULES:\n"
-        f"1. Stay in character as {session.ai_role_id} at all times.\n"
-        f"2. Keep responses SHORT and NATURAL (match the level above).\n"
-        f"3. Always move the conversation forward — ask a question or prompt the next action.\n"
-        f"4. Do NOT correct grammar during conversation. Evaluation happens after.\n"
-        f"5. If the learner goes off-topic, gently redirect: "
-        f"\"That's interesting! But let's focus on our conversation...\"\n"
-        f"6. If the learner uses inappropriate language: "
-        f"\"Let's keep it professional. Now, {session.selected_goals[0] if session.selected_goals else 'let us continue'}...\"\n"
-        f"7. If the learner writes in Vietnamese, respond: "
-        f"\"Please try in English! I'll help you. [simple English prompt]\"\n"
-        f"8. NEVER say you are an AI unless directly asked."
+    
+    return OptimizedPromptBuilder.build(
+        scenario_title=session.scenario_title,
+        learner_role=session.learner_role_id,
+        ai_role=session.ai_role_id,
+        level=level,
+        selected_goals=session.selected_goals,
+        ai_gender=_enum_value(session.ai_gender),
     )
 
 
@@ -197,9 +183,9 @@ class RuleBasedConversationGenerationService(ConversationGenerationService):
 
 class BedrockConversationGenerationService(ConversationGenerationService):
     """
-    AI conversation generation dùng Amazon Bedrock Claude 3 Haiku.
-    Model ID: anthropic.claude-3-haiku-20240307-v1:0
-    Docs: https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-3-haiku.html
+    AI conversation generation dùng Amazon Bedrock Nova Micro.
+    Model ID: amazon.nova-micro-v1:0
+    Docs: https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html
     """
 
     def __init__(self, bedrock_client=None):

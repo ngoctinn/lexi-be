@@ -1,5 +1,5 @@
 from typing import Dict, Any
-from application.dtos.profile.update.update_profile_command import UpdateProfileCommand
+from application.dtos.profile_dtos import UpdateProfileCommand
 
 class ProfileMapper:
     """Phiên dịch dữ liệu đầu vào (HTTP Body) sang Command DTO cho profile."""
