@@ -49,22 +49,23 @@ def _unauthorized_response():
 
 
 def handler(event, context):
-    """Lambda handler for GET /profile."""
+    """Lambda handler for GET /profile.
+    
+    Authentication is handled by API Gateway Cognito Authorizer.
+    """
     try:
         user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
         logger.info("Getting profile", extra={"context": {"user_id": user_id}})
-    except KeyError as e:
-        logger.warning("Unauthorized access attempt", extra={"context": {"error": str(e)}})
+    except KeyError:
+        logger.error("Missing Cognito claims - check API Gateway authorizer configuration")
         return _unauthorized_response()
 
     try:
         controller = _get_or_build_profile_controller()
         presenter = HttpPresenter()
         
-        # Get OperationResult from controller
         result = controller.get_profile(user_id)
         
-        # Convert OperationResult to HTTP response
         if result.is_success:
             return presenter.present_success(result.success)
         else:

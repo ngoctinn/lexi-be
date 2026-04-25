@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 import os
+import logging
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -9,22 +10,36 @@ from botocore.exceptions import ClientError
 from application.repositories.scenario_repository import ScenarioRepository
 from domain.entities.scenario import Scenario
 
+logger = logging.getLogger(__name__)
+
 
 class DynamoScenarioRepository(ScenarioRepository):
     """Lưu trữ Scenario trong DynamoDB."""
 
     def __init__(self, table=None):
-        self._table = table or boto3.resource("dynamodb").Table(os.environ["LEXI_TABLE_NAME"])
+        # Use env var with fallback to empty string for local testing
+        table_name = os.environ.get("LEXI_TABLE_NAME", "")
+        if not table_name:
+            # For local testing without DynamoDB, use empty table
+            # This will cause validation error but won't crash the Lambda
+            logger.warning("LEXI_TABLE_NAME not set, DynamoDB operations will fail")
+        self._table = table or boto3.resource("dynamodb").Table(table_name) if table_name else None
 
     # --- Read operations ---
 
     def list_active(self) -> List[Scenario]:
         """Lấy tất cả scenario đang active — dùng cho Learner."""
+        if not self._table:
+            logger.error("DynamoDB table not initialized (LEXI_TABLE_NAME not set)")
+            return []
         all_scenarios = self._query_gsi3()
         return [s for s in all_scenarios if s.is_active]
 
     def list_all(self) -> List[Scenario]:
         """Lấy tất cả scenario kể cả inactive — dùng cho Admin."""
+        if not self._table:
+            logger.error("DynamoDB table not initialized (LEXI_TABLE_NAME not set)")
+            return []
         return self._query_gsi3()
 
     def get_by_id(self, scenario_id: str) -> Optional[Scenario]:

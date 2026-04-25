@@ -12,6 +12,7 @@ class Session:
 
     # Cấu hình phiên
     scenario_id: ULID           # ID kịch bản đang học
+    scenario_title: str = ""    # Tiêu đề kịch bản (để dùng trong prompt)
     user_id: str = ""                # ID người dùng tham gia
     learner_role_id: str = ""        # Vai người học đã chọn trong session
     ai_role_id: str = ""             # Vai AI đã nhận trong session

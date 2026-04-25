@@ -19,13 +19,15 @@ _controller = OnboardingController(_complete_onboarding_uc)
 
 
 def handler(event, context):
-    """Handler cho POST /onboarding/complete."""
-    # 1. Lấy user_id từ JWT claims
+    """Handler for POST /onboarding/complete.
+    
+    Authentication is handled by API Gateway Cognito Authorizer.
+    """
     try:
         user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
         logger.info("Processing onboarding", extra={"context": {"user_id": user_id}})
     except KeyError:
-        logger.warning("Unauthorized onboarding attempt")
+        logger.error("Missing Cognito claims - check API Gateway authorizer configuration")
         return {
             "statusCode": 401,
             "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
@@ -36,10 +38,8 @@ def handler(event, context):
         presenter = HttpPresenter()
         body_str = event.get("body")
         
-        # Get OperationResult from controller
         result = _controller.complete(user_id, body_str)
         
-        # Convert OperationResult to HTTP response
         if result.is_success:
             return presenter.present_success(result.success)
         else:

@@ -15,6 +15,27 @@ import boto3
 from botocore.exceptions import ClientError
 from botocore.config import Config
 
+# ============================================================================
+# AWS Best Practice: Initialize SDK clients outside handler (module-level)
+# Reference: https://docs.aws.amazon.com/amazonq/detector-library/python/lambda-client-reuse/
+# ============================================================================
+
+# Configure retry with exponential backoff + jitter (AWS recommended)
+# Per: https://aws.amazon.com/blogs/machine-learning/optimize-your-applications-for-scale-and-reliability-on-amazon-bedrock/
+_RETRY_CONFIG = Config(
+    retries={
+        "max_attempts": 3,  # Total attempts (1 initial + 2 retries)
+        "mode": "adaptive",  # Exponential backoff with jitter
+    }
+)
+
+# Module-level clients (reused across Lambda invocations)
+_bedrock_client = boto3.client("bedrock-runtime", config=_RETRY_CONFIG)
+_comprehend_client = boto3.client("comprehend")
+_transcribe_client = boto3.client("transcribe")
+_polly_client = boto3.client("polly")
+_s3_client = boto3.client("s3", config=Config(signature_version='s3v4', s3={'addressing_style': 'virtual'}))
+
 from application.service_ports.speaking_services import (
     ConversationGenerationService,
     SpeakingAnalysis,
@@ -30,8 +51,11 @@ from shared.utils.ulid_util import new_ulid
 
 logger = logging.getLogger(__name__)
 
-# Model ID từ AWS docs: https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html
-_BEDROCK_MODEL_ID = "amazon.nova-micro-v1:0"
+# Model ID - Use inference profile for cross-region support
+# Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-use.html
+# Direct model ID: "amazon.nova-micro-v1:0" (only works in us-east-1, us-west-2)
+# Inference profile: "apac.amazon.nova-micro-v1:0" (works in APAC regions)
+_BEDROCK_MODEL_ID = "apac.amazon.nova-micro-v1:0"
 
 # Sliding window: chỉ gửi N turns gần nhất vào LLM context
 _MAX_HISTORY_TURNS = 10
@@ -41,20 +65,18 @@ def _enum_value(value: object) -> str:
     return value.value if hasattr(value, "value") else str(value)
 
 
-def _build_llm_system_prompt(session: Session) -> str:
+def _build_llm_system_prompt(session: Session) -> list[dict]:
     """
-    Build optimized 5-section system prompt using OptimizedPromptBuilder.
+    Build optimized system prompt for Nova model.
     
-    Replaces old generic prompt with structured format:
-    1. IDENTITY: Role, relationship, purpose
-    2. PERSONALITY: Traits, emotional tone (level-adaptive)
-    3. BEHAVIORS: Conversational patterns
-    4. RESPONSE RULES: Format constraints, delivery cues
-    5. GUARDRAILS: Off-topic, Vietnamese, inappropriate language
+    Reference: https://docs.aws.amazon.com/nova/latest/userguide/complete-request-schema.html
+    
+    Returns list of system content blocks.
     """
     level = _enum_value(session.level)
     
-    return OptimizedPromptBuilder.build(
+    # Get cache-optimized prompt split
+    static_prefix, dynamic_suffix = OptimizedPromptBuilder.build_with_cache_split(
         scenario_title=session.scenario_title,
         learner_role=session.learner_role_id,
         ai_role=session.ai_role_id,
@@ -62,28 +84,40 @@ def _build_llm_system_prompt(session: Session) -> str:
         selected_goals=session.selected_goals,
         ai_gender=_enum_value(session.ai_gender),
     )
+    
+    # Return as list of system content blocks
+    # Per AWS docs: system is list of {"text": "string"} objects
+    return [
+        {"text": static_prefix},
+        {"text": dynamic_suffix}
+    ]
 
 
 def _build_messages_for_llm(turns: List[Turn]) -> List[dict]:
-    """Sliding window: lấy N turns gần nhất, format cho Bedrock Messages API."""
+    """Sliding window: lấy N turns gần nhất, format cho Bedrock Messages API (Nova format)."""
     recent = sorted(turns, key=lambda t: t.turn_index)[-_MAX_HISTORY_TURNS:]
     messages = []
     for turn in recent:
         role = "user" if _enum_value(turn.speaker) == Speaker.USER.value else "assistant"
-        messages.append({"role": role, "content": turn.content})
+        # Nova format: content must be list of objects
+        messages.append({
+            "role": role,
+            "content": [{"text": turn.content}]
+        })
 
     # Bedrock yêu cầu messages phải bắt đầu bằng role "user"
     if not messages:
-        messages = [{"role": "user", "content": "Hello"}]
+        messages = [{"role": "user", "content": [{"text": "Hello"}]}]
     elif messages[0]["role"] != "user":
-        messages = [{"role": "user", "content": "Hello"}] + messages
+        messages = [{"role": "user", "content": [{"text": "Hello"}]}] + messages
 
     return messages
 
 
 class ComprehendTranscriptAnalysisService(TranscriptAnalysisService):
     def __init__(self, client=None):
-        self._client = client
+        # Use module-level client if not provided (for testing)
+        self._client = client if client is not None else _comprehend_client
 
     def analyze(self, text: str) -> SpeakingAnalysis:
         cleaned_text = text.strip()
@@ -94,7 +128,8 @@ class ComprehendTranscriptAnalysisService(TranscriptAnalysisService):
             return self._fallback_analysis(cleaned_text)
 
         try:
-            client = self._client or boto3.client("comprehend")
+            # Use cached client (no recreation)
+            client = self._client
             key_phrases_response = client.detect_key_phrases(
                 Text=cleaned_text,
                 LanguageCode="en",
@@ -191,31 +226,21 @@ class BedrockConversationGenerationService(ConversationGenerationService):
     Docs: https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html
     
     Error Handling:
-    - 429 ThrottlingException: Handled by boto3 exponential backoff (configured at client init)
+    - 429 ThrottlingException: Handled by boto3 exponential backoff (configured at module init)
     - 503 ServiceUnavailableException: Handled by boto3 exponential backoff
     - Other errors: Logged and fallback response returned
     """
 
     def __init__(self, bedrock_client=None):
         """
-        Initialize with retry configuration per AWS best practices.
+        Initialize with module-level client (AWS best practice).
         
         Args:
-            bedrock_client: Optional boto3 Bedrock client. If not provided, creates one
-                          with exponential backoff retry configuration.
+            bedrock_client: Optional boto3 Bedrock client. If not provided, uses module-level
+                          client with exponential backoff retry configuration.
         """
-        if bedrock_client:
-            self._bedrock = bedrock_client
-        else:
-            # Configure retry with exponential backoff + jitter (AWS recommended)
-            # Per: https://aws.amazon.com/blogs/machine-learning/optimize-your-applications-for-scale-and-reliability-on-amazon-bedrock/
-            retry_config = Config(
-                retries={
-                    "max_attempts": 3,  # Total attempts (1 initial + 2 retries)
-                    "mode": "adaptive",  # Exponential backoff with jitter
-                }
-            )
-            self._bedrock = boto3.client("bedrock-runtime", config=retry_config)
+        # Use module-level client if not provided (for testing)
+        self._bedrock = bedrock_client if bedrock_client is not None else _bedrock_client
 
     def generate_reply(
         self,
@@ -224,8 +249,19 @@ class BedrockConversationGenerationService(ConversationGenerationService):
         analysis: SpeakingAnalysis,
         turn_history: List[Turn],
     ) -> str:
-        """Generate reply using Bedrock with prompt caching for cost optimization."""
-        system_prompt = _build_llm_system_prompt(session)
+        """
+        Generate reply using Bedrock with optimized prompt caching.
+        
+        AWS Best Practices Applied:
+        1. Streaming API for better TTFT
+        2. Cache-optimized prompt (static prefix + dynamic suffix)
+        3. Exponential backoff retry (configured at module init)
+        
+        References:
+        - Streaming: https://docs.aws.amazon.com/boto3/latest/reference/services/bedrock-runtime/client/invoke_model_with_response_stream.html
+        - Caching: https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html
+        """
+        system_content = _build_llm_system_prompt(session)  # Returns list with cache checkpoint
         messages = _build_messages_for_llm(turn_history + [user_turn])
 
         # Thêm language hint nếu user không nói tiếng Anh
@@ -235,32 +271,84 @@ class BedrockConversationGenerationService(ConversationGenerationService):
                 "Gently remind them to use English and provide a simple English prompt.]"
             )
 
-        # Format system prompt with cache checkpoint for cost optimization
-        # Per AWS best practices: https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html
-        # Cache checkpoint placed at end of static system prompt (simplified cache management)
-        system_content = [
-            {
-                "type": "text",
-                "text": system_prompt,
-                "cache_control": {"type": "ephemeral"}  # 5-minute TTL, 50-90% cost reduction
-            }
-        ]
-
+        # AWS Nova format (not Anthropic)
+        # Reference: https://docs.aws.amazon.com/nova/latest/userguide/complete-request-schema.html
         body = dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 150,
-            "system": system_content,  # List with cache checkpoint (not string)
+            "system": system_content,  # List with cache checkpoint
             "messages": messages,
-            "temperature": 0.7,
+            "inferenceConfig": {
+                "maxTokens": 150,
+                "temperature": 0.7,
+            }
         })
 
         try:
-            response = self._bedrock.invoke_model(
+            # AWS Best Practice: Use streaming API for better TTFT
+            # Reference: https://docs.aws.amazon.com/boto3/latest/reference/services/bedrock-runtime/client/invoke_model_with_response_stream.html
+            response = self._bedrock.invoke_model_with_response_stream(
                 modelId=_BEDROCK_MODEL_ID,
                 body=body,
             )
-            result = json.loads(response["body"].read())
-            return result["content"][0]["text"].strip()
+            
+            # Process event stream
+            event_stream = response["body"]
+            text = ""
+            
+            for event in event_stream:
+                # Handle chunk event (contains response text)
+                if "chunk" in event:
+                    chunk_bytes = event["chunk"]["bytes"]
+                    chunk_json = json.loads(chunk_bytes.decode("utf-8"))
+                    
+                    # Extract text from chunk (Nova format)
+                    # Reference: https://docs.aws.amazon.com/nova/latest/userguide/complete-request-schema.html
+                    if "contentBlockDelta" in chunk_json:
+                        delta = chunk_json["contentBlockDelta"].get("delta", {})
+                        if "text" in delta:
+                            text += delta["text"]
+                    # Fallback for other formats
+                    elif "delta" in chunk_json and "text" in chunk_json["delta"]:
+                        text += chunk_json["delta"]["text"]
+                    elif "content" in chunk_json and len(chunk_json["content"]) > 0:
+                        text += chunk_json["content"][0].get("text", "")
+                
+                # Handle error events (per AWS docs)
+                elif "internalServerException" in event:
+                    error = event["internalServerException"]
+                    logger.error(f"Bedrock internal error: {error.get('message', 'Unknown')}")
+                    break
+                
+                elif "modelStreamErrorException" in event:
+                    error = event["modelStreamErrorException"]
+                    logger.error(f"Bedrock stream error: {error.get('message', 'Unknown')}")
+                    break
+                
+                elif "throttlingException" in event:
+                    error = event["throttlingException"]
+                    logger.warning(f"Bedrock throttled: {error.get('message', 'Unknown')}")
+                    break
+                
+                elif "modelTimeoutException" in event:
+                    error = event["modelTimeoutException"]
+                    logger.warning(f"Bedrock timeout: {error.get('message', 'Unknown')}")
+                    break
+                
+                elif "validationException" in event:
+                    error = event["validationException"]
+                    logger.error(f"Bedrock validation error: {error.get('message', 'Unknown')}")
+                    break
+                
+                elif "serviceUnavailableException" in event:
+                    error = event["serviceUnavailableException"]
+                    logger.warning(f"Bedrock unavailable: {error.get('message', 'Unknown')}")
+                    break
+            
+            if text:
+                return text.strip()
+            else:
+                # Fallback if no text received
+                logger.warning("No text received from Bedrock stream")
+                return "I see. Could you tell me more about that?"
             
         except ClientError as e:
             # AWS API error - distinguish between error types
@@ -312,7 +400,8 @@ class TranscribeSTTService:
     _POLL_INTERVAL = 2   # 2 giây mỗi lần → max 30s timeout
 
     def __init__(self, transcribe_client=None):
-        self._client = transcribe_client
+        # Use module-level client if not provided (for testing)
+        self._client = transcribe_client if transcribe_client is not None else _transcribe_client
 
     def transcribe(self, s3_bucket: str, s3_key: str) -> tuple[str, float]:
         """
@@ -330,7 +419,8 @@ class TranscribeSTTService:
         else:
             media_format = "webm"
 
-        client = self._client or boto3.client("transcribe")
+        # Use cached client (no recreation)
+        client = self._client
 
         try:
             client.start_transcription_job(
@@ -376,8 +466,9 @@ class TranscribeSTTService:
 
 class PollySpeechSynthesisService(SpeechSynthesisService):
     def __init__(self, client=None, s3_client=None):
-        self._client = client
-        self._s3_client = s3_client
+        # Use module-level clients if not provided (for testing)
+        self._client = client if client is not None else _polly_client
+        self._s3_client = s3_client if s3_client is not None else _s3_client
 
     def synthesize(self, text: str, ai_gender: str, object_key: str | None = None) -> str:
         cleaned_text = text.strip()
@@ -385,8 +476,9 @@ class PollySpeechSynthesisService(SpeechSynthesisService):
             return ""
 
         try:
-            client = self._client or boto3.client("polly")
-            s3_client = self._s3_client or boto3.client("s3")
+            # Use cached clients (no recreation)
+            client = self._client
+            s3_client = self._s3_client
             bucket_name = os.environ.get("SPEAKING_AUDIO_BUCKET_NAME")
             if not bucket_name:
                 logger.warning("SPEAKING_AUDIO_BUCKET_NAME is not configured")

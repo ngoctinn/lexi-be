@@ -8,10 +8,12 @@ Routing matrix:
 - C1 → Micro (30% fallback to Pro)
 - C2 → Micro (40% fallback to Pro)
 
-Model IDs:
-- Micro: amazon.nova-micro-v1:0
-- Lite: amazon.nova-lite-v1:0
-- Pro: amazon.nova-pro-v1:0
+Model IDs (using inference profiles for APAC regions):
+- Micro: apac.amazon.nova-micro-v1:0
+- Lite: apac.amazon.nova-lite-v1:0
+- Pro: apac.amazon.nova-pro-v1:0
+
+Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-use.html
 """
 
 from dataclasses import dataclass
@@ -32,10 +34,11 @@ class ModelConfig:
 class ModelRouter:
     """Routes requests to appropriate model based on proficiency level."""
 
-    # Model IDs
-    MICRO = "amazon.nova-micro-v1:0"
-    LITE = "amazon.nova-lite-v1:0"
-    PRO = "amazon.nova-pro-v1:0"
+    # Model IDs - Use inference profiles for cross-region support
+    # Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-use.html
+    MICRO = "apac.amazon.nova-micro-v1:0"
+    LITE = "apac.amazon.nova-lite-v1:0"
+    PRO = "apac.amazon.nova-pro-v1:0"
 
     # Routing matrix: level → ModelConfig
     _ROUTING_MATRIX = {

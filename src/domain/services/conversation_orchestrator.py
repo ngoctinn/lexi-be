@@ -89,7 +89,8 @@ class ConversationOrchestrator:
         user_turn = request.user_turn
         
         # Step 1: Route to appropriate model
-        routing = self.model_router.route(session.level)
+        level_str = session.level.value if hasattr(session.level, "value") else str(session.level)
+        routing = self.model_router.get_config(level_str)
         
         # Step 2: Build optimized prompt
         prompt = self.prompt_builder.build(
@@ -130,11 +131,12 @@ class ConversationOrchestrator:
             fallback_reason = str(e)
         
         # Step 4: Validate response quality
-        validation_passed = self.response_validator.validate(
+        level_str = session.level.value if hasattr(session.level, "value") else str(session.level)
+        validation_result = self.response_validator.validate(
             response=ai_text,
-            level=session.level,
-            output_tokens=output_tokens,
+            level=level_str,
         )
+        validation_passed = validation_result.is_valid
         
         # If validation fails, use fallback model
         if not validation_passed and model_source == "primary":

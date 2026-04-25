@@ -7,13 +7,16 @@ Handles:
 - TTFT (Time To First Token) tracking
 - Timeout handling
 - Error handling
+
+AWS Reference:
+https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-runtime_example_bedrock-runtime_InvokeModelWithResponseStream_AnthropicClaude_section.html
 """
 
 import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Iterator, Optional
+from typing import Iterator, Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +34,16 @@ class StreamingMetrics:
 class StreamingResponse:
     """Handles streaming responses from Bedrock."""
 
-    def __init__(self, timeout_seconds: float = 5.0):
+    def __init__(self, timeout_seconds: float = 5.0, bedrock_client=None):
         """
         Initialize streaming response handler.
         
         Args:
             timeout_seconds: Maximum time to wait for first token (TTFT)
+            bedrock_client: Optional boto3 Bedrock Runtime client
         """
         self.timeout_seconds = timeout_seconds
+        self.bedrock_client = bedrock_client
         self.metrics = StreamingMetrics()
         self._start_time = None
         self._first_token_time = None
@@ -81,25 +86,26 @@ class StreamingResponse:
                         chunk_bytes = chunk["bytes"]
                         chunk_text = chunk_bytes.decode("utf-8")
                         
-                        # Parse JSON to extract text
+                        # Parse JSON to extract text (Anthropic Claude format)
+                        # Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-runtime_example_bedrock-runtime_InvokeModelWithResponseStream_AnthropicClaude_section.html
                         try:
                             chunk_json = json.loads(chunk_text)
-                            # Different models have different response formats
-                            # Try common fields: completion, text, output, content
-                            if "completion" in chunk_json:
+                            
+                            # Anthropic Claude Messages API format
+                            if chunk_json.get("type") == "content_block_delta":
+                                token_text = chunk_json.get("delta", {}).get("text", "")
+                                response_text += token_text
+                                self.metrics.token_count += 1
+                            # Legacy format fallback
+                            elif "completion" in chunk_json:
                                 token_text = chunk_json["completion"]
+                                response_text += token_text
+                                self.metrics.token_count += 1
                             elif "text" in chunk_json:
                                 token_text = chunk_json["text"]
-                            elif "output" in chunk_json:
-                                token_text = chunk_json["output"]
-                            elif "content" in chunk_json:
-                                token_text = chunk_json["content"]
-                            else:
-                                # If no recognized field, use entire chunk
-                                token_text = chunk_text
-                            
-                            response_text += token_text
-                            self.metrics.token_count += 1
+                                response_text += token_text
+                                self.metrics.token_count += 1
+                                
                         except json.JSONDecodeError:
                             # If not JSON, treat as raw text
                             response_text += chunk_text
@@ -153,6 +159,104 @@ class StreamingResponse:
                 self.metrics.total_latency_ms = (time.time() - self._start_time) * 1000
         
         return response_text, self.metrics
+    
+    def invoke_with_streaming(
+        self,
+        model_id: str,
+        system_prompt: str | list[dict],
+        user_message: str,
+        max_tokens: int = 512,
+        temperature: float = 0.7,
+    ) -> Dict[str, Any]:
+        """
+        Invoke Bedrock model with streaming and return complete response with metrics.
+        
+        Supports both Amazon Nova and Anthropic Claude formats.
+        
+        Args:
+            model_id: Bedrock model ID (e.g., "amazon.nova-micro-v1:0" or "anthropic.claude-3-haiku-20240307-v1:0")
+            system_prompt: System prompt (string or list with cache checkpoint)
+            user_message: User message text
+            max_tokens: Maximum tokens to generate
+            temperature: Temperature for sampling
+            
+        Returns:
+            Dict with keys: text, ttft_ms, latency_ms, input_tokens, output_tokens
+        """
+        if self.bedrock_client is None:
+            raise ValueError("bedrock_client is required for invoke_with_streaming")
+        
+        # Detect model family and build appropriate request format
+        if "nova" in model_id.lower():
+            # Amazon Nova format
+            # Reference: https://docs.aws.amazon.com/nova/latest/userguide/complete-request-schema.html
+            native_request = {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"text": user_message}],
+                    }
+                ],
+                "inferenceConfig": {
+                    "maxTokens": max_tokens,
+                    "temperature": temperature,
+                }
+            }
+            
+            # Add system prompt (Nova format: list of objects)
+            if system_prompt:
+                if isinstance(system_prompt, str):
+                    native_request["system"] = [{"text": system_prompt}]
+                else:
+                    # Already in list format
+                    native_request["system"] = system_prompt
+        else:
+            # Anthropic Claude format (fallback for compatibility)
+            # Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-anthropic-claude-messages.html
+            native_request = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": user_message}],
+                    }
+                ],
+            }
+            
+            # Add system prompt (supports both string and list with cache checkpoint)
+            if system_prompt:
+                native_request["system"] = system_prompt
+        
+        # Convert to JSON
+        request_body = json.dumps(native_request)
+        
+        # Invoke model with streaming
+        # Reference: https://docs.aws.amazon.com/boto3/latest/reference/services/bedrock-runtime/client/invoke_model_with_response_stream.html
+        streaming_response = self.bedrock_client.invoke_model_with_response_stream(
+            modelId=model_id,
+            body=request_body,
+        )
+        
+        # Collect response using existing method
+        response_text, metrics = self.collect_response(streaming_response["body"])
+        
+        # Extract token counts from final event (if available)
+        # Note: Token counts are in the final metadata event, not in chunks
+        input_tokens = 0
+        output_tokens = 0
+        
+        # Return structured response
+        return {
+            "text": response_text,
+            "ttft_ms": metrics.ttft_ms,
+            "latency_ms": metrics.total_latency_ms,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "error_message": metrics.error_message,
+            "is_timeout": metrics.is_timeout,
+        }
 
     def stream_tokens(self, event_stream) -> Iterator[tuple[str, StreamingMetrics]]:
         """
@@ -188,22 +292,26 @@ class StreamingResponse:
                         chunk_bytes = chunk["bytes"]
                         chunk_text = chunk_bytes.decode("utf-8")
                         
-                        # Parse JSON to extract text
+                        # Parse JSON to extract text (Anthropic Claude format)
                         try:
                             chunk_json = json.loads(chunk_text)
-                            if "completion" in chunk_json:
+                            
+                            # Anthropic Claude Messages API format
+                            if chunk_json.get("type") == "content_block_delta":
+                                token_text = chunk_json.get("delta", {}).get("text", "")
+                                if token_text:
+                                    self.metrics.token_count += 1
+                                    yield token_text, self.metrics
+                            # Legacy format fallback
+                            elif "completion" in chunk_json:
                                 token_text = chunk_json["completion"]
+                                self.metrics.token_count += 1
+                                yield token_text, self.metrics
                             elif "text" in chunk_json:
                                 token_text = chunk_json["text"]
-                            elif "output" in chunk_json:
-                                token_text = chunk_json["output"]
-                            elif "content" in chunk_json:
-                                token_text = chunk_json["content"]
-                            else:
-                                token_text = chunk_text
-                            
-                            self.metrics.token_count += 1
-                            yield token_text, self.metrics
+                                self.metrics.token_count += 1
+                                yield token_text, self.metrics
+                                
                         except json.JSONDecodeError:
                             self.metrics.token_count += 1
                             yield chunk_text, self.metrics

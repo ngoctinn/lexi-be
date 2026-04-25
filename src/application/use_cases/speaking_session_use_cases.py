@@ -182,6 +182,7 @@ class CreateSpeakingSessionUseCase:
             session = Session(
                 session_id=session_id,
                 scenario_id=request.scenario_id,
+                scenario_title=scenario.scenario_title,
                 user_id=request.user_id,
                 learner_role_id=learner_role_id,
                 ai_role_id=ai_role_id,

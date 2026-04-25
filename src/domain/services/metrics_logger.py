@@ -264,7 +264,12 @@ class MetricsLogger:
                 f"(level={metrics.proficiency_level})"
             )
         
-        # Send to CloudWatch if client available
+        # Send to CloudWatch using EMF (Phase 6)
+        # EMF is printed to stdout, CloudWatch extracts metrics asynchronously
+        # Docs: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html
+        self.log_metrics_emf(metrics)
+        
+        # Legacy CloudWatch API (optional, can be removed if EMF is sufficient)
         if self.cloudwatch_client:
             self._send_to_cloudwatch(metrics)
 
@@ -390,6 +395,131 @@ class MetricsLogger:
         
         except Exception as e:
             logger.exception(f"Failed to send metrics to CloudWatch: {e}")
+
+    def log_metrics_emf(self, metrics: ConversationMetrics):
+        """
+        Log metrics using EMF (Embedded Metric Format) to CloudWatch.
+        
+        EMF is printed to stdout as JSON. CloudWatch Logs automatically extracts
+        metrics asynchronously without API calls.
+        
+        Docs: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html
+        
+        Args:
+            metrics: ConversationMetrics object to log
+        """
+        import json
+        import sys
+        from datetime import datetime, timezone
+        
+        # Convert timestamp to milliseconds since epoch
+        try:
+            dt = datetime.fromisoformat(metrics.timestamp.replace('Z', '+00:00'))
+            timestamp_ms = int(dt.timestamp() * 1000)
+        except Exception:
+            timestamp_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        
+        # Build EMF JSON structure
+        emf_log = {
+            "_aws": {
+                "Timestamp": timestamp_ms,
+                "CloudWatchMetrics": [
+                    {
+                        "Namespace": self.namespace,
+                        "Dimensions": [
+                            ["Level", "ModelSource"],
+                            ["Level", "Model"],
+                        ],
+                        "Metrics": []
+                    }
+                ]
+            },
+            # Dimensions (must be on root node)
+            "Level": metrics.proficiency_level,
+            "ModelSource": metrics.model_source,
+            "Model": metrics.model_used,
+            "SessionId": metrics.session_id,
+            "TurnIndex": metrics.turn_index,
+            "ScenarioTitle": metrics.scenario_title,
+        }
+        
+        # Add metrics to MetricDefinition array
+        metric_definitions = emf_log["_aws"]["CloudWatchMetrics"][0]["Metrics"]
+        
+        # TTFT metric
+        if metrics.ttft_ms is not None:
+            metric_definitions.append({
+                "Name": "TTFT",
+                "Unit": "Milliseconds",
+                "StorageResolution": 60
+            })
+            emf_log["TTFT"] = float(metrics.ttft_ms)
+        
+        # Total latency metric
+        if metrics.total_latency_ms is not None:
+            metric_definitions.append({
+                "Name": "TotalLatency",
+                "Unit": "Milliseconds",
+                "StorageResolution": 60
+            })
+            emf_log["TotalLatency"] = float(metrics.total_latency_ms)
+        
+        # Output tokens metric
+        metric_definitions.append({
+            "Name": "OutputTokens",
+            "Unit": "Count",
+            "StorageResolution": 60
+        })
+        emf_log["OutputTokens"] = metrics.output_tokens
+        
+        # Input tokens metric
+        metric_definitions.append({
+            "Name": "InputTokens",
+            "Unit": "Count",
+            "StorageResolution": 60
+        })
+        emf_log["InputTokens"] = metrics.input_tokens
+        
+        # Cache read tokens metric
+        if metrics.cache_read_tokens > 0:
+            metric_definitions.append({
+                "Name": "CacheReadTokens",
+                "Unit": "Count",
+                "StorageResolution": 60
+            })
+            emf_log["CacheReadTokens"] = metrics.cache_read_tokens
+        
+        # Cost metric
+        if metrics.cost_usd is not None:
+            metric_definitions.append({
+                "Name": "CostPerTurn",
+                "Unit": "None",
+                "StorageResolution": 60
+            })
+            emf_log["CostPerTurn"] = float(metrics.cost_usd)
+        
+        # Fallback count metric
+        if metrics.model_source == "fallback":
+            metric_definitions.append({
+                "Name": "FallbackCount",
+                "Unit": "Count",
+                "StorageResolution": 60
+            })
+            emf_log["FallbackCount"] = 1
+            emf_log["FallbackReason"] = metrics.fallback_reason or "unknown"
+        
+        # Validation failure metric
+        if not metrics.validation_passed:
+            metric_definitions.append({
+                "Name": "ValidationFailureCount",
+                "Unit": "Count",
+                "StorageResolution": 60
+            })
+            emf_log["ValidationFailureCount"] = 1
+            emf_log["ValidationReason"] = metrics.validation_reason or "unknown"
+        
+        # Print EMF JSON to stdout (CloudWatch extracts metrics automatically)
+        print(json.dumps(emf_log), file=sys.stdout, flush=True)
 
     def get_metrics_dict(self, metrics: ConversationMetrics) -> dict:
         """

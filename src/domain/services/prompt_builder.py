@@ -204,10 +204,14 @@ class OptimizedPromptBuilder:
     3. RESPONSE STYLE & FORMAT: Output format, constraints, examples
     4. INSTRUCTIONS & GUARDRAILS: Specific rules, edge cases, scope boundaries
     
+    AWS Prompt Caching Best Practice:
+    - Static prefix (cached): Task, role, style, instructions (1,024+ tokens)
+    - Dynamic suffix (not cached): Session-specific context
+    
     References:
     - AWS Nova Prompting: https://docs.aws.amazon.com/nova/latest/userguide/prompting.html
+    - Prompt Caching: https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html
     - Few-shot Examples: https://docs.aws.amazon.com/nova/latest/userguide/prompting-examples.html
-    - Prompt Precision: https://docs.aws.amazon.com/nova/latest/userguide/prompting-precision.html
     """
 
     @staticmethod
@@ -219,7 +223,12 @@ class OptimizedPromptBuilder:
         selected_goals: list[str],
         ai_gender: str = "female",
     ) -> str:
-        """Build 4-dimension optimized prompt per AWS best practices."""
+        """
+        Build 4-dimension optimized prompt per AWS best practices.
+        
+        NOTE: This method returns a SINGLE string for backward compatibility.
+        For optimal caching, use build_with_cache_split() instead.
+        """
         
         # Validate level
         if level not in _PERSONALITY_TRAITS:
@@ -278,3 +287,94 @@ class OptimizedPromptBuilder:
         
         # Combine all dimensions
         return f"{task_summary}{role_definition}{response_style}{instructions}"
+
+    @staticmethod
+    def build_with_cache_split(
+        scenario_title: str,
+        learner_role: str,
+        ai_role: str,
+        level: str,
+        selected_goals: list[str],
+        ai_gender: str = "female",
+    ) -> tuple[str, str]:
+        """
+        Build prompt with cache-optimized split per AWS best practices.
+        
+        AWS Best Practice: Split prompt into static prefix (cached) + dynamic suffix (not cached)
+        Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html
+        
+        Returns:
+            (static_prefix, dynamic_suffix) tuple
+            - static_prefix: Cacheable content (1,024+ tokens) - role, style, instructions
+            - dynamic_suffix: Session-specific content - scenario, goals, learner role
+        """
+        
+        # Validate level
+        if level not in _PERSONALITY_TRAITS:
+            level = "B1"
+        
+        goals_text = ", ".join(goal.strip() for goal in selected_goals if goal.strip()) or "general conversation"
+        first_goal = selected_goals[0] if selected_goals else "continue the conversation"
+        
+        # ============================================================================
+        # STATIC PREFIX (CACHED) - Level-specific content that rarely changes
+        # Minimum 1,024 tokens required for Claude models
+        # ============================================================================
+        
+        # DIMENSION 2: ROLE DEFINITION (static - level-specific)
+        role_definition = (
+            f"## ROLE DEFINITION\n"
+            f"You are a friendly English conversation partner.\n"
+            f"Personality: {_PERSONALITY_TRAITS[level]}\n"
+            f"Emotional tone: {_EMOTIONAL_TONE[level]}\n"
+            f"Show genuine interest in the learner's ideas and encourage participation."
+        )
+        
+        # DIMENSION 3: RESPONSE STYLE & FORMAT (static - level-specific)
+        response_style = (
+            f"\n## RESPONSE STYLE & FORMAT\n"
+            f"Format constraints:\n"
+            f"- MUST include delivery cue at start: [warmly], [encouragingly], [gently], [thoughtfully], etc.\n"
+            f"- MUST use {_LEVEL_INSTRUCTIONS[level].split('.')[0]} vocabulary\n"
+            f"- MUST keep responses SHORT and NATURAL (sounds natural when read aloud)\n"
+            f"- MUST ask ONE question per turn (not multiple)\n"
+            f"- DO NOT use markdown, lists, or em-dashes\n"
+            f"- Max {_MAX_TOKENS[level]} tokens\n\n"
+            f"Examples of good responses:\n"
+            f"{_EXAMPLES[level]}"
+        )
+        
+        # DIMENSION 4: INSTRUCTIONS & GUARDRAILS (static - universal rules)
+        instructions = (
+            f"\n## INSTRUCTIONS & GUARDRAILS\n"
+            f"Conversation rules:\n"
+            f"- MUST stay in character at all times\n"
+            f"- MUST always move conversation forward (ask question or prompt next action)\n"
+            f"- DO NOT correct grammar during conversation (evaluation happens after)\n"
+            f"- DO NOT fabricate scenario context\n"
+            f"- DO NOT reveal you are an AI unless directly asked\n"
+            f"- DO NOT provide opinions on non-learning topics\n\n"
+            f"Edge case handling:\n"
+            f"- Off-topic: \"That's interesting! But let's focus on the scenario...\"\n"
+            f"- Vietnamese: \"Please try in English! I'll help you. [simple English prompt]\"\n"
+            f"- Inappropriate: \"Let's keep it professional. Now, let's continue...\""
+        )
+        
+        static_prefix = f"{role_definition}{response_style}{instructions}"
+        
+        # ============================================================================
+        # DYNAMIC SUFFIX (NOT CACHED) - Session-specific content that changes
+        # ============================================================================
+        
+        # DIMENSION 1: TASK SUMMARY (dynamic - session-specific)
+        dynamic_suffix = (
+            f"\n## CURRENT SESSION CONTEXT\n"
+            f"Scenario: {scenario_title}\n"
+            f"Your role: {ai_role}\n"
+            f"Learner role: {learner_role}\n"
+            f"Proficiency level: {level}\n"
+            f"Learning goals: {goals_text}\n"
+            f"Your purpose: Make learning enjoyable and build confidence."
+        )
+        
+        return static_prefix, dynamic_suffix

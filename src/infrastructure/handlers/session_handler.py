@@ -49,6 +49,12 @@ def build_session_controller(
     conversation_orchestrator=None,
     performance_scorer=None,
 ) -> SessionController:
+    """
+    Build session controller with all dependencies.
+    
+    AWS Best Practice: Initialize dependencies once per Lambda container (module-level singleton)
+    Reference: https://docs.aws.amazon.com/lambda/latest/dg/best-practices.html
+    """
     session_repo = session_repo or DynamoSessionRepo()
     turn_repo = turn_repo or DynamoTurnRepo()
     scoring_repo = scoring_repo or DynamoScoringRepo()
@@ -57,15 +63,20 @@ def build_session_controller(
     conversation_generation_service = conversation_generation_service or BedrockConversationGenerationService()
     speech_synthesis_service = speech_synthesis_service or PollySpeechSynthesisService()
     
-    # Build ConversationOrchestrator (without QualityScorer)
+    # AWS Best Practice: Enable ConversationOrchestrator for Phase 5 metrics
+    # This enables TTFT, latency, cost tracking, and quality validation
     if conversation_orchestrator is None:
+        # Import module-level bedrock client from speaking_pipeline_services
+        from infrastructure.services.speaking_pipeline_services import _bedrock_client
+        
         conversation_orchestrator = ConversationOrchestrator(
             model_router=ModelRouter(),
             prompt_builder=OptimizedPromptBuilder(),
-            streaming_response=StreamingResponse(),
+            streaming_response=StreamingResponse(bedrock_client=_bedrock_client),  # ✅ Pass bedrock client
             response_validator=ResponseValidator(),
             metrics_logger=MetricsLogger(),
             scaffolding_system=ScaffoldingSystem(),
+            bedrock_client=_bedrock_client,  # Pass to orchestrator as well
         )
     
     # Build SpeakingPerformanceScorer with Bedrock adapter
@@ -76,13 +87,16 @@ def build_session_controller(
     create_use_case = CreateSpeakingSessionUseCase(session_repo, scenario_repo)
     get_use_case = GetSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo)
     list_use_case = ListSpeakingSessionsUseCase(session_repo, scoring_repo)
+    
+    # AWS Best Practice: Inject ConversationOrchestrator into SubmitSpeakingTurnUseCase
+    # This enables Phase 5 metrics collection (TTFT, latency, cost, validation)
     submit_turn_use_case = SubmitSpeakingTurnUseCase(
         session_repo,
         turn_repo,
         transcript_analysis_service,
         conversation_generation_service,
         speech_synthesis_service,
-        conversation_orchestrator=conversation_orchestrator,
+        conversation_orchestrator=conversation_orchestrator,  # ✅ ENABLED
     )
     complete_use_case = CompleteSpeakingSessionUseCase(
         session_repo,
@@ -130,6 +144,10 @@ def _unauthorized_response():
 
 
 def handler(event, context):
+    """Session handler for REST API endpoints.
+    
+    Authentication is handled by API Gateway Cognito Authorizer.
+    """
     session_controller = _get_or_build_controller()
     presenter = HttpPresenter()
     
@@ -137,7 +155,7 @@ def handler(event, context):
         user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
         logger.info("Session handler invoked", extra={"context": {"user_id": user_id}})
     except KeyError:
-        logger.warning("Unauthorized access attempt")
+        logger.error("Missing Cognito claims - check API Gateway authorizer configuration")
         return _unauthorized_response()
 
     method = event.get("httpMethod", "").upper()

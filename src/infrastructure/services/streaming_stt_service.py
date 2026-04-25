@@ -27,8 +27,15 @@ class StreamingSTTService:
     Uses amazon-transcribe-streaming-sdk (async Python SDK).
     Boto3 does NOT support Transcribe Streaming.
     
+    SDK Status (2025-04-25):
+    - This SDK is deprecated but still functional and stable
+    - AWS recommends aws-sdk-transcribe-streaming (experimental, not yet 1.0.0)
+    - Decision: Keep deprecated SDK until new SDK is production-ready
+    - Reason: New SDK lacks Python examples, has breaking changes risk
+    
     Docs: https://github.com/awslabs/amazon-transcribe-streaming-sdk
     API Reference: https://docs.aws.amazon.com/transcribe/latest/APIReference/API_streaming_StartStreamTranscription.html
+    New SDK: https://github.com/awslabs/aws-sdk-python (experimental)
     """
 
     def __init__(self, region: str = "ap-southeast-1"):

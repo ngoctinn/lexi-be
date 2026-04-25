@@ -1,7 +1,7 @@
 """Infrastructure adapter for Bedrock-based scoring.
 
 This adapter wraps the Bedrock API and implements the external scorer interface.
-It's responsible for calling Bedrock and parsing responses.
+It's responsible for calling Bedrock (Amazon Nova Micro) and parsing responses.
 """
 
 import json
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class BedrockScorerAdapter:
     """
-    Adapter for Bedrock Claude scoring service.
+    Adapter for Bedrock Nova Micro scoring service.
     
     Error Handling:
     - 429 ThrottlingException: Handled by boto3 exponential backoff
@@ -54,7 +54,7 @@ class BedrockScorerAdapter:
 
     def score(self, user_turns: List[Turn], level: str, scenario_title: str) -> Optional[dict]:
         """
-        Call Bedrock to score learner's performance with prompt caching for cost optimization.
+        Call Bedrock Nova Micro to score learner's performance.
 
         Args:
             user_turns: List of user Turn entities
@@ -95,31 +95,33 @@ Respond in JSON format only:
   "feedback": "<personalized feedback in Vietnamese>"
 }}"""
 
-        # Format system prompt with cache checkpoint for cost optimization
-        # Per AWS best practices: https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html
-        system_content = [
-            {
-                "type": "text",
-                "text": prompt,
-                "cache_control": {"type": "ephemeral"}  # 5-minute TTL, 50-90% cost reduction
-            }
-        ]
+        # Amazon Nova format (per AWS docs: https://docs.aws.amazon.com/nova/latest/userguide/complete-request-schema.html)
+        # Note: Nova Micro does not support prompt caching (Anthropic-specific feature)
+        system_content = [{"text": prompt}]
 
         try:
             response = self.bedrock_client.invoke_model(
-                modelId="anthropic.claude-3-5-sonnet-20241022",
+                modelId="apac.amazon.nova-micro-v1:0",  # Use inference profile for APAC regions
                 body=dumps(
                     {
-                        "anthropic_version": "bedrock-2023-05-31",
-                        "max_tokens": 500,
-                        "system": system_content,  # List with cache checkpoint (not string)
-                        "messages": [{"role": "user", "content": "Please score the above performance."}],
+                        "system": system_content,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": [{"text": "Please score the above performance."}]
+                            }
+                        ],
+                        "inferenceConfig": {
+                            "maxTokens": 500,
+                            "temperature": 0.7
+                        }
                     }
                 ),
             )
 
             response_body = json.loads(response["body"].read())
-            content = response_body["content"][0]["text"]
+            # Nova response format: {"output": {"message": {"content": [{"text": "..."}]}}}
+            content = response_body["output"]["message"]["content"][0]["text"]
             scoring_data = json.loads(content)
 
             # Validate and clamp scores

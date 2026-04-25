@@ -1,53 +1,158 @@
 # lexi-be
 
-This project contains source code and supporting files for a serverless application that you can deploy with the SAM CLI. It includes the following files and folders.
+Backend serverless application for Lexi - English learning platform with AI-powered speaking practice.
 
-- hello_world - Code for the application's Lambda function.
-- events - Invocation events that you can use to invoke the function.
-- tests - Unit tests for the application code.
-- template.yaml - A template that defines the application's AWS resources.
+## Architecture
 
-The application uses several AWS resources, including Lambda functions and an API Gateway API. These resources are defined in the `template.yaml` file in this project. You can update the template to add AWS resources through the same deployment process that updates your application code.
+This project uses AWS Serverless Application Model (SAM) with:
+- **Lambda Functions**: Python 3.12 runtime
+- **API Gateway**: REST API with Cognito Authorizer
+- **WebSocket API**: Real-time speaking sessions
+- **DynamoDB**: NoSQL database for user data, sessions, scenarios
+- **Cognito**: User authentication and authorization
+- **Bedrock**: AI conversation generation
+- **Polly**: Text-to-speech synthesis
+- **Transcribe**: Speech-to-text conversion
 
-If you prefer to use an integrated development environment (IDE) to build and test your application, you can use the AWS Toolkit.
-The AWS Toolkit is an open source plug-in for popular IDEs that uses the SAM CLI to build and deploy serverless applications on AWS. The AWS Toolkit also adds a simplified step-through debugging experience for Lambda function code. See the following links to get started.
+## Documentation
 
-- [CLion](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-- [GoLand](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-- [IntelliJ](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-- [WebStorm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-- [Rider](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-- [PhpStorm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-- [PyCharm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-- [RubyMine](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-- [DataGrip](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-- [VS Code](https://docs.aws.amazon.com/toolkit-for-vscode/latest/userguide/welcome.html)
-- [Visual Studio](https://docs.aws.amazon.com/toolkit-for-visual-studio/latest/user-guide/welcome.html)
+- **[Authentication Flow](./AUTHENTICATION_FLOW.md)** - Complete auth architecture and best practices
+- **[Auth Cleanup Summary](./AUTH_CLEANUP_SUMMARY.md)** - Recent auth improvements
+- **[Conversation Architecture](./CONVERSATION_ARCHITECTURE.md)** - Speaking session design
+- **[Documentation Index](./DOCUMENTATION_INDEX.md)** - All project documentation
 
-## Deploy the sample application
+## Quick Start
 
-The Serverless Application Model Command Line Interface (SAM CLI) is an extension of the AWS CLI that adds functionality for building and testing Lambda applications. It uses Docker to run your functions in an Amazon Linux environment that matches Lambda. It can also emulate your application's build environment and API.
-
-To use the SAM CLI, you need the following tools.
+### Prerequisites
 
 - SAM CLI - [Install the SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
 - [Python 3.12 installed](https://www.python.org/downloads/)
 - Docker - [Install Docker community edition](https://hub.docker.com/search/?type=edition&offering=community)
+- AWS CLI configured with credentials
 
-To build and deploy your application for the first time, run the following in your shell:
+### Deploy
 
 ```bash
 sam build
 sam deploy --guided
 ```
 
-The first command will build the source of your application. The second command will package and deploy your application to AWS, with a series of prompts:
+### Test Authentication
 
-- **Stack Name**: The name of the stack to deploy to CloudFormation. This should be unique to your account and region, and a good starting point would be something matching your project name.
-- **AWS Region**: The AWS region you want to deploy your app to.
-- **Confirm changes before deploy**: If set to yes, any change sets will be shown to you before execution for manual review. If set to no, the AWS SAM CLI will automatically deploy application changes.
-- **Allow SAM CLI IAM role creation**: Many AWS SAM templates, including this example, create AWS IAM roles required for the AWS Lambda function(s) included to access AWS services. By default, these are scoped down to minimum required permissions. To deploy an AWS CloudFormation stack which creates or modifies IAM roles, the `CAPABILITY_IAM` value for `capabilities` must be provided. If permission isn't provided through this prompt, to deploy this example you must explicitly pass `--capabilities CAPABILITY_IAM` to the `sam deploy` command.
-- **Save arguments to samconfig.toml**: If set to yes, your choices will be saved to a configuration file inside the project, so that in the future you can just re-run `sam deploy` without parameters to deploy changes to your application.
+```bash
+# Get Cognito token
+python scripts/get_cognito_token.py
+
+# Test API with token
+TOKEN="<your-token>"
+curl -X GET https://<api-id>.execute-api.us-east-1.amazonaws.com/Prod/profile \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## Project Structure
+
+```
+lexi-be/
+├── src/
+│   ├── application/          # Use cases and DTOs
+│   ├── domain/              # Business logic and entities
+│   ├── infrastructure/      # AWS services, repositories, handlers
+│   └── interfaces/          # Controllers, view models, mappers
+├── config/                  # SAM module configs (auth, database)
+├── scripts/                 # Testing and utility scripts
+├── template.yaml           # Main SAM template
+└── README.md
+```
+
+## Authentication
+
+All REST API endpoints (except `/scenarios`) are protected by **AWS Cognito User Pool Authorizer**.
+
+**Flow:**
+1. Frontend signs in to Cognito → gets JWT token
+2. Frontend calls API with `Authorization: Bearer <token>`
+3. API Gateway validates JWT (cached, fast, secure)
+4. Lambda receives validated user claims
+
+See [AUTHENTICATION_FLOW.md](./AUTHENTICATION_FLOW.md) for details.
+
+## Development
+
+### Local Testing
+
+```bash
+# Start local API
+sam local start-api
+
+# Invoke function locally
+sam local invoke FunctionName -e events/event.json
+```
+
+### Run Tests
+
+```bash
+pytest tests/
+```
+
+## Deployment
+
+### First Time
+
+```bash
+sam build
+sam deploy --guided
+```
+
+### Subsequent Deploys
+
+```bash
+sam build && sam deploy
+```
+
+## Environment Variables
+
+Key environment variables (set in template.yaml):
+- `LEXI_TABLE_NAME`: DynamoDB table name
+- `COGNITO_USER_POOL_ID`: Cognito User Pool ID
+- `COGNITO_APP_CLIENT_ID`: Cognito App Client ID
+- `SPEAKING_AUDIO_BUCKET_NAME`: S3 bucket for audio files
+
+## API Endpoints
+
+### Public
+- `GET /scenarios` - List available speaking scenarios
+
+### Authenticated (Cognito)
+- `GET /profile` - Get user profile
+- `PATCH /profile` - Update user profile
+- `POST /onboarding/complete` - Complete onboarding
+- `POST /sessions` - Create speaking session
+- `GET /sessions` - List user sessions
+- `GET /sessions/{id}` - Get session details
+- `POST /vocabulary/translate` - Translate vocabulary
+
+### Admin Only
+- `GET /admin/users` - List all users
+- `PATCH /admin/users/{id}` - Update user
+- `GET /admin/scenarios` - List all scenarios
+- `POST /admin/scenarios` - Create scenario
+
+## WebSocket API
+
+- `wss://<api-id>.execute-api.us-east-1.amazonaws.com/Prod`
+- Routes: `$connect`, `$disconnect`, `$default`
+- Auth: JWT token in query parameter `?token=<jwt>`
+
+## Resources
+
+- [AWS SAM Developer Guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html)
+- [AWS Lambda Developer Guide](https://docs.aws.amazon.com/lambda/latest/dg/welcome.html)
+- [AWS API Gateway Developer Guide](https://docs.aws.amazon.com/apigateway/latest/developerguide/welcome.html)
+- [AWS Cognito Developer Guide](https://docs.aws.amazon.com/cognito/latest/developerguide/what-is-amazon-cognito.html)
+
+## License
+
+This project is licensed under the MIT License.
 
 You can find your API Gateway Endpoint URL in the output values displayed after deployment.
 

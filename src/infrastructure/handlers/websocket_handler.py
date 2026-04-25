@@ -348,7 +348,7 @@ class WebSocketSessionController:
         return _response(200, {"message": "Hint sent"})
 
     def _generate_contextual_hint(self, session: Session, turns: list) -> str:
-        """Tạo hint có ngữ cảnh dùng Bedrock LLM."""
+        """Tạo hint có ngữ cảnh dùng Bedrock LLM (Amazon Nova Micro)."""
         from domain.value_objects.enums import Speaker as SpeakerEnum
         last_ai = next(
             (t for t in reversed(turns) if (t.speaker.value if hasattr(t.speaker, "value") else t.speaker) == SpeakerEnum.AI.value),
@@ -367,19 +367,29 @@ class WebSocketSessionController:
         try:
             import boto3
             bedrock = boto3.client("bedrock-runtime")
+            # Amazon Nova format (per AWS docs: https://docs.aws.amazon.com/nova/latest/userguide/complete-request-schema.html)
             body = dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 60,
-                "messages": [{"role": "user", "content": hint_prompt}],
-                "temperature": 0.5,
+                "system": [{"text": "You are a helpful English tutor providing hints to learners."}],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"text": hint_prompt}]
+                    }
+                ],
+                "inferenceConfig": {
+                    "maxTokens": 60,
+                    "temperature": 0.5
+                }
             })
             response = bedrock.invoke_model(
-                modelId="anthropic.claude-3-haiku-20240307-v1:0",
+                modelId="apac.amazon.nova-micro-v1:0",  # Use inference profile for APAC regions
                 body=body,
             )
             result = json.loads(response["body"].read())
-            return result["content"][0]["text"].strip()
-        except Exception:
+            # Nova response format: {"output": {"message": {"content": [{"text": "..."}]}}}
+            return result["output"]["message"]["content"][0]["text"].strip()
+        except Exception as e:
+            print(f"[ws] Hint generation failed: {e}")
             return f"You could say something about: {goal}"
 
     def send_message_turn(self, session_id: str, connection_id: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -850,10 +860,23 @@ def _make_sender(event: dict[str, Any], connection_id: str) -> Callable[[dict[st
 
 
 def handler(event, context):
+    """
+    WebSocket Lambda handler with proper error handling per AWS best practices.
+    
+    AWS Best Practice: Return appropriate status codes for connection lifecycle
+    Reference: https://docs.aws.amazon.com/apigateway/latest/developerguide/websocket-api.html
+    
+    Status codes:
+    - 200: Success
+    - 401: Unauthorized (auth failure)
+    - 403: Forbidden (permission denied)
+    - 500: Internal server error
+    """
+    route_key = (event.get("requestContext") or {}).get("routeKey", "")
+    connection_id = (event.get("requestContext") or {}).get("connectionId", "")
+    
     try:
         base_controller = get_websocket_controller()
-        route_key = (event.get("requestContext") or {}).get("routeKey", "")
-        connection_id = (event.get("requestContext") or {}).get("connectionId", "")
         body = _parse_json_body(event.get("body"))
         headers = event.get("headers") or {}
         query_params = event.get("queryStringParameters") or {}
@@ -868,10 +891,12 @@ def handler(event, context):
 
         controller = replace(base_controller, send_message=_make_sender(event, connection_id))
 
+        # AWS Best Practice: Handle $connect with proper auth error codes
         if route_key == "$connect":
             print(f"[ws] Processing $connect: session_id={session_id}")
             return controller.connect(str(session_id or ""), str(token or ""), connection_id)
 
+        # AWS Best Practice: $disconnect always returns 200 (no error propagation)
         if route_key == "$disconnect":
             print(f"[ws] Processing $disconnect: session_id={session_id}")
             return base_controller.disconnect(str(session_id or "") or None, connection_id)
@@ -879,6 +904,7 @@ def handler(event, context):
         if not session_id:
             return _response(400, {"message": "Thiếu session_id."})
 
+        # Route actions
         if action == "START_SESSION":
             return controller.start_session(str(session_id), connection_id)
         if action == "AUDIO_UPLOADED":
@@ -900,10 +926,29 @@ def handler(event, context):
 
         return controller.unsupported(action or route_key or body.get("action", "UNKNOWN"))
     
+    except ValueError as e:
+        # AWS Best Practice: Return 401 for authentication/authorization errors
+        # ValueError is raised by _verify_cognito_jwt for auth failures
+        logger.warning(f"WebSocket auth error: {str(e)}", extra={"connection_id": connection_id, "route_key": route_key})
+        
+        # For $connect, return 401 to reject connection
+        if route_key == "$connect":
+            return _response(401, {"message": "Unauthorized"})
+        
+        # For other routes, return 403 (connection exists but action forbidden)
+        return _response(403, {"message": "Forbidden"})
+    
     except Exception as e:
-        print(f"[ws] Handler exception: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        # Return 200 for $connect to allow connection, then close it
-        # This is safer than returning error which might cause API Gateway issues
-        return _response(200, {"message": "Connected"})
+        # AWS Best Practice: Return 500 for unexpected errors
+        # Log full exception for debugging
+        logger.exception(
+            f"WebSocket handler error: {type(e).__name__}",
+            extra={"connection_id": connection_id, "route_key": route_key, "error": str(e)}
+        )
+        
+        # For $connect, return 500 to reject connection
+        if route_key == "$connect":
+            return _response(500, {"message": "Internal server error"})
+        
+        # For other routes, return 500
+        return _response(500, {"message": "Internal server error"})

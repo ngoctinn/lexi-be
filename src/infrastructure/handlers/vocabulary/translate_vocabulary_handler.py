@@ -16,11 +16,26 @@ vocabulary_controller = VocabularyController(translate_vocabulary_uc)
 
 
 def handler(event, context):
-    """Handler cho API dịch từ vựng trong ngữ cảnh câu."""
+    """Handler for vocabulary translation API.
+    
+    Authentication is handled by API Gateway Cognito Authorizer.
+    User ID is available in event["requestContext"]["authorizer"]["claims"]["sub"].
+    """
+    try:
+        # Get user_id from Cognito claims (validated by API Gateway)
+        user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
+        logger.info("Processing vocabulary translation", extra={"context": {"user_id": user_id}})
+    except KeyError:
+        # This should never happen if API Gateway Cognito Authorizer is configured correctly
+        logger.error("Missing Cognito claims - check API Gateway authorizer configuration")
+        return {
+            "statusCode": 401,
+            "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
+            "body": '{"error": "Unauthorized"}',
+        }
+    
     try:
         body_str = event.get("body")
-        logger.info("Processing vocabulary translation")
-        
         presenter = HttpPresenter()
         result = vocabulary_controller.translate(body_str)
         

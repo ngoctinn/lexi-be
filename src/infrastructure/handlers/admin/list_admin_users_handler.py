@@ -68,14 +68,19 @@ def _unauthorized_response():
 
 
 def handler(event, context):
-    """GET /admin/users"""
+    """GET /admin/users
+    
+    Authentication is handled by API Gateway Cognito Authorizer.
+    Authorization (admin role check) is performed in this handler.
+    """
     try:
         user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
         logger.info("List users handler invoked", extra={"context": {"user_id": user_id}})
     except KeyError:
-        logger.warning("Unauthorized access attempt")
+        logger.error("Missing Cognito claims - check API Gateway authorizer configuration")
         return _unauthorized_response()
 
+    # Check admin role
     user_repo = DynamoDBUserRepo()
     _, err = check_admin(event, user_repo)
     if err:
