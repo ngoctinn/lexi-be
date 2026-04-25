@@ -11,6 +11,8 @@ from typing import List, Optional
 from shared.http_utils import dumps
 
 import boto3
+from botocore.exceptions import ClientError
+from botocore.config import Config
 
 from domain.entities.turn import Turn
 
@@ -18,21 +20,41 @@ logger = logging.getLogger(__name__)
 
 
 class BedrockScorerAdapter:
-    """Adapter for Bedrock Claude scoring service."""
+    """
+    Adapter for Bedrock Claude scoring service.
+    
+    Error Handling:
+    - 429 ThrottlingException: Handled by boto3 exponential backoff
+    - 503 ServiceUnavailableException: Handled by boto3 exponential backoff
+    - Other errors: Logged and None returned (graceful degradation)
+    """
 
     def __init__(self, bedrock_client=None, region: str = "ap-southeast-1"):
         """
+        Initialize with retry configuration per AWS best practices.
+        
         Args:
-            bedrock_client: Optional boto3 Bedrock client. If not provided, creates one.
+            bedrock_client: Optional boto3 Bedrock client. If not provided, creates one
+                          with exponential backoff retry configuration.
             region: AWS region for Bedrock
         """
-        self.bedrock_client = bedrock_client or boto3.client(
-            "bedrock-runtime", region_name=region
-        )
+        if bedrock_client:
+            self.bedrock_client = bedrock_client
+        else:
+            # Configure retry with exponential backoff + jitter (AWS recommended)
+            retry_config = Config(
+                retries={
+                    "max_attempts": 3,  # Total attempts (1 initial + 2 retries)
+                    "mode": "adaptive",  # Exponential backoff with jitter
+                }
+            )
+            self.bedrock_client = boto3.client(
+                "bedrock-runtime", region_name=region, config=retry_config
+            )
 
     def score(self, user_turns: List[Turn], level: str, scenario_title: str) -> Optional[dict]:
         """
-        Call Bedrock to score learner's performance.
+        Call Bedrock to score learner's performance with prompt caching for cost optimization.
 
         Args:
             user_turns: List of user Turn entities
@@ -73,6 +95,16 @@ Respond in JSON format only:
   "feedback": "<personalized feedback in Vietnamese>"
 }}"""
 
+        # Format system prompt with cache checkpoint for cost optimization
+        # Per AWS best practices: https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html
+        system_content = [
+            {
+                "type": "text",
+                "text": prompt,
+                "cache_control": {"type": "ephemeral"}  # 5-minute TTL, 50-90% cost reduction
+            }
+        ]
+
         try:
             response = self.bedrock_client.invoke_model(
                 modelId="anthropic.claude-3-5-sonnet-20241022",
@@ -80,7 +112,8 @@ Respond in JSON format only:
                     {
                         "anthropic_version": "bedrock-2023-05-31",
                         "max_tokens": 500,
-                        "messages": [{"role": "user", "content": prompt}],
+                        "system": system_content,  # List with cache checkpoint (not string)
+                        "messages": [{"role": "user", "content": "Please score the above performance."}],
                     }
                 ),
             )
@@ -100,9 +133,39 @@ Respond in JSON format only:
                 score = scoring_data.get(key, 0)
                 scoring_data[key] = max(0, min(100, int(score)))
 
-            logger.info(f"Bedrock scoring successful: {scoring_data}")
+            logger.info(f"Bedrock scoring successful: level={level}, scenario={scenario_title}")
             return scoring_data
 
+        except ClientError as e:
+            # AWS API error - distinguish between error types
+            error_code = e.response.get("Error", {}).get("Code", "Unknown")
+            
+            if error_code == "ThrottlingException":
+                # 429: Quota exceeded - boto3 already retried
+                logger.warning(
+                    f"Bedrock scoring throttled (429): level={level}, scenario={scenario_title}"
+                )
+            elif error_code == "ServiceUnavailableException":
+                # 503: Service temporarily unavailable - boto3 already retried
+                logger.warning(
+                    f"Bedrock scoring unavailable (503): level={level}, scenario={scenario_title}"
+                )
+            else:
+                # Other AWS errors
+                logger.error(
+                    f"Bedrock scoring API error ({error_code}): level={level}, "
+                    f"scenario={scenario_title}, message={str(e)}"
+                )
+            
+            return None
+
         except Exception as e:
-            logger.error(f"Bedrock scoring failed: {e}")
+            # Non-AWS errors (JSON parsing, network, etc.)
+            error_type = type(e).__name__
+            logger.error(
+                f"Bedrock scoring error ({error_type}): level={level}, "
+                f"scenario={scenario_title}, message={str(e)}",
+                exc_info=True
+            )
+            
             return None

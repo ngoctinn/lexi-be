@@ -47,37 +47,85 @@ _TEMPERATURE = {
     "C2": 0.85,
 }
 
-# Few-shot examples per level
+# Few-shot examples per level (3 examples: common + 2 edge cases)
 _EXAMPLES = {
     "A1": """
+Example 1 (Common):
 Learner: "I like pizza"
-Good response: "[warmly] That's great! Do you like pizza with cheese?"
-Bad response: "Pizza is a delicious Italian dish made with dough, sauce, and toppings..."
+Good: "[warmly] That's great! Do you like pizza with cheese?"
+
+Example 2 (Off-topic):
+Learner: "What time is it?"
+Good: "[gently] That's a good question! But let's focus on our conversation. What do you like to eat?"
+
+Example 3 (Vietnamese):
+Learner: "Tôi thích ăn cơm"
+Good: "[warmly] Please try in English! I'll help you. Do you like rice?"
 """,
     "A2": """
+Example 1 (Common):
 Learner: "I like cooking"
-Good response: "[warmly] That's wonderful! What's your favorite dish to cook?"
-Bad response: "Cooking is the process of preparing food..."
+Good: "[warmly] That's wonderful! What's your favorite dish to cook?"
+
+Example 2 (Off-topic):
+Learner: "Do you like cooking?"
+Good: "[gently] I do! But let's talk about you. What's your favorite dish?"
+
+Example 3 (Vietnamese):
+Learner: "Tôi nấu ăn mỗi ngày"
+Good: "[warmly] Please try in English! I'll help you. Do you cook every day?"
 """,
     "B1": """
+Example 1 (Common):
 Learner: "I went to the beach yesterday"
-Good response: "[encouragingly] That sounds fun! What did you do there? Did you swim or relax?"
-Bad response: "Beaches are coastal areas where land meets water..."
+Good: "[encouragingly] That sounds fun! What did you do there? Did you swim or relax?"
+
+Example 2 (Off-topic):
+Learner: "Have you been to the beach?"
+Good: "[naturally] I have! But tell me more about your experience. What was the best part?"
+
+Example 3 (Inappropriate):
+Learner: "The beach was boring as hell"
+Good: "[gently] I understand. Let's keep it professional. What would have made it more enjoyable?"
 """,
     "B2": """
+Example 1 (Common):
 Learner: "I think remote work is better than office work"
-Good response: "[thoughtfully] That's an interesting perspective. What advantages do you see? Are there any disadvantages?"
-Bad response: "Remote work is a modern work arrangement..."
+Good: "[thoughtfully] That's an interesting perspective. What advantages do you see? Are there any disadvantages?"
+
+Example 2 (Off-topic):
+Learner: "Do you prefer remote or office work?"
+Good: "[naturally] That's a great question! But I'm curious about your preference. What works best for you?"
+
+Example 3 (Inappropriate):
+Learner: "Remote work is for lazy people"
+Good: "[thoughtfully] I see your point, but let's be fair. What specific challenges do you think remote workers face?"
 """,
     "C1": """
+Example 1 (Common):
 Learner: "I think technology is changing society too fast"
-Good response: "[thoughtfully] That's an interesting perspective. What specific changes concern you most? Are you worried about job displacement, privacy, or social impacts?"
-Bad response: "Technology has been advancing rapidly since the industrial revolution..."
+Good: "[thoughtfully] That's an interesting perspective. What specific changes concern you most? Are you worried about job displacement, privacy, or social impacts?"
+
+Example 2 (Off-topic):
+Learner: "What's your opinion on technology?"
+Good: "[naturally] That's a nuanced topic! But I'm more interested in your views. What aspects concern you most?"
+
+Example 3 (Inappropriate):
+Learner: "Tech companies are destroying society"
+Good: "[thoughtfully] I understand the frustration. Can you elaborate on specific harms you're concerned about? What solutions would you propose?"
 """,
     "C2": """
+Example 1 (Common):
 Learner: "I think artificial intelligence will fundamentally reshape society"
-Good response: "[thoughtfully] That's a nuanced observation. In what ways do you envision this reshaping? Are you more optimistic or cautious about the implications?"
-Bad response: "Artificial intelligence is a technology..."
+Good: "[thoughtfully] That's a nuanced observation. In what ways do you envision this reshaping? Are you more optimistic or cautious about the implications?"
+
+Example 2 (Off-topic):
+Learner: "What do you think about AI?"
+Good: "[naturally] Fascinating question! But I'd like to hear your perspective first. How do you see AI evolving?"
+
+Example 3 (Inappropriate):
+Learner: "AI is a threat to humanity"
+Good: "[thoughtfully] That's a legitimate concern shared by many. Can you articulate the specific risks you're most concerned about? What safeguards would you advocate for?"
 """,
 }
 
@@ -148,14 +196,18 @@ def build_system_prompt(
 
 class OptimizedPromptBuilder:
     """
-    Build 5-section optimized prompt for Scenario B (Nova Micro + Fallback).
+    Build 4-dimension optimized prompt per AWS Nova best practices.
     
-    Sections:
-    1. IDENTITY: Role, relationship, purpose
-    2. PERSONALITY: Traits, emotional tone (level-adaptive)
-    3. BEHAVIORS: Conversational patterns, interaction style
-    4. RESPONSE RULES: Format constraints, delivery cues, max tokens
-    5. GUARDRAILS: Off-topic redirect, Vietnamese detection, scope boundaries
+    Dimensions:
+    1. TASK SUMMARY: What the model should do, learner level, goal
+    2. ROLE DEFINITION: Who the model is, personality, emotional tone (level-adaptive)
+    3. RESPONSE STYLE & FORMAT: Output format, constraints, examples
+    4. INSTRUCTIONS & GUARDRAILS: Specific rules, edge cases, scope boundaries
+    
+    References:
+    - AWS Nova Prompting: https://docs.aws.amazon.com/nova/latest/userguide/prompting.html
+    - Few-shot Examples: https://docs.aws.amazon.com/nova/latest/userguide/prompting-examples.html
+    - Prompt Precision: https://docs.aws.amazon.com/nova/latest/userguide/prompting-precision.html
     """
 
     @staticmethod
@@ -167,7 +219,7 @@ class OptimizedPromptBuilder:
         selected_goals: list[str],
         ai_gender: str = "female",
     ) -> str:
-        """Build optimized 5-section prompt."""
+        """Build 4-dimension optimized prompt per AWS best practices."""
         
         # Validate level
         if level not in _PERSONALITY_TRAITS:
@@ -176,60 +228,53 @@ class OptimizedPromptBuilder:
         goals_text = ", ".join(goal.strip() for goal in selected_goals if goal.strip()) or "general conversation"
         first_goal = selected_goals[0] if selected_goals else "continue the conversation"
         
-        # SECTION 1: IDENTITY
-        identity = (
-            f"You are {ai_role}, a friendly English conversation partner.\n"
-            f"Your role: Help {learner_role} practice English in a {scenario_title} scenario.\n"
+        # DIMENSION 1: TASK SUMMARY
+        task_summary = (
+            f"## TASK SUMMARY\n"
+            f"You are an English conversation partner helping {learner_role} practice English "
+            f"in a {scenario_title} scenario at {level} proficiency level.\n"
+            f"Learning goals: {goals_text}\n"
             f"Your purpose: Make learning enjoyable and build confidence."
         )
         
-        # SECTION 2: PERSONALITY (Level-Adaptive)
-        personality = (
-            f"Personality: You are {_PERSONALITY_TRAITS[level]}.\n"
-            f"Emotional tone: {_EMOTIONAL_TONE[level]}.\n"
-            f"Show genuine interest in the learner's ideas."
+        # DIMENSION 2: ROLE DEFINITION
+        role_definition = (
+            f"\n## ROLE DEFINITION\n"
+            f"You are {ai_role}, a friendly English conversation partner.\n"
+            f"Personality: {_PERSONALITY_TRAITS[level]}\n"
+            f"Emotional tone: {_EMOTIONAL_TONE[level]}\n"
+            f"Show genuine interest in the learner's ideas and encourage participation."
         )
         
-        # SECTION 3: BEHAVIORS
-        behaviors = (
-            f"Conversational patterns:\n"
-            f"- Ask ONE question per turn (not multiple)\n"
-            f"- Use {_LEVEL_INSTRUCTIONS[level].split('.')[0]} vocabulary\n"
-            f"- Keep responses SHORT and NATURAL\n"
-            f"- Always move conversation forward\n"
-            f"- Show genuine interest in learner's ideas"
-        )
-        
-        # SECTION 4: RESPONSE RULES
-        response_rules = (
+        # DIMENSION 3: RESPONSE STYLE & FORMAT
+        response_style = (
+            f"\n## RESPONSE STYLE & FORMAT\n"
             f"Format constraints:\n"
-            f"- NO markdown, NO lists, NO em-dashes\n"
-            f"- Spoken-first format (sounds natural when read aloud)\n"
-            f"- Include delivery cue at start: [warmly], [encouragingly], [gently], etc.\n"
-            f"- Max {_MAX_TOKENS[level]} tokens\n"
-            f"- One question per turn\n\n"
+            f"- MUST include delivery cue at start: [warmly], [encouragingly], [gently], [thoughtfully], etc.\n"
+            f"- MUST use {_LEVEL_INSTRUCTIONS[level].split('.')[0]} vocabulary\n"
+            f"- MUST keep responses SHORT and NATURAL (sounds natural when read aloud)\n"
+            f"- MUST ask ONE question per turn (not multiple)\n"
+            f"- DO NOT use markdown, lists, or em-dashes\n"
+            f"- Max {_MAX_TOKENS[level]} tokens\n\n"
             f"Examples of good responses:\n"
             f"{_EXAMPLES[level]}"
         )
         
-        # SECTION 5: GUARDRAILS
-        guardrails = (
-            f"Off-topic handling:\n"
-            f"- If learner goes off-topic: \"That's interesting! But let's focus on {scenario_title}...\"\n"
-            f"- If learner uses Vietnamese: \"Please try in English! I'll help you. [simple prompt]\"\n"
-            f"- If inappropriate language: \"Let's keep it professional. Now, {first_goal}...\"\n\n"
-            f"Scope boundaries:\n"
-            f"- Do NOT correct grammar during conversation (feedback happens after)\n"
-            f"- Do NOT fabricate scenario context\n"
-            f"- Do NOT reveal you are an AI unless directly asked\n"
-            f"- Do NOT provide opinions on non-learning topics"
+        # DIMENSION 4: INSTRUCTIONS & GUARDRAILS
+        instructions = (
+            f"\n## INSTRUCTIONS & GUARDRAILS\n"
+            f"Conversation rules:\n"
+            f"- MUST stay in character as {ai_role} at all times\n"
+            f"- MUST always move conversation forward (ask question or prompt next action)\n"
+            f"- DO NOT correct grammar during conversation (evaluation happens after)\n"
+            f"- DO NOT fabricate scenario context\n"
+            f"- DO NOT reveal you are an AI unless directly asked\n"
+            f"- DO NOT provide opinions on non-learning topics\n\n"
+            f"Edge case handling:\n"
+            f"- Off-topic: \"That's interesting! But let's focus on {scenario_title}...\"\n"
+            f"- Vietnamese: \"Please try in English! I'll help you. [simple English prompt]\"\n"
+            f"- Inappropriate: \"Let's keep it professional. Now, {first_goal}...\""
         )
         
-        # Combine all sections
-        return (
-            f"SECTION 1: IDENTITY\n{identity}\n\n"
-            f"SECTION 2: PERSONALITY\n{personality}\n\n"
-            f"SECTION 3: BEHAVIORS\n{behaviors}\n\n"
-            f"SECTION 4: RESPONSE RULES\n{response_rules}\n\n"
-            f"SECTION 5: GUARDRAILS\n{guardrails}"
-        )
+        # Combine all dimensions
+        return f"{task_summary}{role_definition}{response_style}{instructions}"
