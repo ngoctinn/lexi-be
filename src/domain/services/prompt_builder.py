@@ -7,6 +7,116 @@ _LEVEL_INSTRUCTIONS = {
     "C2": "Use native-level language. Natural conversation flow.",
 }
 
+# Implicit error correction instructions per CEFR level
+_IMPLICIT_CORRECTION_INSTRUCTIONS = {
+    "A1": "When learner makes grammar, vocabulary, or pronunciation mistakes, model correct usage naturally in your response without explicit correction. Continue conversation naturally while demonstrating proper forms. Maintain existing explicit correction rules for Vietnamese usage, inappropriate language, and off-topic responses.",
+    "A2": "When learner makes grammar, vocabulary, or pronunciation mistakes, naturally model correct forms in your response without explicit correction statements. Continue conversation flow while demonstrating proper usage. Maintain existing explicit correction rules for Vietnamese usage, inappropriate language, and off-topic responses.",
+    "B1": "When learner makes grammar, vocabulary, or pronunciation mistakes, incorporate correct usage naturally in your response without explicit correction. Continue conversation naturally while modeling proper forms. Maintain existing explicit correction rules for Vietnamese usage, inappropriate language, and off-topic responses.",
+    "B2": "When learner makes grammar, vocabulary, or pronunciation mistakes, demonstrate correct usage naturally in your response without explicit correction statements. Continue conversation flow while modeling proper forms. Maintain existing explicit correction rules for Vietnamese usage, inappropriate language, and off-topic responses.",
+    "C1": "When learner makes grammar, vocabulary, or pronunciation mistakes, model correct usage naturally in your response without explicit correction. Continue conversation naturally while demonstrating sophisticated proper forms. Maintain existing explicit correction rules for Vietnamese usage, inappropriate language, and off-topic responses.",
+    "C2": "When learner makes grammar, vocabulary, or pronunciation mistakes, incorporate correct usage naturally in your response without explicit correction statements. Continue conversation flow while modeling native-level proper forms. Maintain existing explicit correction rules for Vietnamese usage, inappropriate language, and off-topic responses.",
+}
+
+# Few-shot examples demonstrating implicit error correction per CEFR level
+_IMPLICIT_CORRECTION_EXAMPLES = {
+    "A1": """
+Example 1 (Grammar - Simple Present/Past):
+Learner: "I go beach yesterday"
+Good: "[warmly] When you went to the beach, did you swim?"
+Bad: "You should say 'went', not 'go'."
+
+Example 2 (Vocabulary - Simple Words):
+Learner: "I eat food at place"
+Good: "[warmly] You ate at a restaurant? What did you have?"
+Bad: "The correct word is 'restaurant', not 'place'."
+
+Example 3 (Pronunciation-Related):
+Learner: "I like play football"
+Good: "[warmly] You like playing football? That's great! Do you play often?"
+Bad: "You need to say 'playing', not 'play'."
+""",
+    "A2": """
+Example 1 (Tense Error):
+Learner: "I am go to school every day"
+Good: "[warmly] You go to school every day? What's your favorite subject?"
+Bad: "You should say 'I go', not 'I am go'."
+
+Example 2 (Vocabulary Error):
+Learner: "I want buy new phone"
+Good: "[warmly] You want to buy a new phone? What kind are you looking for?"
+Bad: "You need 'to' before 'buy'."
+
+Example 3 (Sentence Structure Error):
+Learner: "Yesterday I go shopping and buy shoes"
+Good: "[warmly] You went shopping yesterday and bought shoes? What color are they?"
+Bad: "You should use past tense: 'went' and 'bought'."
+""",
+    "B1": """
+Example 1 (Present Perfect Error):
+Learner: "I have went to Paris last year"
+Good: "[encouragingly] You went to Paris last year? That's wonderful! What did you enjoy most?"
+Bad: "The correct form is 'I went', not 'I have went'."
+
+Example 2 (Preposition Error):
+Learner: "I'm interested for learning English"
+Good: "[encouragingly] You're interested in learning English? What motivates you?"
+Bad: "Use 'interested in', not 'interested for'."
+
+Example 3 (Intermediate Vocabulary Error):
+Learner: "The movie was very boring for me"
+Good: "[naturally] The movie bored you? What kind of movies do you usually enjoy?"
+Bad: "You should say 'bored me', not 'boring for me'."
+""",
+    "B2": """
+Example 1 (Conditional Error):
+Learner: "If I would have more time, I will travel more"
+Good: "[thoughtfully] If you had more time, you'd travel more? Where would you go first?"
+Bad: "The correct form is 'If I had', not 'If I would have'."
+
+Example 2 (Passive Voice Error):
+Learner: "The problem was happened last week"
+Good: "[naturally] The problem happened last week? How was it resolved?"
+Bad: "Don't use passive with 'happen'. Say 'happened'."
+
+Example 3 (Advanced Vocabulary Error):
+Learner: "The government should make laws more strict"
+Good: "[thoughtfully] You think the government should make laws stricter? What specific areas concern you?"
+Bad: "Say 'stricter', not 'more strict'."
+""",
+    "C1": """
+Example 1 (Subjunctive Error):
+Learner: "I suggest that he goes to the meeting"
+Good: "[thoughtfully] You suggest that he go to the meeting? What makes you think he should attend?"
+Bad: "Use subjunctive: 'he go', not 'he goes'."
+
+Example 2 (Idiomatic Usage Error):
+Learner: "He made a decision very quickly without thinking"
+Good: "[naturally] He made a snap decision? What were the consequences?"
+Bad: "Say 'snap decision', not 'decision very quickly'."
+
+Example 3 (Sophisticated Vocabulary Error):
+Learner: "The company's decision was very controversial between employees"
+Good: "[thoughtfully] The company's decision was controversial among employees? What were the main points of contention?"
+Bad: "Use 'among', not 'between' for more than two."
+""",
+    "C2": """
+Example 1 (Advanced Structure Error):
+Learner: "Had I known earlier, I would have acted different"
+Good: "[thoughtfully] Had you known earlier, you would have acted differently? What would you have done?"
+Bad: "Use 'differently', not 'different'."
+
+Example 2 (Collocation Error):
+Learner: "The company is facing strong competition"
+Good: "[thoughtfully] The company is facing stiff competition? How are they responding?"
+Bad: "Use 'stiff competition', not 'strong competition'."
+
+Example 3 (Native-Level Nuance Error):
+Learner: "The politician's speech was full of empty promises"
+Good: "[naturally] The politician's speech was full of empty rhetoric? What specific claims concerned you?"
+Bad: "Consider using 'rhetoric' instead of 'promises'."
+""",
+}
+
 # Personality traits per level
 _PERSONALITY_TRAITS = {
     "A1": "warm, patient, encouraging, simple, clear",
@@ -148,6 +258,8 @@ def build_session_prompt(
     """
     goals_text = " | ".join(goal.strip() for goal in selected_goals if goal.strip())
     level_instruction = _LEVEL_INSTRUCTIONS.get(level, _LEVEL_INSTRUCTIONS["B1"])
+    implicit_correction_instruction = _IMPLICIT_CORRECTION_INSTRUCTIONS.get(level, _IMPLICIT_CORRECTION_INSTRUCTIONS["B1"])
+    implicit_correction_examples = _IMPLICIT_CORRECTION_EXAMPLES.get(level, _IMPLICIT_CORRECTION_EXAMPLES.get("B1", ""))
     first_goal = selected_goals[0] if selected_goals else "continue the conversation"
 
     return (
@@ -161,6 +273,9 @@ def build_session_prompt(
         f"Goals: {goals_text}\n\n"
         f"You are playing the role of {ai_role} in a roleplay conversation.\n"
         f"LANGUAGE LEVEL: {level} — {level_instruction}\n\n"
+        f"IMPLICIT ERROR CORRECTION:\n"
+        f"{implicit_correction_instruction}\n\n"
+        f"{implicit_correction_examples}\n\n"
         f"CONVERSATION RULES:\n"
         f"1. Stay in character as {ai_role} at all times.\n"
         f"2. Keep responses SHORT and NATURAL (match the level above).\n"
@@ -236,6 +351,8 @@ class OptimizedPromptBuilder:
         
         goals_text = ", ".join(goal.strip() for goal in selected_goals if goal.strip()) or "general conversation"
         first_goal = selected_goals[0] if selected_goals else "continue the conversation"
+        implicit_correction_instruction = _IMPLICIT_CORRECTION_INSTRUCTIONS.get(level, _IMPLICIT_CORRECTION_INSTRUCTIONS["B1"])
+        implicit_correction_examples = _IMPLICIT_CORRECTION_EXAMPLES.get(level, _IMPLICIT_CORRECTION_EXAMPLES.get("B1", ""))
         
         # DIMENSION 1: TASK SUMMARY
         task_summary = (
@@ -272,6 +389,9 @@ class OptimizedPromptBuilder:
         # DIMENSION 4: INSTRUCTIONS & GUARDRAILS
         instructions = (
             f"\n## INSTRUCTIONS & GUARDRAILS\n"
+            f"IMPLICIT ERROR CORRECTION:\n"
+            f"{implicit_correction_instruction}\n\n"
+            f"{implicit_correction_examples}\n\n"
             f"Conversation rules:\n"
             f"- MUST stay in character as {ai_role} at all times\n"
             f"- MUST always move conversation forward (ask question or prompt next action)\n"
@@ -347,6 +467,9 @@ class OptimizedPromptBuilder:
         # DIMENSION 4: INSTRUCTIONS & GUARDRAILS (static - universal rules)
         instructions = (
             f"\n## INSTRUCTIONS & GUARDRAILS\n"
+            f"IMPLICIT ERROR CORRECTION:\n"
+            f"{_IMPLICIT_CORRECTION_INSTRUCTIONS.get(level, _IMPLICIT_CORRECTION_INSTRUCTIONS['B1'])}\n\n"
+            f"{_IMPLICIT_CORRECTION_EXAMPLES.get(level, _IMPLICIT_CORRECTION_EXAMPLES.get('B1', ''))}\n\n"
             f"Conversation rules:\n"
             f"- MUST stay in character at all times\n"
             f"- MUST always move conversation forward (ask question or prompt next action)\n"

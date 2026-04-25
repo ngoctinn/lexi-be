@@ -66,6 +66,50 @@ def _scenario_roles(scenario: Scenario) -> list[str]:
     return roles
 
 
+def _get_scenario_keywords(scenario_title: str) -> list[str]:
+    """Get keywords for scenario (reuse from OffTopicDetector).
+    
+    Args:
+        scenario_title: Scenario title
+        
+    Returns:
+        List of keywords for scenario
+    """
+    from domain.services.off_topic_detector import OffTopicDetector
+    detector = OffTopicDetector()
+    return detector._get_scenario_keywords(scenario_title)
+
+
+def _extract_scaffolding_context(
+    session: Session,
+    scenario: Scenario,
+    turn_history: list[Turn],
+) -> dict:
+    """Extract context for scaffolding system.
+    
+    Args:
+        session: Current session
+        scenario: Current scenario
+        turn_history: List of turns in session
+        
+    Returns:
+        Context dictionary with scenario_title, scenario_vocabulary, last_utterance, conversation_goals
+    """
+    # Get last user utterance
+    user_turns = [t for t in turn_history if t.speaker == Speaker.USER]
+    last_utterance = user_turns[-1].content if user_turns else ""
+    
+    # Get scenario vocabulary (from scenario entity or off-topic detector)
+    scenario_vocabulary = _get_scenario_keywords(scenario.scenario_title)
+    
+    return {
+        "scenario_title": scenario.scenario_title,
+        "scenario_vocabulary": scenario_vocabulary,
+        "last_utterance": last_utterance,
+        "conversation_goals": list(session.selected_goals),
+    }
+
+
 def _turn_to_response(turn: Turn) -> SpeakingTurnResponse:
     return SpeakingTurnResponse(
         turn_index=turn.turn_index,
@@ -143,6 +187,21 @@ class CreateSpeakingSessionUseCase:
         self._turn_repo = turn_repo
         self._greeting_generator = greeting_generator
         self._speech_synthesis_service = speech_synthesis_service
+
+    def _clean_text_for_tts(self, text: str) -> str:
+        """
+        Remove delivery cues from text for TTS synthesis.
+        
+        Args:
+            text: Text with potential delivery cues
+            
+        Returns:
+            Clean text without delivery cues
+        """
+        import re
+        # Remove delivery cues like [warmly], [thoughtfully], etc.
+        cleaned = re.sub(r"\[([a-zA-Z\s]+)\]\s*", "", text)
+        return cleaned.strip()
 
     def execute(
         self, request: CreateSpeakingSessionCommand
@@ -224,8 +283,10 @@ class CreateSpeakingSessionUseCase:
                 
                 # Generate audio for greeting
                 try:
+                    # Clean greeting text for TTS (remove delivery cues)
+                    clean_greeting_text = self._clean_text_for_tts(greeting_result.combined_text)
                     audio_url = self._speech_synthesis_service.synthesize(
-                        text=greeting_result.combined_text,
+                        text=clean_greeting_text,
                         ai_gender=request.ai_gender,
                         object_key=f"speaking/audio/{session_id}/0.mp3",
                     )
@@ -373,6 +434,21 @@ class SubmitSpeakingTurnUseCase:
         self._speech_synthesis_service = speech_synthesis_service
         self._conversation_orchestrator = conversation_orchestrator
 
+    def _clean_text_for_tts(self, text: str) -> str:
+        """
+        Remove delivery cues from text for TTS synthesis.
+        
+        Args:
+            text: Text with potential delivery cues
+            
+        Returns:
+            Clean text without delivery cues
+        """
+        import re
+        # Remove delivery cues like [warmly], [thoughtfully], etc.
+        cleaned = re.sub(r"\[([a-zA-Z\s]+)\]\s*", "", text)
+        return cleaned.strip()
+
     def execute(
         self, request: SubmitSpeakingTurnCommand
     ) -> Result[SubmitSpeakingTurnResponse, str]:
@@ -415,8 +491,10 @@ class SubmitSpeakingTurnUseCase:
             )
 
             try:
+                # Clean AI text for TTS (remove delivery cues)
+                clean_ai_text = self._clean_text_for_tts(ai_text)
                 ai_audio_url = self._speech_synthesis_service.synthesize(
-                    ai_text,
+                    clean_ai_text,
                     _enum_value(session.ai_gender),
                     object_key=f"speaking/audio/{session.session_id}/{turn_index + 1}.mp3",
                 )

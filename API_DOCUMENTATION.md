@@ -13,14 +13,16 @@
 1. [Authentication](#authentication)
 2. [Response Format](#response-format)
 3. [Error Handling](#error-handling)
-4. [Onboarding Endpoints](#onboarding-endpoints)
-5. [Profile Endpoints](#profile-endpoints)
-6. [Vocabulary Endpoints](#vocabulary-endpoints)
-7. [Flashcard Endpoints](#flashcard-endpoints)
-8. [Scenario Endpoints](#scenario-endpoints)
-9. [Speaking Session Endpoints](#speaking-session-endpoints)
-10. [WebSocket Endpoints](#websocket-endpoints)
-11. [Admin Endpoints](#admin-endpoints)
+4. [Delivery Cues & Tone](#delivery-cues--tone)
+5. [Hint Formatting](#hint-formatting)
+6. [Onboarding Endpoints](#onboarding-endpoints)
+7. [Profile Endpoints](#profile-endpoints)
+8. [Vocabulary Endpoints](#vocabulary-endpoints)
+9. [Flashcard Endpoints](#flashcard-endpoints)
+10. [Scenario Endpoints](#scenario-endpoints)
+11. [Speaking Session Endpoints](#speaking-session-endpoints)
+12. [WebSocket Endpoints](#websocket-endpoints)
+13. [Admin Endpoints](#admin-endpoints)
 
 ---
 
@@ -98,6 +100,99 @@ Common error codes:
 | `NOT_FOUND` | Resource not found |
 | `UNAUTHORIZED` | Authentication failed |
 | `FORBIDDEN` | Permission denied |
+
+---
+
+## Delivery Cues & Tone
+
+AI responses include delivery cues that indicate the emotional tone of the response. These are used for implicit error correction and natural conversation flow.
+
+### Available Delivery Cues
+
+| Cue | Meaning | Use Case |
+|-----|---------|----------|
+| `[warmly]` | Friendly and encouraging | Praise, encouragement, positive feedback |
+| `[encouragingly]` | Motivating and supportive | When learner does well, needs motivation |
+| `[gently]` | Tactful and considerate | Error correction, off-topic redirection, sensitive topics |
+| `[thoughtfully]` | Engaging in deep discussion | Complex topics, advanced levels (B2+) |
+| `[naturally]` | Conversational and neutral | Normal conversation flow |
+
+### Frontend Implementation
+
+**Step 1: Extract delivery cue from AI response**
+```typescript
+const tone = turn.delivery_cue?.replace(/[\[\]]/g, "") || "naturally";
+// "[warmly]" → "warmly"
+```
+
+**Step 2: Clean text for display (remove delivery cue)**
+```typescript
+const cleanText = turn.content.replace(/\[[^\]]+\]\s*/, "");
+// "[warmly] Hello" → "Hello"
+```
+
+**Step 3: Display with tone indicator (color-based)**
+```typescript
+const TONE_COLORS = {
+  warmly: "#10b981",        // Green
+  encouragingly: "#3b82f6", // Blue
+  gently: "#f59e0b",        // Yellow
+  thoughtfully: "#8b5cf6",  // Purple
+  naturally: "#6b7280",     // Gray
+};
+
+// Use color for text or left border indicator
+<div style={{ borderLeft: `3px solid ${TONE_COLORS[tone]}` }}>
+  {cleanText}
+</div>
+```
+
+---
+
+## Hint Formatting
+
+Hints for A1-A2 learners are bilingual (Vietnamese + English) and support multiple display formats.
+
+### Hint Response Format
+
+```json
+{
+  "hint": {
+    "vietnamese": "Bạn có thể nói 'I went to the beach yesterday'",
+    "english": "You can say 'I went to the beach yesterday'",
+    "hint_level": "vocabulary_hint",
+    "silence_duration": 20
+  }
+}
+```
+
+### Hint Levels
+
+| Level | Description |
+|-------|-------------|
+| `gentle_prompt` | Encourage learner to continue (10s silence) |
+| `vocabulary_hint` | Suggest relevant vocabulary (20s silence) |
+| `sentence_starter` | Provide sentence starter example (30s silence) |
+
+### Context-Aware Hints
+
+Hints are generated based on:
+- **Scenario**: Restaurant, Airport, Hotel, Shopping, General
+- **Grammar Pattern**: Past tense, present tense, questions, short responses
+- **Last Utterance**: Learner's previous response
+- **Conversation Goals**: Session objectives
+
+**Example: Restaurant scenario with past tense error**
+```
+Learner: "I go restaurant yesterday"
+Hint: "You can say 'I went to the restaurant yesterday'"
+```
+
+**Example: Airport scenario with vocabulary gap**
+```
+Learner: "Where gate?"
+Hint: "Try: 'Where is gate 5?' or 'Can you tell me where gate 5 is?'"
+```
 | `SERVICE_ERROR` | External service error (Bedrock, Translate, etc.) |
 | `SUBMISSION_FAILED` | Turn submission failed |
 | `COMPLETION_FAILED` | Session completion failed |
@@ -567,7 +662,8 @@ Retrieve details of a specific speaking session.
       {
         "turn_index": 2,
         "speaker": "ai",
-        "content": "Of course! What size would you like?",
+        "content": "[warmly] Of course! What size would you like?",
+        "delivery_cue": "[warmly]",
         "audio_url": "s3://bucket/ai-audio.mp3",
         "created_at": "2026-04-25T07:25:25.000000+00:00"
       }
@@ -580,7 +676,7 @@ Retrieve details of a specific speaking session.
 
 **POST** `/sessions/{session_id}/turns`
 
-Submit a user's spoken turn and get AI response.
+Submit a user's spoken turn and get AI response with implicit error correction and context-aware scaffolding.
 
 **Request Body**:
 ```json
@@ -604,10 +700,33 @@ Submit a user's spoken turn and get AI response.
     "created_at": "2026-04-25T07:25:13.798100+00:00",
     "turn_count": 2,
     "updated_at": "2026-04-25T07:25:30.000000+00:00",
-    "completed_at": null
+    "completed_at": null,
+    "user_turn": {
+      "turn_index": 1,
+      "speaker": "user",
+      "content": "Hello, I would like to order a coffee please.",
+      "audio_url": "s3://bucket/audio.mp3",
+      "is_hint_used": false,
+      "created_at": "2026-04-25T07:25:20.000000+00:00"
+    },
+    "ai_turn": {
+      "turn_index": 2,
+      "speaker": "ai",
+      "content": "[warmly] Of course! What size would you like?",
+      "delivery_cue": "[warmly]",
+      "audio_url": "s3://bucket/ai-audio.mp3",
+      "created_at": "2026-04-25T07:25:25.000000+00:00"
+    },
+    "analysis_keywords": ["coffee", "order"]
   }
 }
 ```
+
+**Response Fields**:
+- `user_turn` - User's submitted turn with analysis
+- `ai_turn` - AI's response with delivery cue
+- `delivery_cue` - Tone indicator (e.g., "[warmly]", "[thoughtfully]", "[gently]", "[encouragingly]", "[naturally]")
+- `analysis_keywords` - Key phrases extracted from user's speech
 
 ### Complete Speaking Session
 

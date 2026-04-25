@@ -203,10 +203,10 @@ class ConversationOrchestrator:
     
     def _extract_delivery_cue(self, response: str) -> str:
         """
-        Extract delivery cue from response.
+        Extract delivery cue from response and return clean text.
         
         Args:
-            response: Response text
+            response: Response text with potential delivery cue
             
         Returns:
             Delivery cue (e.g., "[warmly]") or empty string
@@ -217,22 +217,57 @@ class ConversationOrchestrator:
             return f"[{match.group(1)}]"
         return ""
     
+    def _clean_text_for_tts(self, text: str) -> str:
+        """
+        Remove delivery cues from text for TTS synthesis.
+        
+        Args:
+            text: Text with potential delivery cues
+            
+        Returns:
+            Clean text without delivery cues
+        """
+        import re
+        # Remove delivery cues like [warmly], [thoughtfully], etc.
+        cleaned = re.sub(r"\[([a-zA-Z\s]+)\]\s*", "", text)
+        return cleaned.strip()
+    
     def get_hint(
         self,
         session: Session,
+        scenario: "Scenario",
+        turn_history: list[Turn],
         silence_duration_seconds: int,
     ) -> Optional[str]:
         """
-        Get hint for learner based on silence duration.
+        Get hint for learner based on silence duration with context.
         
         Args:
             session: Current session
+            scenario: Current scenario
+            turn_history: List of turns in session
             silence_duration_seconds: Duration of silence (10, 20, or 30)
             
         Returns:
             Hint text or None
         """
-        return self.scaffolding_system.get_hint(
-            level=session.level,
+        # Only provide hints for A1-A2 levels
+        level_str = session.level.value if hasattr(session.level, "value") else str(session.level)
+        if level_str not in ["A1", "A2"]:
+            return None
+        
+        # Extract context for scaffolding
+        from application.use_cases.speaking_session_use_cases import _extract_scaffolding_context
+        context = _extract_scaffolding_context(session, scenario, turn_history)
+        
+        # Generate hint with context
+        hint = self.scaffolding_system.generate_hint(
+            proficiency_level=level_str,
             silence_duration_seconds=silence_duration_seconds,
+            context=context,
         )
+        
+        if hint:
+            return self.scaffolding_system.format_hint_for_display(hint)
+        
+        return None

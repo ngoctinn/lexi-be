@@ -18,7 +18,7 @@ Each task references specific requirements and builds on previous work. Testing 
 
 ### Phase 1: PromptBuilder Enhancement (2-3 days)
 
-- [ ] 1. Add implicit error correction instructions to PromptBuilder
+- [x] 1. Add implicit error correction instructions to PromptBuilder
   - Add `_IMPLICIT_CORRECTION_INSTRUCTIONS` constant with instructions for all CEFR levels (A1-C2)
   - Instructions should tell AI to model correct usage naturally without explicit correction
   - Instructions should specify correction applies to grammar, vocabulary, and pronunciation errors
@@ -27,35 +27,35 @@ Each task references specific requirements and builds on previous work. Testing 
   - _Estimated effort: 0.5 days_
 
 - [ ] 2. Add level-specific few-shot examples for implicit correction
-  - [ ] 2.1 Add `_IMPLICIT_CORRECTION_EXAMPLES` constant with examples for A1 level
+  - [x] 2.1 Add `_IMPLICIT_CORRECTION_EXAMPLES` constant with examples for A1 level
     - Include 3 examples: grammar error, vocabulary error, pronunciation-related error
     - Show "Good" response (implicit correction) vs "Bad" response (explicit correction)
     - Demonstrate natural conversation flow with modeled correct usage
     - _Requirements: 2.1, 2.7, 2.8, 9.1_
   
-  - [ ] 2.2 Add examples for A2 level
+  - [x] 2.2 Add examples for A2 level
     - Include 3 examples: tense error, vocabulary error, sentence structure error
     - _Requirements: 2.2, 2.7, 2.8, 9.2_
   
-  - [ ] 2.3 Add examples for B1 level
+  - [x] 2.3 Add examples for B1 level
     - Include 3 examples: present perfect error, preposition error, intermediate vocabulary error
     - _Requirements: 2.3, 2.7, 2.8, 9.3_
   
-  - [ ] 2.4 Add examples for B2 level
+  - [x] 2.4 Add examples for B2 level
     - Include 3 examples: conditional error, passive voice error, advanced vocabulary error
     - _Requirements: 2.4, 2.7, 2.8, 9.4_
   
-  - [ ] 2.5 Add examples for C1 level
+  - [x] 2.5 Add examples for C1 level
     - Include 3 examples: subjunctive error, idiomatic usage error, sophisticated vocabulary error
     - _Requirements: 2.5, 2.7, 2.8, 9.5_
   
-  - [ ] 2.6 Add examples for C2 level
+  - [x] 2.6 Add examples for C2 level
     - Include 3 examples: advanced structure error, collocation error, native-level nuance error
     - _Requirements: 2.6, 2.7, 2.8, 9.6_
   
   - _Estimated effort: 1 day_
 
-- [ ] 3. Integrate implicit correction into build_session_prompt()
+- [x] 3. Integrate implicit correction into build_session_prompt()
   - Modify `build_session_prompt()` to append implicit correction instructions
   - Append level-specific few-shot examples after instructions
   - Maintain existing prompt structure (append, don't replace)
@@ -71,7 +71,7 @@ Each task references specific requirements and builds on previous work. Testing 
   - _Requirements: 12.1, 12.2, 12.8_
   - _Estimated effort: 0.5 days_
 
-- [ ] 5. Checkpoint - Validate PromptBuilder changes
+- [x] 5. Checkpoint - Validate PromptBuilder changes
   - Ensure all tests pass
   - Manually inspect generated prompts for all levels
   - Verify implicit correction instructions are clear and actionable
@@ -81,14 +81,14 @@ Each task references specific requirements and builds on previous work. Testing 
 
 ### Phase 2: ScaffoldingSystem Enhancement (3-4 days)
 
-- [ ] 6. Add scenario vocabulary mappings to ScaffoldingSystem
+- [x] 6. Add scenario vocabulary mappings to ScaffoldingSystem
   - Add `_SCENARIO_VOCABULARY` constant with mappings for restaurant, airport, hotel, shopping scenarios
   - Each scenario should have "questions" and "statements" lists with A1-A2 level phrases
   - Add fallback vocabulary for general conversation scenarios
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.8_
   - _Estimated effort: 0.5 days_
 
-- [ ] 7. Add grammar pattern detection heuristics
+- [x] 7. Add grammar pattern detection heuristics
   - Add `_GRAMMAR_PATTERNS` constant with keyword lists for past tense, present tense, questions
   - Add `_detect_grammar_pattern()` method using simple keyword matching
   - Detect past tense patterns (keywords: "yesterday", "last", "ago", "was", "were")
@@ -99,7 +99,7 @@ Each task references specific requirements and builds on previous work. Testing 
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.6, 11.1, 11.2, 11.3, 11.4, 11.6, 11.7_
   - _Estimated effort: 1 day_
 
-- [ ] 8. Add context parameter to generate_hint()
+- [x] 8. Add context parameter to generate_hint()
   - Modify `generate_hint()` signature to accept optional `context` parameter (default None)
   - Add `ScaffoldingContext` dataclass with fields: scenario_title, scenario_vocabulary, last_utterance, conversation_goals
   - When context is None, generate generic hints (backward compatibility)
@@ -108,25 +108,25 @@ Each task references specific requirements and builds on previous work. Testing 
   - _Estimated effort: 0.5 days_
 
 - [ ] 9. Implement context-aware hint generation
-  - [ ] 9.1 Add `_generate_context_aware_hint()` method
+  - [x] 9.1 Add `_generate_context_aware_hint()` method
     - Extract scenario vocabulary using `_get_scenario_vocabulary()`
     - Detect grammar pattern using `_detect_grammar_pattern()`
     - Route to appropriate hint generator based on hint level
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 5.1, 5.2, 5.3, 5.4_
   
-  - [ ] 9.2 Add `_get_scenario_vocabulary()` method
+  - [x] 9.2 Add `_get_scenario_vocabulary()` method
     - Look up scenario in `_SCENARIO_VOCABULARY` mapping
     - Return scenario-specific vocabulary if found
     - Return generic vocabulary if scenario not found (fallback)
     - _Requirements: 4.5, 10.8_
   
-  - [ ] 9.3 Add `_generate_vocabulary_hint_with_context()` method
+  - [x] 9.3 Add `_generate_vocabulary_hint_with_context()` method
     - Use scenario vocabulary to suggest relevant phrases
     - Use detected grammar pattern to suggest appropriate tense/form
     - Maintain bilingual format (Vietnamese + English)
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.6, 5.1, 5.2, 5.3, 5.4_
   
-  - [ ] 9.4 Add `_generate_sentence_starter_with_context()` method
+  - [x] 9.4 Add `_generate_sentence_starter_with_context()` method
     - Use scenario vocabulary to provide sentence starters
     - Use detected grammar pattern to provide appropriate examples
     - Maintain bilingual format (Vietnamese + English)
@@ -143,7 +143,7 @@ Each task references specific requirements and builds on previous work. Testing 
   - _Requirements: 12.3, 12.4, 12.5_
   - _Estimated effort: 1 day_
 
-- [ ] 11. Checkpoint - Validate ScaffoldingSystem changes
+- [x] 11. Checkpoint - Validate ScaffoldingSystem changes
   - Ensure all tests pass
   - Manually test context-aware hint generation with sample scenarios
   - Verify fallback behavior when context unavailable
@@ -154,7 +154,7 @@ Each task references specific requirements and builds on previous work. Testing 
 ### Phase 3: Use Case Integration (2-3 days)
 
 - [ ] 12. Add context extraction to SubmitSpeakingTurnUseCase
-  - [ ] 12.1 Add `_extract_scaffolding_context()` helper function
+  - [x] 12.1 Add `_extract_scaffolding_context()` helper function
     - Extract scenario title from session
     - Extract last user utterance from turn history
     - Extract conversation goals from session
@@ -162,7 +162,7 @@ Each task references specific requirements and builds on previous work. Testing 
     - Return context dict with all extracted data
     - _Requirements: 6.1, 6.2, 6.3_
   
-  - [ ] 12.2 Add `_get_scenario_keywords()` helper function
+  - [x] 12.2 Add `_get_scenario_keywords()` helper function
     - Reuse `OffTopicDetector._get_scenario_keywords()` method
     - Return list of keywords for scenario
     - Handle scenarios without keyword mappings (return empty list)
@@ -170,7 +170,7 @@ Each task references specific requirements and builds on previous work. Testing 
   
   - _Estimated effort: 1 day_
 
-- [ ] 13. Integrate context passing to ScaffoldingSystem
+- [x] 13. Integrate context passing to ScaffoldingSystem
   - Modify `SubmitSpeakingTurnUseCase.execute()` to extract context before hint generation
   - Pass context to `ScaffoldingSystem.generate_hint()` for A1-A2 sessions
   - Do NOT call ScaffoldingSystem for B1+ sessions (existing behavior)
@@ -189,7 +189,7 @@ Each task references specific requirements and builds on previous work. Testing 
   - _Requirements: 12.6, 12.7_
   - _Estimated effort: 1 day_
 
-- [ ] 15. Checkpoint - Validate end-to-end integration
+- [~] 15. Checkpoint - Validate end-to-end integration
   - Ensure all tests pass
   - Manually test full conversation flow with context-aware hints
   - Verify hints reference scenario vocabulary and learner mistakes
@@ -228,7 +228,7 @@ Each task references specific requirements and builds on previous work. Testing 
   
   - _Estimated effort: 1.5 days_
 
-- [ ]* 17. Verify backward compatibility
+- [x]* 17. Verify backward compatibility
   - Run existing unit tests for PromptBuilder (should pass without modification)
   - Run existing unit tests for ScaffoldingSystem (should pass without modification)
   - Run existing integration tests for SubmitSpeakingTurnUseCase (should pass without modification)
@@ -236,7 +236,7 @@ Each task references specific requirements and builds on previous work. Testing 
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.7, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 12.8_
   - _Estimated effort: 0.5 days_
 
-- [ ] 18. Final checkpoint - Complete validation
+- [~] 18. Final checkpoint - Complete validation
   - Ensure all tests pass (unit, integration, manual)
   - Verify implicit correction works for all CEFR levels
   - Verify context-aware hints work for all scenarios
