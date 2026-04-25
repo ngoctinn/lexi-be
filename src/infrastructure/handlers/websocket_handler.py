@@ -195,6 +195,7 @@ class WebSocketSessionController:
     build_upload_payload: Callable[[str], tuple[str, str]]
     send_message: Callable[[dict[str, Any]], None]
     verify_token: Callable[[str], dict[str, Any]]
+    structured_hint_generator: Any = None  # Optional: StructuredHintGenerator for enhanced hints
 
     def connect(self, session_id: str, token: str, connection_id: str) -> dict[str, Any]:
         print(f"[ws] connect() called: session_id={session_id} token_len={len(token) if token else 0} connection_id={connection_id}")
@@ -339,6 +340,42 @@ class WebSocketSessionController:
 
         self._sync_connection(session, connection_id)
         turns = self.turn_repo.list_by_session(session_id)
+        
+        # Try structured hint generation if generator is available
+        if self.structured_hint_generator:
+            try:
+                from domain.value_objects.enums import Speaker as SpeakerEnum
+                
+                # Find last AI turn
+                last_ai_turn = next(
+                    (t for t in reversed(turns) if (t.speaker.value if hasattr(t.speaker, "value") else t.speaker) == SpeakerEnum.AI.value),
+                    None,
+                )
+                
+                # Generate structured hint
+                structured_hint = self.structured_hint_generator.generate(
+                    session=session,
+                    last_ai_turn=last_ai_turn,
+                    turn_history=turns,
+                )
+                
+                # Send structured hint object
+                try:
+                    self.send_message({"event": "HINT_TEXT", "hint": structured_hint.to_dict()})
+                except Exception as exc:
+                    print(f"[ws] Failed to send structured hint: {exc}")
+                    return _response(500, {"message": "Lỗi gửi gợi ý."})
+                
+                return _response(200, {"message": "Hint sent"})
+                
+            except Exception as e:
+                logger.warning(
+                    f"Failed to generate structured hint: {e}",
+                    extra={"session_id": session_id, "error": str(e)}
+                )
+                # Fall through to simple hint fallback
+        
+        # Fallback to simple hint format (backward compatibility)
         hint = self._generate_contextual_hint(session, turns)
         try:
             self.send_message({"event": "HINT_TEXT", "hint": hint})
@@ -821,6 +858,11 @@ def get_websocket_controller() -> WebSocketSessionController:
     )
     complete_use_case = CompleteSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo, BedrockScorerAdapter())
 
+    # Create StructuredHintGenerator with bedrock client
+    from domain.services.structured_hint_generator import StructuredHintGenerator
+    from infrastructure.services.speaking_pipeline_services import _bedrock_client
+    structured_hint_generator = StructuredHintGenerator(bedrock_client=_bedrock_client)
+
     return WebSocketSessionController(
         session_repo=session_repo,
         turn_repo=turn_repo,
@@ -831,6 +873,7 @@ def get_websocket_controller() -> WebSocketSessionController:
         build_upload_payload=_build_upload_payload,
         send_message=lambda payload: None,
         verify_token=_verify_cognito_jwt,
+        structured_hint_generator=structured_hint_generator,
     )
 
 

@@ -34,6 +34,7 @@ from domain.entities.scoring import Scoring
 from domain.entities.scenario import Scenario
 from domain.entities.session import Session
 from domain.entities.turn import Turn
+from domain.services.greeting_generator import GreetingGenerator
 from domain.services.prompt_builder import build_session_prompt
 from domain.value_objects.enums import Gender, ProficiencyLevel, Speaker
 from shared.result import Result
@@ -129,9 +130,19 @@ def _session_to_response(
 
 
 class CreateSpeakingSessionUseCase:
-    def __init__(self, session_repo: SessionRepository, scenario_repo: ScenarioRepository):
+    def __init__(
+        self,
+        session_repo: SessionRepository,
+        scenario_repo: ScenarioRepository,
+        turn_repo: TurnRepository,
+        greeting_generator: GreetingGenerator,
+        speech_synthesis_service: SpeechSynthesisService,
+    ):
         self._session_repo = session_repo
         self._scenario_repo = scenario_repo
+        self._turn_repo = turn_repo
+        self._greeting_generator = greeting_generator
+        self._speech_synthesis_service = speech_synthesis_service
 
     def execute(
         self, request: CreateSpeakingSessionCommand
@@ -197,10 +208,78 @@ class CreateSpeakingSessionUseCase:
             )
 
             self._session_repo.save(session)
+            
+            # Generate greeting and first question
+            greeting_turns = []
+            try:
+                greeting_result = self._greeting_generator.generate(
+                    level=request.level,
+                    scenario_title=scenario.scenario_title,
+                    learner_role=learner_role_id,
+                    ai_role=ai_role_id,
+                    selected_goals=selected_goals,
+                    ai_gender=request.ai_gender,
+                    session_id=str(session_id),
+                )
+                
+                # Generate audio for greeting
+                try:
+                    audio_url = self._speech_synthesis_service.synthesize(
+                        text=greeting_result.combined_text,
+                        ai_gender=request.ai_gender,
+                        object_key=f"speaking/audio/{session_id}/0.mp3",
+                    )
+                except Exception as tts_error:
+                    logger.error(
+                        "TTS synthesis failed for greeting",
+                        extra={
+                            "session_id": str(session_id),
+                            "error": str(tts_error),
+                            "error_type": type(tts_error).__name__,
+                        }
+                    )
+                    audio_url = ""  # Continue without audio
+                
+                # Create and save greeting turn
+                try:
+                    greeting_turn = Turn(
+                        session_id=session_id,
+                        turn_index=0,
+                        speaker=Speaker.AI,
+                        content=greeting_result.combined_text,
+                        audio_url=audio_url,
+                        is_hint_used=False,
+                    )
+                    self._turn_repo.save(greeting_turn)
+                    greeting_turns.append(greeting_turn)
+                except Exception as save_error:
+                    logger.error(
+                        "Failed to save greeting turn",
+                        extra={
+                            "session_id": str(session_id),
+                            "error": str(save_error),
+                            "error_type": type(save_error).__name__,
+                        }
+                    )
+                    # Continue without greeting turn
+                
+            except Exception as e:
+                logger.warning(
+                    "Failed to generate greeting for session",
+                    extra={
+                        "session_id": str(session_id),
+                        "level": request.level,
+                        "scenario": scenario.scenario_title,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    }
+                )
+                # Continue without greeting - backward compatible
+            
             response = CreateSpeakingSessionResponse(
                 success=True,
                 session_id=session_id,
-                session=_session_to_response(session, []),
+                session=_session_to_response(session, greeting_turns),
             )
             return Result.success(response)
         except Exception as exc:

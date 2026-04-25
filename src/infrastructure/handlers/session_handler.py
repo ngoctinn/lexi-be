@@ -8,6 +8,7 @@ from application.use_cases.speaking_session_use_cases import (
     SubmitSpeakingTurnUseCase,
 )
 from domain.services.conversation_orchestrator import ConversationOrchestrator
+from domain.services.greeting_generator import GreetingGenerator
 from domain.services.model_router import ModelRouter
 from domain.services.prompt_builder import OptimizedPromptBuilder
 from domain.services.streaming_response import StreamingResponse
@@ -84,7 +85,17 @@ def build_session_controller(
         bedrock_adapter = BedrockScorerAdapter()
         performance_scorer = SpeakingPerformanceScorer(external_scorer=bedrock_adapter)
 
-    create_use_case = CreateSpeakingSessionUseCase(session_repo, scenario_repo)
+    # Create GreetingGenerator with bedrock client
+    from infrastructure.services.speaking_pipeline_services import _bedrock_client
+    greeting_generator = GreetingGenerator(bedrock_client=_bedrock_client)
+
+    create_use_case = CreateSpeakingSessionUseCase(
+        session_repo,
+        scenario_repo,
+        turn_repo,
+        greeting_generator,
+        speech_synthesis_service,
+    )
     get_use_case = GetSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo)
     list_use_case = ListSpeakingSessionsUseCase(session_repo, scoring_repo)
     

@@ -148,7 +148,23 @@ def test_create_speaking_session_persists_assignment_and_prompt_snapshot():
     )
     repo = FakeSessionRepository()
     scenario_repo = FakeScenarioRepository(scenario)
-    use_case = CreateSpeakingSessionUseCase(repo, scenario_repo)
+    turn_repo = FakeTurnRepository()
+    
+    # Mock greeting generator
+    mock_greeting_generator = MagicMock()
+    from domain.services.greeting_generator import GreetingResult
+    mock_greeting_generator.generate.return_value = GreetingResult(
+        greeting_text="Hi there! How's it going?",
+        first_question="What would you like to order today?",
+        combined_text="Hi there! How's it going? What would you like to order today?"
+    )
+    
+    # Mock speech synthesis service
+    mock_speech_service = FakeSpeechService("https://s3.amazonaws.com/audio/greeting.mp3")
+    
+    use_case = CreateSpeakingSessionUseCase(
+        repo, scenario_repo, turn_repo, mock_greeting_generator, mock_speech_service
+    )
 
     result = use_case.execute(
         CreateSpeakingSessionCommand(
@@ -173,6 +189,25 @@ def test_create_speaking_session_persists_assignment_and_prompt_snapshot():
     assert "Gọi cà phê" in saved_session.prompt_snapshot
     assert "Chọn đồ uống" in saved_session.prompt_snapshot
     assert saved_session.status == "ACTIVE"
+    
+    # Verify greeting generation was called
+    mock_greeting_generator.generate.assert_called_once_with(
+        level="B1",
+        scenario_title="Gọi cà phê",
+        learner_role="Khách hàng",
+        ai_role="Barista",
+        selected_goals=["Chọn đồ uống"],
+        ai_gender="female"
+    )
+    
+    # Verify greeting turn was created
+    assert len(turn_repo.saved_turns) == 1
+    greeting_turn = turn_repo.saved_turns[0]
+    assert greeting_turn.turn_index == 0
+    assert greeting_turn.speaker == Speaker.AI
+    assert greeting_turn.content == "Hi there! How's it going? What would you like to order today?"
+    assert greeting_turn.audio_url == "https://s3.amazonaws.com/audio/greeting.mp3"
+    assert not greeting_turn.is_hint_used
 
 
 def test_submit_turn_saves_user_and_ai_turns_and_updates_session_counts():
@@ -220,7 +255,112 @@ def test_submit_turn_saves_user_and_ai_turns_and_updates_session_counts():
     assert use_case._speech_synthesis_service.calls[0][2] == f"speaking/audio/{session_id}/1.mp3"
 
 
-def test_complete_session_builds_scoring_and_marks_session_completed():
+def test_create_speaking_session_handles_greeting_generation_failure():
+    """Test that session creation continues when greeting generation fails."""
+    scenario = Scenario(
+        scenario_id="scenario-1",
+        scenario_title="Restaurant",
+        context="At a restaurant",
+        roles=["Customer", "Waiter"],
+        goals=["Order food", "Ask for recommendations"],
+        is_active=True,
+        usage_count=1,
+    )
+    repo = FakeSessionRepository()
+    scenario_repo = FakeScenarioRepository(scenario)
+    turn_repo = FakeTurnRepository()
+    
+    # Mock greeting generator that fails
+    mock_greeting_generator = MagicMock()
+    mock_greeting_generator.generate.side_effect = Exception("Bedrock API error")
+    
+    # Mock speech synthesis service
+    mock_speech_service = FakeSpeechService()
+    
+    use_case = CreateSpeakingSessionUseCase(
+        repo, scenario_repo, turn_repo, mock_greeting_generator, mock_speech_service
+    )
+
+    result = use_case.execute(
+        CreateSpeakingSessionCommand(
+            user_id="user-1",
+            scenario_id="scenario-1",
+            learner_role_id="Customer",
+            ai_role_id="Waiter",
+            ai_gender="male",
+            level="A1",
+            selected_goals=["Order food"],
+            prompt_snapshot="ignored",
+        )
+    )
+
+    # Session creation should still succeed
+    assert result.is_success
+    assert result.value is not None
+    assert result.value.session_id
+    
+    # Session should be saved
+    saved_session = repo.saved_sessions[-1]
+    assert saved_session.status == "ACTIVE"
+    
+    # No greeting turn should be created
+    assert len(turn_repo.saved_turns) == 0
+    
+    # Greeting generation should have been attempted
+    mock_greeting_generator.generate.assert_called_once()
+
+
+def test_create_speaking_session_handles_speech_synthesis_failure():
+    """Test that session creation continues when speech synthesis fails."""
+    scenario = Scenario(
+        scenario_id="scenario-1",
+        scenario_title="Restaurant",
+        context="At a restaurant",
+        roles=["Customer", "Waiter"],
+        goals=["Order food"],
+        is_active=True,
+        usage_count=1,
+    )
+    repo = FakeSessionRepository()
+    scenario_repo = FakeScenarioRepository(scenario)
+    turn_repo = FakeTurnRepository()
+    
+    # Mock greeting generator
+    mock_greeting_generator = MagicMock()
+    from domain.services.greeting_generator import GreetingResult
+    mock_greeting_generator.generate.return_value = GreetingResult(
+        greeting_text="Hi! How are you?",
+        first_question="What would you like to order?",
+        combined_text="Hi! How are you? What would you like to order?"
+    )
+    
+    # Mock speech synthesis service that fails
+    mock_speech_service = MagicMock()
+    mock_speech_service.synthesize.side_effect = Exception("TTS service error")
+    
+    use_case = CreateSpeakingSessionUseCase(
+        repo, scenario_repo, turn_repo, mock_greeting_generator, mock_speech_service
+    )
+
+    result = use_case.execute(
+        CreateSpeakingSessionCommand(
+            user_id="user-1",
+            scenario_id="scenario-1",
+            learner_role_id="Customer",
+            ai_role_id="Waiter",
+            ai_gender="male",
+            level="A1",
+            selected_goals=["Order food"],
+            prompt_snapshot="ignored",
+        )
+    )
+
+    # Session creation should still succeed
+    assert result.is_success
+    assert result.value is not None
+    
+    # No greeting turn should be created due to TTS failure
+    assert len(turn_repo.saved_turns) == 0
     session_id = new_ulid()
     session = Session(
         session_id=session_id,
