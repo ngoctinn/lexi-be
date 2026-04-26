@@ -26,7 +26,7 @@ class SessionMapper:
             ai_role_id=body.get("ai_role_id") or None,
             ai_gender=body.get("ai_gender", "female"),
             level=body.get("level", "B1"),
-            selected_goals=SessionMapper._as_list(body.get("selected_goals")),
+            selected_goal=body.get("selected_goal", ""),
             prompt_snapshot=body.get("prompt_snapshot", ""),
             connection_id=body.get("connection_id") or None,
         )

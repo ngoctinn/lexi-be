@@ -65,7 +65,6 @@ def handler(event, context):
                 "flashcard_id": card.flashcard_id,
                 "word": card.word,
                 "translation_vi": card.translation_vi,
-                "definition_vi": card.definition_vi,
                 "phonetic": card.phonetic,
                 "audio_url": card.audio_url,
                 "example_sentence": card.example_sentence,

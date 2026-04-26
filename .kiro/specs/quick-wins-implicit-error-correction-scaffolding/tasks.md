@@ -189,7 +189,7 @@ Each task references specific requirements and builds on previous work. Testing 
   - _Requirements: 12.6, 12.7_
   - _Estimated effort: 1 day_
 
-- [~] 15. Checkpoint - Validate end-to-end integration
+- [ ] 15. Checkpoint - Validate end-to-end integration
   - Ensure all tests pass
   - Manually test full conversation flow with context-aware hints
   - Verify hints reference scenario vocabulary and learner mistakes
@@ -236,7 +236,7 @@ Each task references specific requirements and builds on previous work. Testing 
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.7, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 12.8_
   - _Estimated effort: 0.5 days_
 
-- [~] 18. Final checkpoint - Complete validation
+- [ ] 18. Final checkpoint - Complete validation
   - Ensure all tests pass (unit, integration, manual)
   - Verify implicit correction works for all CEFR levels
   - Verify context-aware hints work for all scenarios

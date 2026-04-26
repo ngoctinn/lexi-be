@@ -15,11 +15,10 @@ class FlashCard:
     word: str                             # Từ vựng liên kết
 
     # Nội dung học
-    translation_vi: str = ""               # Bản dịch ngắn gọn
-    definition_vi: str = ""                # Định nghĩa chi tiết
-    phonetic: str = ""                     # Phiên âm
-    audio_url: str = ""                    # URL audio phát âm
-    example_sentence: str = ""             # Câu ví dụ
+    translation_vi: str = ""               # Bản dịch ngắn gọn (mặt sau - dòng 1)
+    phonetic: str = ""                     # Phiên âm (mặt sau - dòng 3)
+    audio_url: str = ""                    # URL audio phát âm (mặt sau - link)
+    example_sentence: str = ""             # Câu ví dụ (mặt sau - dòng 2)
 
     # Dữ liệu SRS (Spaced Repetition System)
     review_count: int = 0                  # Số lần đã ôn tập

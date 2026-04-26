@@ -16,10 +16,33 @@ This project uses AWS Serverless Application Model (SAM) with:
 
 ## Documentation
 
-- **[Authentication Flow](./AUTHENTICATION_FLOW.md)** - Complete auth architecture and best practices
-- **[Auth Cleanup Summary](./AUTH_CLEANUP_SUMMARY.md)** - Recent auth improvements
-- **[Conversation Architecture](./CONVERSATION_ARCHITECTURE.md)** - Speaking session design
-- **[Documentation Index](./DOCUMENTATION_INDEX.md)** - All project documentation
+### 📚 Main Docs
+- **[API Documentation](./API_DOCUMENTATION.md)** - Complete API reference
+- **[Documentation Hub](./docs/README.md)** - All feature docs and guides
+
+### 🚀 Quick Links
+- **[Quick Start](./docs/QUICKSTART.md)** - Deploy in 5 minutes
+- **[Deployment Guide](./docs/DEPLOYMENT_GUIDE.md)** - Detailed deployment steps
+- **[Turn Analysis Feature](./docs/TURN_ANALYSIS_FEATURE.md)** - Formative assessment feature
+
+## Features
+
+### 🎯 Turn-by-Turn Analysis (NEW)
+- On-demand formative assessment via WebSocket
+- Bilingual feedback (Vietnamese + English)
+- Level-adaptive analysis (A1-C2)
+- AgentCore Memory integration for personalized learning
+
+### 🗣️ Speaking Practice
+- Real-time WebSocket conversations
+- AI-powered responses with Amazon Bedrock Nova
+- Text-to-speech with Polly
+- Speech-to-text with Transcribe
+
+### 📚 Vocabulary & Flashcards
+- Spaced repetition system
+- Translation with AWS Translate
+- Progress tracking
 
 ## Quick Start
 

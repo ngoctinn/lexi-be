@@ -27,7 +27,7 @@ def test_bedrock_call():
         learner_role_id="learner",
         ai_role_id="ai",
         level=ProficiencyLevel.A1,
-        selected_goals=["greeting"],
+        selected_goal="greeting",
         ai_gender=Gender.FEMALE,
         created_at="2026-04-25T00:00:00Z",
         updated_at="2026-04-25T00:00:00Z"

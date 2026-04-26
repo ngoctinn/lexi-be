@@ -30,6 +30,16 @@ class GreetingGenerator:
         "C1": "Hi! How are things with you?",
         "C2": "Greetings! How have you been lately?",
     }
+    
+    # Fallback first questions per proficiency level (Fix #5)
+    _FALLBACK_FIRST_QUESTIONS = {
+        "A1": "What do you like?",
+        "A2": "What do you want to do?",
+        "B1": "What brings you here today?",
+        "B2": "What would you like to discuss?",
+        "C1": "What's on your mind today?",
+        "C2": "What would you like to explore?",
+    }
 
     def __init__(self, bedrock_client):
         """Initialize GreetingGenerator with Bedrock client.
@@ -45,7 +55,7 @@ class GreetingGenerator:
         scenario_title: str,
         learner_role: str,
         ai_role: str,
-        selected_goals: list[str],
+        selected_goal: str,
         ai_gender: str,
         session_id: Optional[str] = None,
     ) -> GreetingResult:
@@ -56,7 +66,7 @@ class GreetingGenerator:
             scenario_title: Title of the scenario (e.g., "Restaurant")
             learner_role: Role of the learner in the scenario
             ai_role: Role of the AI in the scenario
-            selected_goals: List of selected learning goals
+            selected_goal: Selected learning goal
             ai_gender: Gender of the AI (male/female)
             session_id: Optional session ID for logging
             
@@ -80,7 +90,7 @@ class GreetingGenerator:
                 scenario_title=scenario_title,
                 learner_role=learner_role,
                 ai_role=ai_role,
-                selected_goals=selected_goals,
+                selected_goal=selected_goal,
             )
             
             # Combine greeting and first question
@@ -165,45 +175,45 @@ class GreetingGenerator:
         scenario_title: str,
         learner_role: str,
         ai_role: str,
-        selected_goals: list[str],
+        selected_goal: str,
     ) -> tuple[str, int, int]:
-        """Generate first question using Bedrock.
+        """Generate first question using Bedrock with fallback (Fix #5).
         
         Args:
             level: Proficiency level (A1-C2)
             scenario_title: Title of the scenario
             learner_role: Role of the learner
             ai_role: Role of the AI
-            selected_goals: List of selected goals
+            selected_goal: Selected learning goal
             
         Returns:
             Tuple of (first_question, input_tokens, output_tokens)
             
         Raises:
-            Exception: If Bedrock call fails
+            Exception: If Bedrock call fails and fallback also fails
         """
         # Build prompt for Bedrock
-        goals_text = ", ".join(selected_goals) if selected_goals else "general conversation"
+        goal_text = selected_goal if selected_goal else "general conversation"
         
         prompt = f"""You are an English conversation partner in a role-play scenario.
 
 Scenario: {scenario_title}
 Your role: {ai_role}
 Learner's role: {learner_role}
-Learning goals: {goals_text}
+Learning goal: {goal_text}
 Proficiency level: {level}
 
 Generate a natural first question to start the conversation. The question should:
 1. Be appropriate for proficiency level {level}
 2. Establish the conversation topic clearly
 3. Reference the scenario context
-4. Help the learner work toward the selected goals
+4. Help the learner work toward the selected goal
 
 Generate ONLY the question, no other text. Keep it to one sentence."""
 
         try:
-            # Call Bedrock with Amazon Nova Micro
-            response = self._bedrock.invoke_model(
+            # Call Bedrock with Amazon Nova Micro (streaming)
+            response = self._bedrock.invoke_model_with_response_stream(
                 modelId="apac.amazon.nova-micro-v1:0",
                 body=json.dumps({
                     "messages": [
@@ -217,57 +227,39 @@ Generate ONLY the question, no other text. Keep it to one sentence."""
                 }),
             )
             
-            # Parse response
-            response_body = json.loads(response["body"].read())
-            first_question = response_body["content"][0]["text"].strip()
+            # Collect streamed response
+            first_question = ""
+            input_tokens = 0
+            output_tokens = 0
             
-            # Extract token usage from response (AWS Nova format)
-            usage = response_body.get("usage", {})
-            input_tokens = usage.get("inputTokens", 0)
-            output_tokens = usage.get("outputTokens", 0)
+            for event in response["body"]:
+                if "chunk" in event:
+                    chunk = json.loads(event["chunk"]["bytes"].decode())
+                    
+                    # Extract content delta
+                    if "contentBlockDelta" in chunk:
+                        delta = chunk["contentBlockDelta"].get("delta", {})
+                        if "text" in delta:
+                            first_question += delta["text"]
+                    
+                    # Extract token usage from metadata
+                    if "metadata" in chunk:
+                        usage = chunk["metadata"].get("usage", {})
+                        input_tokens = usage.get("inputTokens", input_tokens)
+                        output_tokens = usage.get("outputTokens", output_tokens)
             
-            return first_question, input_tokens, output_tokens
+            return first_question.strip(), input_tokens, output_tokens
             
-        except json.JSONDecodeError as e:
-            logger.error(
-                "Failed to parse Bedrock response JSON",
+        except (json.JSONDecodeError, ClientError, Exception) as e:
+            # Use fallback first question (Fix #5)
+            logger.warning(
+                "First question generation failed, using fallback",
                 extra={
                     "error": str(e),
-                    "model_id": "apac.amazon.nova-micro-v1:0",
+                    "error_type": type(e).__name__,
+                    "level": level,
+                    "scenario": scenario_title,
                 }
             )
-            raise
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            error_message = e.response.get("Error", {}).get("Message", str(e))
-            
-            # Handle AWS Nova specific errors per AWS docs
-            if error_code == "ValidationException":
-                if "responsible AI" in error_message.lower() or "content policy" in error_message.lower():
-                    logger.warning(
-                        "Bedrock content blocked by Responsible AI policy",
-                        extra={
-                            "error_code": error_code,
-                            "error_message": error_message,
-                            "model_id": "apac.amazon.nova-micro-v1:0",
-                        }
-                    )
-                else:
-                    logger.error(
-                        "Bedrock input validation error",
-                        extra={
-                            "error_code": error_code,
-                            "error_message": error_message,
-                            "model_id": "apac.amazon.nova-micro-v1:0",
-                        }
-                    )
-            else:
-                logger.error(
-                    "Bedrock API call failed for first question generation",
-                    extra={
-                        "error_code": error_code,
-                        "error_message": error_message,
-                        "model_id": "apac.amazon.nova-micro-v1:0",
-                    }
-                )
-            raise
+            fallback = self._FALLBACK_FIRST_QUESTIONS.get(level, "What would you like to talk about?")
+            return fallback, 0, 0

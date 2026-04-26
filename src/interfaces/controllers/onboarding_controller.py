@@ -59,7 +59,7 @@ class OnboardingController:
                 return OperationResult.fail(result.error, "COMPLETION_FAILED")
             
             # 3. Convert Response DTO to View Model
-            response = result.success
+            response = result.value
             view_model = OnboardingCompletionViewModel(
                 is_success=response.is_success,
                 message=response.message,

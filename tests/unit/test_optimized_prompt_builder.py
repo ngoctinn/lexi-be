@@ -64,7 +64,7 @@ class TestOptimizedPromptBuilder:
                 learner_role="Learner",
                 ai_role="Partner",
                 level=level,
-                selected_goals=[],
+                selected_goal="",
             )
             
             assert expected_traits in prompt, f"Level {level} should have traits: {expected_traits}"
@@ -76,7 +76,7 @@ class TestOptimizedPromptBuilder:
             learner_role="Learner",
             ai_role="Partner",
             level="B1",
-            selected_goals=[],
+            selected_goal="",
         )
         
         assert "[warmly]" in prompt
@@ -91,7 +91,7 @@ class TestOptimizedPromptBuilder:
             learner_role="Learner",
             ai_role="Partner",
             level="B1",
-            selected_goals=[],
+            selected_goal="",
         )
         
         assert "NO markdown" in prompt
@@ -115,7 +115,7 @@ class TestOptimizedPromptBuilder:
                 learner_role="Learner",
                 ai_role="Partner",
                 level=level,
-                selected_goals=[],
+                selected_goal="",
             )
             
             assert expected_tokens in prompt, f"Level {level} should have max {expected_tokens} tokens"
@@ -127,7 +127,7 @@ class TestOptimizedPromptBuilder:
             learner_role="Learner",
             ai_role="Partner",
             level="B1",
-            selected_goals=[],
+            selected_goal="",
         )
         
         assert "Good response:" in prompt
@@ -141,7 +141,7 @@ class TestOptimizedPromptBuilder:
             learner_role="Customer",
             ai_role="Waiter",
             level="B1",
-            selected_goals=[],
+            selected_goal="",
         )
         
         assert "off-topic" in prompt.lower()
@@ -154,7 +154,7 @@ class TestOptimizedPromptBuilder:
             learner_role="Learner",
             ai_role="Partner",
             level="B1",
-            selected_goals=[],
+            selected_goal="",
         )
         
         assert "Vietnamese" in prompt
@@ -180,7 +180,7 @@ class TestOptimizedPromptBuilder:
             learner_role="Learner",
             ai_role="Partner",
             level="B1",
-            selected_goals=[],
+            selected_goal="",
         )
         
         assert "Do NOT correct grammar" in prompt
@@ -192,7 +192,7 @@ class TestOptimizedPromptBuilder:
             learner_role="Learner",
             ai_role="Partner",
             level="B1",
-            selected_goals=[],
+            selected_goal="",
         )
         
         assert "Do NOT reveal you are an AI" in prompt
@@ -204,7 +204,7 @@ class TestOptimizedPromptBuilder:
             learner_role="Learner",
             ai_role="Partner",
             level="B1",
-            selected_goals=[],
+            selected_goal="",
         )
         
         assert "ONE question per turn" in prompt
@@ -216,7 +216,7 @@ class TestOptimizedPromptBuilder:
             learner_role="Learner",
             ai_role="Partner",
             level="B1",
-            selected_goals=[],
+            selected_goal="",
         )
         
         assert "move conversation forward" in prompt
@@ -228,7 +228,7 @@ class TestOptimizedPromptBuilder:
             learner_role="Learner",
             ai_role="Partner",
             level="INVALID",
-            selected_goals=[],
+            selected_goal="",
         )
         
         # Should not raise error, should use B1 defaults
@@ -242,7 +242,7 @@ class TestOptimizedPromptBuilder:
             learner_role="Learner",
             ai_role="Partner",
             level="B1",
-            selected_goals=[],
+            selected_goal="",
         )
         
         assert "SECTION 1: IDENTITY" in prompt
@@ -255,7 +255,7 @@ class TestOptimizedPromptBuilder:
             learner_role="Learner",
             ai_role="Partner",
             level="B1",
-            selected_goals=["Learn greetings", "Practice questions"],
+            selected_goal="Learn greetings",
         )
         
         assert "SECTION 1: IDENTITY" in prompt
@@ -267,7 +267,7 @@ class TestOptimizedPromptBuilder:
             learner_role="Learner",
             ai_role="Partner",
             level="B1",
-            selected_goals=[],
+            selected_goal="",
         )
         
         assert "Spoken-first format" in prompt
@@ -283,7 +283,7 @@ class TestOptimizedPromptBuilder:
                 learner_role="Learner",
                 ai_role="Partner",
                 level=level,
-                selected_goals=[],
+                selected_goal="",
             )
             
             assert len(prompt) > 0

@@ -112,7 +112,7 @@ def test_create_session(token, scenario_id):
         "ai_role_id": "waiter",
         "ai_gender": "female",
         "level": "B1",
-        "selected_goals": ["order_food"]
+        "selected_goal": "order_food"
     }
     
     response = requests.post(

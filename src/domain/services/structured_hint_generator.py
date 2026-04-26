@@ -1,4 +1,12 @@
-"""Structured hint generation for conversation sessions."""
+"""Bilingual hint generation for conversation sessions (all CEFR levels).
+
+Level-specific scaffolding strategies (based on SLA research + Duolingo patterns):
+- A1-A2: Procedural — key vocabulary + 2-3 ready-to-use example sentences
+- B1-B2: Strategic — sentence structure guidance + grammar tip + examples to adapt
+- C1-C2: Metacognitive — nuance/register analysis + advanced alternatives
+
+Output: markdown_vi + markdown_en strings (frontend renders markdown).
+"""
 
 import json
 import logging
@@ -12,59 +20,43 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class StructuredHint:
-    """Structured bilingual hint for learners."""
-    
-    conversation_context: dict[str, str]  # {"vi": "...", "en": "..."}
-    turn_goal: dict[str, str]             # {"vi": "...", "en": "..."}
-    suggested_approach: dict[str, str]    # {"vi": "...", "en": "..."}
-    example_phrases: dict[str, list[str]] # {"vi": ["...", "..."], "en": ["...", "..."]}
-    grammar_tip: dict[str, str]           # {"vi": "...", "en": "..."}
-    
+    """Bilingual markdown hint for learners (all CEFR levels).
+
+    Fields:
+        level: CEFR level (A1–C2)
+        type: vocabulary_suggestion | strategic_guidance | metacognitive_prompt
+        markdown_vi: Full hint in Vietnamese, formatted as markdown
+        markdown_en: Full hint in English, formatted as markdown
+
+    Markdown sections vary by level:
+        A1/A2: 💬 Tình huống | 📝 Từ khoá | ✅ Câu mẫu | 💡 Mẹo ngữ pháp
+        B1/B2: 💬 Tình huống | 🎯 Gợi ý | ✅ Câu mẫu | 💡 Ngữ pháp
+        C1/C2: 💬 Tình huống | 🎯 Phân tích | ✅ Lựa chọn nâng cao | 💡 Phong cách
+    """
+    level: str
+    type: str
+    markdown_vi: str
+    markdown_en: str
+
     def to_dict(self) -> dict[str, Any]:
-        """Convert to JSON-serializable dict."""
         return {
-            "conversation_context": self.conversation_context,
-            "turn_goal": self.turn_goal,
-            "suggested_approach": self.suggested_approach,
-            "example_phrases": self.example_phrases,
-            "grammar_tip": self.grammar_tip,
+            "markdown": {
+                "vi": self.markdown_vi,
+                "en": self.markdown_en,
+            },
         }
 
 
 def validate_structured_hint(hint: dict) -> bool:
-    """Validate structured hint has required fields.
-    
-    Args:
-        hint: Dictionary to validate
-        
-    Returns:
-        True if valid, False otherwise
-    """
-    required_fields = [
-        "conversation_context",
-        "turn_goal",
-        "suggested_approach",
-        "example_phrases",
-        "grammar_tip",
-    ]
-    
-    for field in required_fields:
+    """Validate structured hint has required fields."""
+    required = ["level", "type", "markdown_vi", "markdown_en"]
+    for field in required:
         if field not in hint:
             return False
-        
-        # Check bilingual structure
-        if not isinstance(hint[field], dict):
-            return False
-        
-        if "vi" not in hint[field] or "en" not in hint[field]:
-            return False
-    
-    # Check example_phrases is list
-    if not isinstance(hint["example_phrases"]["vi"], list):
+    if not isinstance(hint["markdown_vi"], str) or not hint["markdown_vi"].strip():
         return False
-    if not isinstance(hint["example_phrases"]["en"], list):
+    if not isinstance(hint["markdown_en"], str) or not hint["markdown_en"].strip():
         return False
-    
     return True
 
 
@@ -108,8 +100,8 @@ class StructuredHintGenerator:
             # Build prompt with context
             prompt = self._build_prompt(session, last_ai_turn, turn_history)
             
-            # Call Bedrock
-            hint_data, input_tokens, output_tokens = self._call_bedrock(prompt)
+            # Call Bedrock with retry logic (Fix #4)
+            hint_data, input_tokens, output_tokens = self._call_bedrock_with_retry(prompt)
             
             # Validate response
             if not validate_structured_hint(hint_data):
@@ -136,11 +128,10 @@ class StructuredHintGenerator:
             
             # Return StructuredHint dataclass
             return StructuredHint(
-                conversation_context=hint_data["conversation_context"],
-                turn_goal=hint_data["turn_goal"],
-                suggested_approach=hint_data["suggested_approach"],
-                example_phrases=hint_data["example_phrases"],
-                grammar_tip=hint_data["grammar_tip"],
+                level=hint_data["level"],
+                type=hint_data["type"],
+                markdown_vi=hint_data["markdown_vi"],
+                markdown_en=hint_data["markdown_en"],
             )
             
         except json.JSONDecodeError as e:
@@ -189,50 +180,125 @@ class StructuredHintGenerator:
         last_ai_turn: Optional[Any],
         turn_history: list[Any],
     ) -> str:
-        """Build prompt for Bedrock.
+        """Build prompt for natural, conversational hints (chain-of-hints approach).
         
-        Args:
-            session: Session entity
-            last_ai_turn: Last AI turn (or None)
-            turn_history: List of Turn entities
-            
-        Returns:
-            Prompt string
+        Based on research: "Designing and Evaluating Chain-of-Hints for Scientific Question Answering"
+        - Hints should scaffold learner toward understanding, not give away answer
+        - Natural language flow, not rigid sections
+        - Focus on guiding thinking, not providing solutions
         """
-        # Extract context
-        last_ai_content = last_ai_turn.content if last_ai_turn else "No AI message yet"
-        current_goal = session.selected_goals[0] if session.selected_goals else "general conversation"
-        
-        prompt = f"""You are an English tutor providing structured hints to Vietnamese learners.
+        last_ai_content = last_ai_turn.content if last_ai_turn else "Let's start the conversation!"
+        # Strip delivery cue from AI content if present
+        import re
+        last_ai_content = re.sub(r"^\[[^\]]+\]\s*", "", last_ai_content).strip()
 
-Generate a structured hint for this conversation:
-- Last AI message: "{last_ai_content}"
-- Learner level: {session.level}
-- Current goal: {current_goal}
-- Learner role: {session.learner_role_id}
+        current_goal = session.selected_goal if hasattr(session, 'selected_goal') and session.selected_goal else "general conversation"
+        level_str = session.level.value if hasattr(session.level, "value") else str(session.level)
 
-Provide a JSON response with these fields (all bilingual Vietnamese/English):
+        prompt = f"""Bạn là giáo viên tiếng Anh tạo gợi ý tự nhiên để giúp học viên Việt Nam không bị mất phương hướng.
+
+Chủ đề: {session.scenario_title or 'Conversation'}
+Mục tiêu: {current_goal}
+Trình độ: {level_str}
+AI vừa nói: "{last_ai_content}"
+
+NHIỆM VỤ: Tạo gợi ý tự nhiên (kiểu chain-of-hints) để:
+1. Giúp học viên hiểu AI đang hỏi/nói gì
+2. Hướng dẫn suy nghĩ về chủ đề (không cho đáp án)
+3. Gợi ý hướng trả lời + ví dụ mẫu (để học viên có ý tưởng)
+4. Thêm tip nhỏ hoặc icon để gợi ý tự nhiên
+
+Gợi ý nên:
+- Bắt đầu bằng "Chào bạn," để tự nhiên
+- Dẫn dắt ngữ cảnh (AI đang hỏi gì)
+- Đưa ra 2-3 ví dụ mẫu cụ thể (bullet, in đậm)
+- Kết thúc bằng tip với icon 💡 + **bold** cấu trúc/từ vựng chính
+- Ngắn gọn (3-5 câu)
+- Tự nhiên, không giáo điều
+
+Trả về JSON (SONG NGỮ):
+
 {{
-  "conversation_context": {{"vi": "...", "en": "..."}},
-  "turn_goal": {{"vi": "...", "en": "..."}},
-  "suggested_approach": {{"vi": "...", "en": "..."}},
-  "example_phrases": {{"vi": ["...", "..."], "en": ["...", "..."]}},
-  "grammar_tip": {{"vi": "...", "en": "..."}}
+  "level": "{level_str}",
+  "type": "hint",
+  "markdown_vi": "Gợi ý tự nhiên bằng tiếng Việt (3-4 câu, có ví dụ mẫu)",
+  "markdown_en": "Natural hint in English (3-4 sentences, with examples)"
 }}
 
-Requirements:
-- conversation_context: Summarize what has been discussed (1 sentence)
-- turn_goal: What the learner should accomplish in their next turn (1 sentence)
-- suggested_approach: How to respond (1-2 sentences)
-- example_phrases: 2-3 example sentences the learner could say
-- grammar_tip: Relevant grammar point for this level (1 sentence)
+Ví dụ:
+AI hỏi: "What do you usually do in the morning?"
+{{
+  "markdown_vi": "Chào bạn, AI đang hỏi về thói quen sáng của bạn. Hãy kể về những hoạt động từ lúc thức dậy đến khi đi làm/học.\\n- **'I wake up at 6 AM, have breakfast, take a shower, and then go to work'**\\n- **'I usually wake up late, drink coffee, and rush to school'**\\n- **'I wake up, exercise, shower, and have breakfast before work'**\\n\\n💡 Bạn có thể dùng **thì hiện tại đơn** (I wake up, I have) để nói về thói quen hàng ngày.",
+  "markdown_en": "Hi there, AI is asking about your morning routine. Tell about what you do from waking up to going to work/school.\\n- **'I wake up at 6 AM, have breakfast, take a shower, and then go to work'**\\n- **'I usually wake up late, drink coffee, and rush to school'**\\n- **'I wake up, exercise, shower, and have breakfast before work'**\\n\\n💡 You can use **simple present tense** (I wake up, I have) to talk about daily habits."
+}}
 
-Return ONLY the JSON object, no other text."""
+Ví dụ khác:
+AI hỏi: "Tell me about your favorite hobby"
+{{
+  "markdown_vi": "Chào bạn, AI muốn biết sở thích của bạn. Chọn một hoạt động bạn thích và kể về nó.\\n- **'My favorite hobby is reading. I read novels every evening'**\\n- **'I love playing basketball because it keeps me healthy and I enjoy playing with my friends'**\\n- **'I enjoy cooking because I can create new dishes and share them with family'**\\n\\n💡 Bạn có thể nói **tại sao** bạn thích nó (vì sao, lợi ích gì) để câu trả lời hoàn chỉnh hơn.",
+  "markdown_en": "Hi there, AI wants to know about your favorite hobby. Pick an activity you enjoy and tell about it.\\n- **'My favorite hobby is reading. I read novels every evening'**\\n- **'I love playing basketball because it keeps me healthy and I enjoy playing with my friends'**\\n- **'I enjoy cooking because I can create new dishes and share them with family'**\\n\\n💡 You can explain **why** you like it (benefits, reasons) to make your answer more complete."
+}}
+
+Ví dụ thứ ba:
+AI hỏi: "Where did you go last weekend?"
+{{
+  "markdown_vi": "Chào bạn, AI muốn biết bạn đi đâu cuối tuần trước. Kể về một nơi bạn đã đi.\\n- **'I went to the beach with my family'**\\n- **'I stayed home and watched movies'**\\n- **'I visited my grandparents in the countryside'**\\n\\n💡 Bạn có thể dùng **thì quá khứ đơn** (went, stayed, visited) vì nó đã xảy ra rồi.",
+  "markdown_en": "Hi there, AI wants to know where you went last weekend. Tell about a place you visited.\\n- **'I went to the beach with my family'**\\n- **'I stayed home and watched movies'**\\n- **'I visited my grandparents in the countryside'**\\n\\n💡 You can use **past simple tense** (went, stayed, visited) because it already happened."
+}}
+
+QUAN TRỌNG: Trả về JSON với newline thực sự (\\n), không phải escaped string. Ví dụ:
+- ĐÚNG: "Chào bạn,\\n- **'example'**\\n\\n💡 Tip"
+- SAI: "Chào bạn,\\\\n- **'example'**\\\\n\\\\n💡 Tip"
+
+Chỉ trả về JSON, không có text khác."""
 
         return prompt
 
+    def _call_bedrock_with_retry(self, prompt: str, max_retries: int = 2) -> tuple[dict, int, int]:
+        """Call Bedrock with retry logic for transient errors (Fix #4).
+        
+        Args:
+            prompt: Prompt string
+            max_retries: Maximum number of retries (default: 2)
+            
+        Returns:
+            Tuple of (parsed_json_dict, input_tokens, output_tokens)
+            
+        Raises:
+            Exception: If all retries fail or permanent error occurs
+        """
+        import time
+        
+        for attempt in range(max_retries + 1):
+            try:
+                return self._call_bedrock(prompt)
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                
+                # Retry on transient errors
+                if error_code in ["ThrottlingException", "ServiceUnavailableException", "InternalServerException"]:
+                    if attempt < max_retries:
+                        backoff = 2 ** attempt  # Exponential backoff: 1s, 2s
+                        logger.warning(
+                            f"Bedrock call failed with {error_code}, retrying in {backoff}s (attempt {attempt + 1}/{max_retries + 1})",
+                            extra={
+                                "error_code": error_code,
+                                "attempt": attempt + 1,
+                                "max_retries": max_retries + 1,
+                                "backoff_seconds": backoff,
+                            }
+                        )
+                        time.sleep(backoff)
+                        continue
+                
+                # Don't retry on permanent errors
+                raise
+            except Exception as e:
+                # Don't retry on non-ClientError exceptions
+                raise
+
     def _call_bedrock(self, prompt: str) -> tuple[dict, int, int]:
-        """Call Bedrock and parse JSON response.
+        """Call Bedrock with streaming and parse JSON response.
         
         Args:
             prompt: Prompt string
@@ -244,32 +310,47 @@ Return ONLY the JSON object, no other text."""
             Exception: If Bedrock call fails or JSON parsing fails
         """
         try:
-            # Call Bedrock with Amazon Nova Micro
-            response = self._bedrock.invoke_model(
+            # Amazon Nova format with streaming
+            # Reference: https://docs.aws.amazon.com/nova/latest/userguide/complete-request-schema.html
+            response = self._bedrock.invoke_model_with_response_stream(
                 modelId="apac.amazon.nova-micro-v1:0",
                 body=json.dumps({
                     "messages": [
                         {
                             "role": "user",
-                            "content": prompt,
+                            "content": [{"text": prompt}],
                         }
                     ],
-                    "max_tokens": 300,
-                    "temperature": 0.7,
+                    "inferenceConfig": {
+                        "maxTokens": 1000,
+                        "temperature": 0.7,
+                    },
                 }),
             )
             
-            # Parse response
-            response_body = json.loads(response["body"].read())
-            content_text = response_body["content"][0]["text"].strip()
+            # Collect streamed response
+            content_text = ""
+            input_tokens = 0
+            output_tokens = 0
             
-            # Extract token usage (AWS Nova format)
-            usage = response_body.get("usage", {})
-            input_tokens = usage.get("inputTokens", 0)
-            output_tokens = usage.get("outputTokens", 0)
+            for event in response["body"]:
+                if "chunk" in event:
+                    chunk = json.loads(event["chunk"]["bytes"].decode())
+                    
+                    # Extract content delta
+                    if "contentBlockDelta" in chunk:
+                        delta = chunk["contentBlockDelta"].get("delta", {})
+                        if "text" in delta:
+                            content_text += delta["text"]
+                    
+                    # Extract token usage from metadata
+                    if "metadata" in chunk:
+                        usage = chunk["metadata"].get("usage", {})
+                        input_tokens = usage.get("inputTokens", input_tokens)
+                        output_tokens = usage.get("outputTokens", output_tokens)
             
-            # Parse JSON from content
-            hint_data = json.loads(content_text)
+            # Parse JSON from collected content
+            hint_data = json.loads(content_text.strip())
             
             return hint_data, input_tokens, output_tokens
             

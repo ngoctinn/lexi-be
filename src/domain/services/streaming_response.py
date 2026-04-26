@@ -171,11 +171,11 @@ class StreamingResponse:
         """
         Invoke Bedrock model with streaming and return complete response with metrics.
         
-        Supports both Amazon Nova and Anthropic Claude formats.
+        Supports both Amazon Nova (automatic caching) and Anthropic Claude formats.
         
         Args:
             model_id: Bedrock model ID (e.g., "amazon.nova-micro-v1:0" or "anthropic.claude-3-haiku-20240307-v1:0")
-            system_prompt: System prompt (string or list with cache checkpoint)
+            system_prompt: System prompt (string for Nova, string or list with cache_control for Claude)
             user_message: User message text
             max_tokens: Maximum tokens to generate
             temperature: Temperature for sampling
@@ -203,13 +203,16 @@ class StreamingResponse:
                 }
             }
             
-            # Add system prompt (Nova format: list of objects)
+            # Add system prompt (Nova format: list of {text} objects)
             if system_prompt:
                 if isinstance(system_prompt, str):
+                    # Single string — wrap in list for Nova
                     native_request["system"] = [{"text": system_prompt}]
-                else:
-                    # Already in list format
-                    native_request["system"] = system_prompt
+                elif isinstance(system_prompt, list):
+                    # Already a list — use as-is (backward compatibility)
+                    native_request["system"] = [
+                        {"text": block["text"]} for block in system_prompt if "text" in block
+                    ]
         else:
             # Anthropic Claude format (fallback for compatibility)
             # Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-anthropic-claude-messages.html

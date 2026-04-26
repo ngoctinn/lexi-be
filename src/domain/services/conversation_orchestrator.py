@@ -1,5 +1,6 @@
 """Orchestrates conversation generation with model routing, streaming, and quality validation."""
 
+import logging
 from dataclasses import dataclass
 from typing import Optional
 from domain.entities.session import Session
@@ -9,7 +10,8 @@ from domain.services.prompt_builder import OptimizedPromptBuilder
 from domain.services.streaming_response import StreamingResponse
 from domain.services.response_validator import ResponseValidator
 from domain.services.metrics_logger import MetricsLogger, QualityMetrics
-from domain.services.scaffolding_system import ScaffoldingSystem
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -45,11 +47,9 @@ class ConversationOrchestrator:
     def __init__(
         self,
         model_router: ModelRouter,
-        prompt_builder: OptimizedPromptBuilder,
         streaming_response: StreamingResponse,
         response_validator: ResponseValidator,
         metrics_logger: MetricsLogger,
-        scaffolding_system: ScaffoldingSystem,
         bedrock_client=None,
     ):
         """
@@ -57,19 +57,15 @@ class ConversationOrchestrator:
         
         Args:
             model_router: Routes to appropriate model based on level
-            prompt_builder: Builds optimized prompts (OptimizedPromptBuilder)
             streaming_response: Handles streaming responses
             response_validator: Validates response quality
             metrics_logger: Logs metrics
-            scaffolding_system: Provides hints and scaffolding
             bedrock_client: AWS Bedrock client
         """
         self.model_router = model_router
-        self.prompt_builder = prompt_builder
         self.streaming_response = streaming_response
         self.response_validator = response_validator
         self.metrics_logger = metrics_logger
-        self.scaffolding_system = scaffolding_system
         self.bedrock_client = bedrock_client
     
     def generate_response(
@@ -93,20 +89,22 @@ class ConversationOrchestrator:
         routing = self.model_router.get_config(level_str)
         
         # Step 2: Build optimized prompt
-        prompt = self.prompt_builder.build(
+        base_prompt = OptimizedPromptBuilder.build(
             scenario_title=session.scenario_id,
             learner_role=session.learner_role_id,
             ai_role=session.ai_role_id,
             level=session.level,
-            selected_goals=session.selected_goals,
+            selected_goal=session.selected_goal,
             ai_gender=session.ai_gender,
         )
         
-        # Step 3: Generate response with streaming
+        system_prompt = base_prompt
+        
+        # Step 3: Generate response with streaming (Nova auto-caches system prompt)
         try:
             response_data = self.streaming_response.invoke_with_streaming(
                 model_id=routing.primary_model,
-                system_prompt=prompt,
+                system_prompt=system_prompt,
                 user_message=user_turn.content,
                 max_tokens=routing.max_tokens,
                 temperature=routing.temperature,
@@ -143,7 +141,7 @@ class ConversationOrchestrator:
             try:
                 response_data = self.streaming_response.invoke_with_streaming(
                     model_id=routing.fallback_model,
-                    system_prompt=prompt,
+                    system_prompt=system_prompt,
                     user_message=user_turn.content,
                     max_tokens=routing.max_tokens,
                     temperature=routing.temperature,
@@ -158,7 +156,7 @@ class ConversationOrchestrator:
             except Exception:
                 pass  # Keep original response
         
-        # Step 5: Extract delivery cue from response
+        # Step 5: Extract delivery cue from response (FIXED: only match at start)
         delivery_cue = self._extract_delivery_cue(ai_text)
         
         # Step 6: Calculate cost
@@ -168,7 +166,7 @@ class ConversationOrchestrator:
             output_tokens=output_tokens,
         )
         
-        # Step 7: Log metrics (without per-turn quality scoring)
+        # Step 7: Log metrics with enhanced context
         metrics = self.metrics_logger.create_metrics(
             ttft_ms=ttft_ms,
             total_latency_ms=latency_ms,
@@ -183,6 +181,10 @@ class ConversationOrchestrator:
             turn_index=user_turn.turn_index,
             response_length=len(ai_text),
             validation_passed=validation_passed,
+            # Enhanced context (Fix #7)
+            user_utterance_length=len(user_turn.content),
+            turn_count=len(request.turn_history),
+            selected_goal=session.selected_goal,
         )
         
         self.metrics_logger.log_metrics(metrics)
@@ -203,7 +205,7 @@ class ConversationOrchestrator:
     
     def _extract_delivery_cue(self, response: str) -> str:
         """
-        Extract delivery cue from response and return clean text.
+        Extract delivery cue from START of response only (FIXED).
         
         Args:
             response: Response text with potential delivery cue
@@ -212,7 +214,8 @@ class ConversationOrchestrator:
             Delivery cue (e.g., "[warmly]") or empty string
         """
         import re
-        match = re.search(r"\[([a-zA-Z\s]+)\]", response)
+        # Only match at start of string (Fix #2)
+        match = re.match(r"^\[([a-zA-Z\s]+)\]", response.strip())
         if match:
             return f"[{match.group(1)}]"
         return ""
@@ -231,43 +234,3 @@ class ConversationOrchestrator:
         # Remove delivery cues like [warmly], [thoughtfully], etc.
         cleaned = re.sub(r"\[([a-zA-Z\s]+)\]\s*", "", text)
         return cleaned.strip()
-    
-    def get_hint(
-        self,
-        session: Session,
-        scenario: "Scenario",
-        turn_history: list[Turn],
-        silence_duration_seconds: int,
-    ) -> Optional[str]:
-        """
-        Get hint for learner based on silence duration with context.
-        
-        Args:
-            session: Current session
-            scenario: Current scenario
-            turn_history: List of turns in session
-            silence_duration_seconds: Duration of silence (10, 20, or 30)
-            
-        Returns:
-            Hint text or None
-        """
-        # Only provide hints for A1-A2 levels
-        level_str = session.level.value if hasattr(session.level, "value") else str(session.level)
-        if level_str not in ["A1", "A2"]:
-            return None
-        
-        # Extract context for scaffolding
-        from application.use_cases.speaking_session_use_cases import _extract_scaffolding_context
-        context = _extract_scaffolding_context(session, scenario, turn_history)
-        
-        # Generate hint with context
-        hint = self.scaffolding_system.generate_hint(
-            proficiency_level=level_str,
-            silence_duration_seconds=silence_duration_seconds,
-            context=context,
-        )
-        
-        if hint:
-            return self.scaffolding_system.format_hint_for_display(hint)
-        
-        return None

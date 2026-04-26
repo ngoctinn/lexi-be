@@ -39,9 +39,12 @@ class HttpPresenter(BasePresenter):
         self, data: Any, message: str = "Success", status_code: int = 200
     ) -> Dict[str, Any]:
         """Format success response to HTTP."""
-        # Convert dataclass to dict if needed
         if hasattr(data, '__dataclass_fields__'):
             data_dict = asdict(data)
+        elif hasattr(data, 'model_dump'):  # Pydantic v2
+            data_dict = data.model_dump()
+        elif hasattr(data, 'dict'):  # Pydantic v1
+            data_dict = data.dict()
         elif isinstance(data, dict):
             data_dict = data
         else:

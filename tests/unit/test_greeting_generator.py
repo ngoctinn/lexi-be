@@ -59,7 +59,7 @@ class TestGreetingGenerator:
             scenario_title="Restaurant",
             learner_role="Customer",
             ai_role="Waiter",
-            selected_goals=["ordering food"],
+            selected_goal="ordering food",
         )
         
         assert first_question == "What brings you to the restaurant today?"
@@ -82,7 +82,7 @@ class TestGreetingGenerator:
                 scenario_title="Restaurant",
                 learner_role="Customer",
                 ai_role="Waiter",
-                selected_goals=["ordering food"],
+                selected_goal="ordering food",
             )
 
     def test_generate_combined_greeting_and_question(self):
@@ -101,7 +101,7 @@ class TestGreetingGenerator:
             scenario_title="Restaurant",
             learner_role="Customer",
             ai_role="Waiter",
-            selected_goals=["ordering food"],
+            selected_goal="ordering food",
             ai_gender="male",
         )
         
@@ -126,7 +126,7 @@ class TestGreetingGenerator:
             scenario_title="Restaurant",
             learner_role="Customer",
             ai_role="Waiter",
-            selected_goals=["ordering food", "asking for recommendations"],
+            selected_goal="ordering food",
             ai_gender="female",
         )
         
@@ -149,7 +149,7 @@ class TestGreetingGenerator:
             scenario_title="Hotel",
             learner_role="Guest",
             ai_role="Receptionist",
-            selected_goals=[],
+            selected_goal="",
             ai_gender="female",
         )
         
@@ -180,7 +180,7 @@ class TestGreetingGenerator:
                 scenario_title="Test",
                 learner_role="Role1",
                 ai_role="Role2",
-                selected_goals=["goal1"],
+                selected_goal="goal1",
                 ai_gender="male",
             )
             assert result.greeting_text == expected_greeting
@@ -201,7 +201,7 @@ class TestGreetingGenerator:
             scenario_title="Restaurant",
             learner_role="Customer",
             ai_role="Waiter",
-            selected_goals=["ordering"],
+            selected_goal="ordering",
         )
         
         # Verify Bedrock call

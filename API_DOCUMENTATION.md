@@ -1,7 +1,7 @@
 # Lexi API Documentation
 
-**Version**: 2.0  
-**Last Updated**: April 25, 2026  
+**Version**: 2.2  
+**Last Updated**: April 26, 2026  
 **Base URL**: `https://yz8fyx7zub.execute-api.ap-southeast-1.amazonaws.com/Prod`  
 **WebSocket URL**: `wss://no8fa2u3qg.execute-api.ap-southeast-1.amazonaws.com/Prod`  
 **Region**: `ap-southeast-1` (Singapore)
@@ -43,8 +43,6 @@ aws cognito-idp admin-initiate-auth \
 
 ### Using the Token
 
-Include the token in the `Authorization` header:
-
 ```bash
 curl -H "Authorization: Bearer <JWT_TOKEN>" \
   https://yz8fyx7zub.execute-api.ap-southeast-1.amazonaws.com/Prod/profile
@@ -60,9 +58,7 @@ curl -H "Authorization: Bearer <JWT_TOKEN>" \
 {
   "success": true,
   "message": "Success",
-  "data": {
-    // Response data
-  }
+  "data": {}
 }
 ```
 
@@ -78,124 +74,116 @@ curl -H "Authorization: Bearer <JWT_TOKEN>" \
 
 ### HTTP Status Codes
 
-- `200 OK` - Request successful
-- `201 Created` - Resource created
-- `400 Bad Request` - Invalid request data
-- `401 Unauthorized` - Missing or invalid token
-- `403 Forbidden` - Access denied
-- `404 Not Found` - Resource not found
-- `422 Unprocessable Entity` - Validation error
-- `500 Internal Server Error` - Server error
+| Code | Meaning |
+|------|---------|
+| `200` | OK |
+| `201` | Created |
+| `400` | Bad Request |
+| `401` | Unauthorized |
+| `403` | Forbidden |
+| `404` | Not Found |
+| `422` | Validation Error |
+| `503` | Service Unavailable (external service down) |
+| `500` | Internal Server Error |
 
 ---
 
 ## Error Handling
-
-Common error codes:
 
 | Code | Meaning |
 |------|---------|
 | `BAD_REQUEST` | Invalid JSON or missing required fields |
 | `VALIDATION_ERROR` | Request data validation failed |
 | `NOT_FOUND` | Resource not found |
+| `WORD_NOT_FOUND` | Word not found in dictionary |
+| `DICTIONARY_SERVICE_ERROR` | Dictionary API temporarily unavailable |
 | `UNAUTHORIZED` | Authentication failed |
 | `FORBIDDEN` | Permission denied |
+| `SERVICE_ERROR` | External service error (Bedrock, Translate, etc.) |
+| `SUBMISSION_FAILED` | Turn submission failed |
+| `COMPLETION_FAILED` | Session completion failed |
 
 ---
 
 ## Delivery Cues & Tone
 
-AI responses include delivery cues that indicate the emotional tone of the response. These are used for implicit error correction and natural conversation flow.
+AI responses include delivery cues at the **start** of the response indicating emotional tone.
 
 ### Available Delivery Cues
 
-| Cue | Meaning | Use Case |
-|-----|---------|----------|
-| `[warmly]` | Friendly and encouraging | Praise, encouragement, positive feedback |
-| `[encouragingly]` | Motivating and supportive | When learner does well, needs motivation |
-| `[gently]` | Tactful and considerate | Error correction, off-topic redirection, sensitive topics |
-| `[thoughtfully]` | Engaging in deep discussion | Complex topics, advanced levels (B2+) |
-| `[naturally]` | Conversational and neutral | Normal conversation flow |
+| Cue | Meaning |
+|-----|---------|
+| `[warmly]` | Friendly and encouraging |
+| `[encouragingly]` | Motivating and supportive |
+| `[gently]` | Tactful — error correction, redirection |
+| `[thoughtfully]` | Deep discussion (B2+) |
+| `[naturally]` | Normal conversation flow |
 
 ### Frontend Implementation
 
-**Step 1: Extract delivery cue from AI response**
 ```typescript
-const tone = turn.delivery_cue?.replace(/[\[\]]/g, "") || "naturally";
-// "[warmly]" → "warmly"
-```
+// Extract delivery cue (only at START of response)
+const match = turn.content.match(/^\[([a-zA-Z\s]+)\]/);
+const tone = match ? match[1] : "naturally";
 
-**Step 2: Clean text for display (remove delivery cue)**
-```typescript
-const cleanText = turn.content.replace(/\[[^\]]+\]\s*/, "");
-// "[warmly] Hello" → "Hello"
-```
+// Clean text for display
+const cleanText = turn.content.replace(/^\[[^\]]+\]\s*/, "");
 
-**Step 3: Display with tone indicator (color-based)**
-```typescript
 const TONE_COLORS = {
-  warmly: "#10b981",        // Green
-  encouragingly: "#3b82f6", // Blue
-  gently: "#f59e0b",        // Yellow
-  thoughtfully: "#8b5cf6",  // Purple
-  naturally: "#6b7280",     // Gray
+  warmly: "#10b981",
+  encouragingly: "#3b82f6",
+  gently: "#f59e0b",
+  thoughtfully: "#8b5cf6",
+  naturally: "#6b7280",
 };
-
-// Use color for text or left border indicator
-<div style={{ borderLeft: `3px solid ${TONE_COLORS[tone]}` }}>
-  {cleanText}
-</div>
 ```
 
 ---
 
 ## Hint Formatting
 
-Hints for A1-A2 learners are bilingual (Vietnamese + English) and support multiple display formats.
+Hints are bilingual (Vietnamese + English) rendered as **markdown**, level-adaptive for all CEFR levels (A1–C2).
 
-### Hint Response Format
+### Hint Response Format (WebSocket `HINT_TEXT` event)
 
 ```json
 {
+  "event": "HINT_TEXT",
   "hint": {
-    "vietnamese": "Bạn có thể nói 'I went to the beach yesterday'",
-    "english": "You can say 'I went to the beach yesterday'",
-    "hint_level": "vocabulary_hint",
-    "silence_duration": 20
+    "markdown": {
+      "vi": "AI đang hỏi bạn muốn gọi món gì. Hãy nói rõ bạn muốn gì và nhớ dùng từ lịch sự.\n- **'I'd like a coffee, please.'**\n- **'Can I have a black coffee?'**\n- **'I'll have a latte, thank you.'**",
+      "en": "The AI is asking what you'd like to order. Tell them clearly what you want and use polite words.\n- **'I'd like a coffee, please.'**\n- **'Can I have a black coffee?'**\n- **'I'll have a latte, thank you.'**"
+    }
   }
 }
 ```
 
-### Hint Levels
+### Hint Types & Sections by Level
 
-| Level | Description |
-|-------|-------------|
-| `gentle_prompt` | Encourage learner to continue (10s silence) |
-| `vocabulary_hint` | Suggest relevant vocabulary (20s silence) |
-| `sentence_starter` | Provide sentence starter example (30s silence) |
+Hints use a **natural conversational flow** (chain-of-hints approach) with:
+1. Natural language guidance (2-3 sentences)
+2. Bullet-point examples with bold formatting
 
-### Context-Aware Hints
+| Level | Type | Format |
+|-------|------|--------|
+| A1, A2 | `vocabulary_suggestion` | Natural guidance + 2-3 bold examples |
+| B1, B2 | `strategic_guidance` | Natural guidance + 2-3 bold examples |
+| C1, C2 | `metacognitive_prompt` | Natural guidance + 2-3 bold examples |
 
-Hints are generated based on:
-- **Scenario**: Restaurant, Airport, Hotel, Shopping, General
-- **Grammar Pattern**: Past tense, present tense, questions, short responses
-- **Last Utterance**: Learner's previous response
-- **Conversation Goals**: Session objectives
-
-**Example: Restaurant scenario with past tense error**
+**Example output:**
 ```
-Learner: "I go restaurant yesterday"
-Hint: "You can say 'I went to the restaurant yesterday'"
+AI muốn biết thói quen sáng của bạn. Hãy kể về những hoạt động bạn làm từ lúc thức dậy đến khi đi làm/học.
+- **'I wake up at 6 AM, have breakfast, take a shower, and then go to work'**
+- **'I usually wake up late, drink coffee, and rush to school'**
+- **'I wake up, exercise, shower, and have breakfast before work'**
 ```
 
-**Example: Airport scenario with vocabulary gap**
+### Frontend Rendering
+
+```typescript
+// hint.markdown.vi or hint.markdown.en based on user language preference
+<ReactMarkdown>{hint.markdown.vi}</ReactMarkdown>
 ```
-Learner: "Where gate?"
-Hint: "Try: 'Where is gate 5?' or 'Can you tell me where gate 5 is?'"
-```
-| `SERVICE_ERROR` | External service error (Bedrock, Translate, etc.) |
-| `SUBMISSION_FAILED` | Turn submission failed |
-| `COMPLETION_FAILED` | Session completion failed |
 
 ---
 
@@ -204,8 +192,6 @@ Hint: "Try: 'Where is gate 5?' or 'Can you tell me where gate 5 is?'"
 ### Complete Onboarding
 
 **POST** `/onboarding/complete`
-
-Complete user onboarding and set initial profile.
 
 **Request Body**:
 ```json
@@ -249,8 +235,6 @@ Complete user onboarding and set initial profile.
 
 **GET** `/profile`
 
-Retrieve current user's profile information.
-
 **Response** (200 OK):
 ```json
 {
@@ -276,8 +260,6 @@ Retrieve current user's profile information.
 
 **PATCH** `/profile`
 
-Update user profile information.
-
 **Request Body**:
 ```json
 {
@@ -287,26 +269,7 @@ Update user profile information.
 }
 ```
 
-**Response** (200 OK):
-```json
-{
-  "success": true,
-  "message": "Success",
-  "data": {
-    "user_id": "794ab5cc-f0e1-708a-7902-6a087c2bb60c",
-    "email": "user@example.com",
-    "display_name": "Jane Doe",
-    "avatar_url": "https://example.com/new-avatar.jpg",
-    "current_level": "A1",
-    "target_level": "C1",
-    "current_streak": 5,
-    "total_words_learned": 150,
-    "role": "user",
-    "is_active": true,
-    "is_new_user": false
-  }
-}
-```
+**Response** (200 OK): Same structure as Get Profile.
 
 ---
 
@@ -316,14 +279,22 @@ Update user profile information.
 
 **POST** `/vocabulary/translate`
 
-Translate a single English word to Vietnamese.
+Translate an English word to Vietnamese with dictionary enrichment (phonetic, meanings, examples).
 
 **Request Body**:
 ```json
 {
-  "word": "hello"
+  "word": "run",
+  "sentence": "I run every morning.",
+  "context": "I run every morning for exercise."
 }
 ```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `word` | ✅ | English word (1–100 chars) |
+| `sentence` | ❌ | Sentence for AWS Translate context |
+| `context` | ❌ | Context for phrasal verb detection |
 
 **Response** (200 OK):
 ```json
@@ -331,17 +302,38 @@ Translate a single English word to Vietnamese.
   "success": true,
   "message": "Success",
   "data": {
-    "word": "hello",
-    "translation_vi": "xin chào"
+    "word": "run",
+    "translation_vi": "chạy",
+    "phonetic": "/rʌn/",
+    "definitions": [
+      {
+        "part_of_speech": "verb",
+        "definition_en": "Move at a speed faster than a walk",
+        "definition_vi": "Di chuyển với tốc độ nhanh hơn đi bộ",
+        "example_en": "She runs five miles every day.",
+        "example_vi": "Cô ấy chạy năm dặm mỗi ngày."
+      }
+    ],
+    "synonyms": [],
+    "response_time_ms": 320,
+    "cached": false
   }
 }
 ```
 
+**Error Responses**:
+
+| Status | Code | Meaning |
+|--------|------|---------|
+| `404` | `WORD_NOT_FOUND` | Word not in dictionary |
+| `503` | `DICTIONARY_SERVICE_ERROR` | Dictionary API unavailable |
+| `400` | `VALIDATION_ERROR` | Invalid request |
+
+> **Note for frontend**: Use `definitions[0].definition_vi` as the flashcard meaning. Use `phonetic` and `definitions[0].example_en` for flashcard fields.
+
 ### Translate Sentence
 
 **POST** `/vocabulary/translate-sentence`
-
-Translate an English sentence to Vietnamese.
 
 **Request Body**:
 ```json
@@ -370,17 +362,19 @@ Translate an English sentence to Vietnamese.
 
 **POST** `/flashcards`
 
-Create a new flashcard for vocabulary learning.
-
 **Request Body**:
 ```json
 {
-  "word": "hello",
-  "translation": "xin chào",
-  "example_sentence": "Hello, how are you?",
-  "difficulty": "easy"
+  "vocab": "run",
+  "vocab_type": "verb",
+  "translation_vi": "chạy",
+  "example_sentence": "She runs five miles every day.",
+  "phonetic": "/rʌn/",
+  "audio_url": "https://example.com/audio.mp3"
 }
 ```
+
+> `definition_vi` field đã bị xóa. Dùng `translation_vi` cho nghĩa của thẻ.
 
 **Response** (201 Created):
 ```json
@@ -389,12 +383,12 @@ Create a new flashcard for vocabulary learning.
   "message": "Created",
   "data": {
     "flashcard_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD",
-    "word": "hello",
-    "translation": "xin chào",
-    "example_sentence": "Hello, how are you?",
-    "difficulty": "easy",
-    "created_at": "2026-04-25T07:25:13.798100+00:00",
-    "next_review": "2026-04-26T07:25:13.798100+00:00"
+    "word": "run",
+    "translation_vi": "chạy",
+    "phonetic": "/rʌn/",
+    "audio_url": "https://example.com/audio.mp3",
+    "example_sentence": "She runs five miles every day.",
+    "created_at": "2026-04-26T07:25:13.798100+00:00"
   }
 }
 ```
@@ -403,29 +397,29 @@ Create a new flashcard for vocabulary learning.
 
 **GET** `/flashcards`
 
-List all flashcards for the current user.
-
-**Query Parameters**:
-- `limit` (optional, default: 10) - Maximum number of flashcards to return
-- `offset` (optional, default: 0) - Number of flashcards to skip
+**Query Parameters**: `limit` (default: 20, max: 100), `last_key` (base64 pagination token)
 
 **Response** (200 OK):
 ```json
 {
   "success": true,
-  "message": "Success",
   "data": {
-    "flashcards": [
+    "cards": [
       {
         "flashcard_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD",
-        "word": "hello",
-        "translation": "xin chào",
-        "difficulty": "easy",
-        "created_at": "2026-04-25T07:25:13.798100+00:00",
-        "next_review": "2026-04-26T07:25:13.798100+00:00"
+        "word": "run",
+        "translation_vi": "chạy",
+        "phonetic": "/rʌn/",
+        "audio_url": "https://example.com/audio.mp3",
+        "example_sentence": "She runs five miles every day.",
+        "review_count": 3,
+        "interval_days": 4,
+        "difficulty": "good",
+        "next_review_at": "2026-04-30T07:25:13.798100+00:00",
+        "last_reviewed_at": "2026-04-26T07:25:13.798100+00:00"
       }
     ],
-    "total": 1
+    "next_key": "<base64_token_or_null>"
   }
 }
 ```
@@ -434,21 +428,24 @@ List all flashcards for the current user.
 
 **GET** `/flashcards/{flashcard_id}`
 
-Retrieve a specific flashcard.
-
 **Response** (200 OK):
 ```json
 {
   "success": true,
-  "message": "Success",
   "data": {
     "flashcard_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD",
-    "word": "hello",
-    "translation": "xin chào",
-    "example_sentence": "Hello, how are you?",
-    "difficulty": "easy",
-    "created_at": "2026-04-25T07:25:13.798100+00:00",
-    "next_review": "2026-04-26T07:25:13.798100+00:00"
+    "word": "run",
+    "translation_vi": "chạy",
+    "phonetic": "/rʌn/",
+    "audio_url": "https://example.com/audio.mp3",
+    "example_sentence": "She runs five miles every day.",
+    "review_count": 3,
+    "interval_days": 4,
+    "difficulty": "good",
+    "last_reviewed_at": "2026-04-26T07:25:13.798100+00:00",
+    "next_review_at": "2026-04-30T07:25:13.798100+00:00",
+    "source_session_id": null,
+    "source_turn_index": null
   }
 }
 ```
@@ -457,24 +454,25 @@ Retrieve a specific flashcard.
 
 **GET** `/flashcards/due`
 
-List flashcards that are due for review.
-
 **Response** (200 OK):
 ```json
 {
   "success": true,
-  "message": "Success",
   "data": {
-    "flashcards": [
+    "cards": [
       {
         "flashcard_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD",
-        "word": "hello",
-        "translation": "xin chào",
-        "difficulty": "easy",
-        "next_review": "2026-04-25T07:25:13.798100+00:00"
+        "word": "run",
+        "translation_vi": "chạy",
+        "phonetic": "/rʌn/",
+        "audio_url": "https://example.com/audio.mp3",
+        "example_sentence": "She runs five miles every day.",
+        "review_count": 3,
+        "interval_days": 4,
+        "next_review_at": "2026-04-26T07:25:13.798100+00:00",
+        "last_reviewed_at": null
       }
-    ],
-    "total": 1
+    ]
   }
 }
 ```
@@ -483,15 +481,19 @@ List flashcards that are due for review.
 
 **POST** `/flashcards/{flashcard_id}/review`
 
-Submit a review for a flashcard (mark as correct/incorrect).
-
 **Request Body**:
 ```json
 {
-  "is_correct": true,
-  "time_spent_ms": 5000
+  "rating": "good"
 }
 ```
+
+| Rating | Meaning |
+|--------|---------|
+| `forgot` | Không nhớ — reset interval |
+| `hard` | Khó — interval tăng ít |
+| `good` | Ổn — interval tăng bình thường |
+| `easy` | Dễ — interval tăng nhiều |
 
 **Response** (200 OK):
 ```json
@@ -500,9 +502,11 @@ Submit a review for a flashcard (mark as correct/incorrect).
   "message": "Success",
   "data": {
     "flashcard_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD",
-    "word": "hello",
-    "next_review": "2026-04-27T07:25:13.798100+00:00",
-    "difficulty": "medium"
+    "word": "run",
+    "interval_days": 4,
+    "review_count": 3,
+    "last_reviewed_at": "2026-04-26T07:25:13.798100+00:00",
+    "next_review_at": "2026-04-30T07:25:13.798100+00:00"
   }
 }
 ```
@@ -515,11 +519,9 @@ Submit a review for a flashcard (mark as correct/incorrect).
 
 **GET** `/scenarios`
 
-List all available speaking scenarios. **No authentication required** (public endpoint).
+**No authentication required** (public endpoint).
 
-**Query Parameters**:
-- `limit` (optional, default: 10) - Maximum number of scenarios to return
-- `level` (optional) - Filter by proficiency level (A1, A2, B1, B2, C1, C2)
+**Query Parameters**: `limit` (default: 10), `level` (A1/A2/B1/B2/C1/C2)
 
 **Response** (200 OK):
 ```json
@@ -530,22 +532,14 @@ List all available speaking scenarios. **No authentication required** (public en
     "scenarios": [
       {
         "scenario_id": "restaurant-ordering",
-        "title": "Restaurant Ordering",
-        "description": "Order food at a restaurant",
-        "level": "A1",
-        "roles": [
-          {
-            "role_id": "customer",
-            "name": "Customer",
-            "description": "You are a customer ordering food"
-          },
-          {
-            "role_id": "waiter",
-            "name": "Waiter",
-            "description": "You are a waiter taking orders"
-          }
-        ],
+        "scenario_title": "Restaurant Ordering",
+        "context": "restaurant",
+        "roles": ["customer", "waiter"],
         "goals": ["order food", "ask for recommendations", "handle payment"],
+        "is_active": true,
+        "usage_count": 42,
+        "difficulty_level": "A1",
+        "order": 1,
         "created_at": "2026-01-01T00:00:00+00:00"
       }
     ],
@@ -562,8 +556,6 @@ List all available speaking scenarios. **No authentication required** (public en
 
 **POST** `/sessions`
 
-Create a new speaking practice session.
-
 **Request Body**:
 ```json
 {
@@ -572,7 +564,7 @@ Create a new speaking practice session.
   "ai_role_id": "waiter",
   "ai_gender": "female",
   "level": "B1",
-  "selected_goals": ["order food", "ask for recommendations"]
+  "selected_goal": "order food"
 }
 ```
 
@@ -586,7 +578,7 @@ Create a new speaking practice session.
     "user_id": "794ab5cc-f0e1-708a-7902-6a087c2bb60c",
     "scenario_id": "restaurant-ordering",
     "status": "ACTIVE",
-    "created_at": "2026-04-25T07:25:13.798100+00:00",
+    "created_at": "2026-04-26T07:25:13.798100+00:00",
     "turn_count": 0,
     "updated_at": null,
     "completed_at": null
@@ -598,10 +590,7 @@ Create a new speaking practice session.
 
 **GET** `/sessions`
 
-List all speaking sessions for the current user.
-
-**Query Parameters**:
-- `limit` (optional, default: 10) - Maximum number of sessions to return
+**Query Parameters**: `limit` (default: 10)
 
 **Response** (200 OK):
 ```json
@@ -612,12 +601,11 @@ List all speaking sessions for the current user.
     "sessions": [
       {
         "session_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD",
-        "user_id": "794ab5cc-f0e1-708a-7902-6a087c2bb60c",
         "scenario_id": "restaurant-ordering",
         "status": "ACTIVE",
-        "created_at": "2026-04-25T07:25:13.798100+00:00",
+        "created_at": "2026-04-26T07:25:13.798100+00:00",
         "turn_count": 3,
-        "updated_at": "2026-04-25T07:26:00.000000+00:00",
+        "updated_at": "2026-04-26T07:26:00.000000+00:00",
         "completed_at": null
       }
     ],
@@ -630,8 +618,6 @@ List all speaking sessions for the current user.
 
 **GET** `/sessions/{session_id}`
 
-Retrieve details of a specific speaking session.
-
 **Response** (200 OK):
 ```json
 {
@@ -639,25 +625,22 @@ Retrieve details of a specific speaking session.
   "message": "Success",
   "data": {
     "session_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD",
-    "user_id": "794ab5cc-f0e1-708a-7902-6a087c2bb60c",
     "scenario_id": "restaurant-ordering",
     "learner_role_id": "customer",
     "ai_role_id": "waiter",
     "ai_gender": "female",
     "level": "B1",
-    "selected_goals": ["order food", "ask for recommendations"],
+    "selected_goal": "order food",
     "status": "ACTIVE",
-    "created_at": "2026-04-25T07:25:13.798100+00:00",
-    "turn_count": 3,
-    "updated_at": "2026-04-25T07:26:00.000000+00:00",
-    "completed_at": null,
+    "created_at": "2026-04-26T07:25:13.798100+00:00",
+    "turn_count": 2,
     "turns": [
       {
         "turn_index": 1,
         "speaker": "user",
         "content": "Hello, I would like to order a coffee please.",
         "audio_url": "s3://bucket/audio.mp3",
-        "created_at": "2026-04-25T07:25:20.000000+00:00"
+        "created_at": "2026-04-26T07:25:20.000000+00:00"
       },
       {
         "turn_index": 2,
@@ -665,7 +648,7 @@ Retrieve details of a specific speaking session.
         "content": "[warmly] Of course! What size would you like?",
         "delivery_cue": "[warmly]",
         "audio_url": "s3://bucket/ai-audio.mp3",
-        "created_at": "2026-04-25T07:25:25.000000+00:00"
+        "created_at": "2026-04-26T07:25:25.000000+00:00"
       }
     ]
   }
@@ -675,8 +658,6 @@ Retrieve details of a specific speaking session.
 ### Submit Speaking Turn
 
 **POST** `/sessions/{session_id}/turns`
-
-Submit a user's spoken turn and get AI response with implicit error correction and context-aware scaffolding.
 
 **Request Body**:
 ```json
@@ -694,20 +675,15 @@ Submit a user's spoken turn and get AI response with implicit error correction a
   "message": "Success",
   "data": {
     "session_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD",
-    "user_id": "794ab5cc-f0e1-708a-7902-6a087c2bb60c",
-    "scenario_id": "restaurant-ordering",
     "status": "ACTIVE",
-    "created_at": "2026-04-25T07:25:13.798100+00:00",
     "turn_count": 2,
-    "updated_at": "2026-04-25T07:25:30.000000+00:00",
-    "completed_at": null,
     "user_turn": {
       "turn_index": 1,
       "speaker": "user",
       "content": "Hello, I would like to order a coffee please.",
       "audio_url": "s3://bucket/audio.mp3",
       "is_hint_used": false,
-      "created_at": "2026-04-25T07:25:20.000000+00:00"
+      "created_at": "2026-04-26T07:25:20.000000+00:00"
     },
     "ai_turn": {
       "turn_index": 2,
@@ -715,24 +691,16 @@ Submit a user's spoken turn and get AI response with implicit error correction a
       "content": "[warmly] Of course! What size would you like?",
       "delivery_cue": "[warmly]",
       "audio_url": "s3://bucket/ai-audio.mp3",
-      "created_at": "2026-04-25T07:25:25.000000+00:00"
+      "created_at": "2026-04-26T07:25:25.000000+00:00"
     },
     "analysis_keywords": ["coffee", "order"]
   }
 }
 ```
 
-**Response Fields**:
-- `user_turn` - User's submitted turn with analysis
-- `ai_turn` - AI's response with delivery cue
-- `delivery_cue` - Tone indicator (e.g., "[warmly]", "[thoughtfully]", "[gently]", "[encouragingly]", "[naturally]")
-- `analysis_keywords` - Key phrases extracted from user's speech
-
 ### Complete Speaking Session
 
 **POST** `/sessions/{session_id}/complete`
-
-Complete a speaking session and get scoring results.
 
 **Response** (200 OK):
 ```json
@@ -741,13 +709,8 @@ Complete a speaking session and get scoring results.
   "message": "Success",
   "data": {
     "session_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD",
-    "user_id": "794ab5cc-f0e1-708a-7902-6a087c2bb60c",
-    "scenario_id": "restaurant-ordering",
     "status": "COMPLETED",
-    "created_at": "2026-04-25T07:25:13.798100+00:00",
-    "turn_count": 3,
-    "updated_at": "2026-04-25T07:26:00.000000+00:00",
-    "completed_at": "2026-04-25T07:26:30.000000+00:00",
+    "completed_at": "2026-04-26T07:26:30.000000+00:00",
     "scoring": {
       "fluency_score": 75,
       "pronunciation_score": 80,
@@ -764,40 +727,20 @@ Complete a speaking session and get scoring results.
 
 ## WebSocket Endpoints
 
-WebSocket connections use the URL: `wss://no8fa2u3qg.execute-api.ap-southeast-1.amazonaws.com/Prod`
+**URL**: `wss://no8fa2u3qg.execute-api.ap-southeast-1.amazonaws.com/Prod`
 
 ### Connection
 
-**Action**: `$connect`
-
-Connect to WebSocket with authentication token.
-
-**Query Parameters**:
-- `token` - Cognito JWT token
-
-**Example**:
 ```
-wss://no8fa2u3qg.execute-api.ap-southeast-1.amazonaws.com/Prod?token=<JWT_TOKEN>
+wss://...?token=<JWT_TOKEN>
 ```
-
-### Disconnect
-
-**Action**: `$disconnect`
-
-Automatically triggered when client disconnects.
 
 ### Start Session
 
 **Action**: `start_session`
 
-Initialize a speaking session for WebSocket streaming.
-
-**Request**:
 ```json
-{
-  "action": "start_session",
-  "session_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD"
-}
+{ "action": "start_session", "session_id": "..." }
 ```
 
 **Response**:
@@ -806,7 +749,7 @@ Initialize a speaking session for WebSocket streaming.
   "event": "SESSION_READY",
   "upload_url": "https://s3.amazonaws.com/...",
   "s3_key": "speaking/audio/...",
-  "session_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD"
+  "session_id": "..."
 }
 ```
 
@@ -814,87 +757,66 @@ Initialize a speaking session for WebSocket streaming.
 
 **Action**: `audio_uploaded`
 
-Notify that audio has been uploaded to S3.
-
-**Request**:
 ```json
-{
-  "action": "audio_uploaded",
-  "session_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD",
-  "s3_key": "speaking/audio/..."
-}
+{ "action": "audio_uploaded", "session_id": "...", "s3_key": "speaking/audio/..." }
 ```
 
 **Response Events**:
-- `STT_RESULT` - Transcription successful
-- `STT_LOW_CONFIDENCE` - Transcription confidence too low
-- `TURN_SAVED` - Turn saved to database
-- `AI_TEXT_CHUNK` - AI response text
-- `AI_AUDIO_URL` - AI response audio URL
+- `STT_RESULT` — Transcription result
+- `STT_LOW_CONFIDENCE` — Confidence too low
+- `TURN_SAVED` — Turn saved
+- `AI_TEXT_CHUNK` — AI response text (streaming)
+- `AI_AUDIO_URL` — AI audio URL
 
 ### Use Hint
 
 **Action**: `use_hint`
 
-Get a contextual hint for the current turn.
-
-**Request**:
 ```json
-{
-  "action": "use_hint",
-  "session_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD"
-}
+{ "action": "use_hint", "session_id": "..." }
 ```
 
-**Response**:
+**Response** (all CEFR levels A1–C2):
 ```json
 {
   "event": "HINT_TEXT",
-  "hint": "You could say: I would like to order a coffee, please."
+  "hint": {
+    "markdown": {
+      "vi": "AI muốn biết thói quen sáng của bạn. Hãy kể về những hoạt động bạn làm từ lúc thức dậy đến khi đi làm/học.\n- **'I wake up at 6 AM, have breakfast, take a shower, and then go to work'**\n- **'I usually wake up late, drink coffee, and rush to school'**",
+      "en": "AI wants to know your morning routine. Tell about what you do from waking up to going to work/school.\n- **'I wake up at 6 AM, have breakfast, take a shower, and then go to work'**\n- **'I usually wake up late, drink coffee, and rush to school'**"
+    }
+  }
 }
 ```
+
+> Render `hint.markdown.vi` hoặc `hint.markdown.en` bằng markdown renderer. Hints use natural conversational flow with bullet-point examples.
 
 ### Send Message Turn
 
 **Action**: `send_message_turn`
 
-Submit a text-based turn (not audio).
-
-**Request**:
 ```json
 {
   "action": "send_message_turn",
-  "session_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD",
+  "session_id": "...",
   "text": "Hello, I would like to order a coffee please.",
   "is_hint_used": false
 }
 ```
 
-**Response Events**:
-- `TURN_SAVED` - Turn saved
-- `AI_TEXT_CHUNK` - AI response
-- `AI_AUDIO_URL` - AI audio
+**Response Events**: `TURN_SAVED`, `AI_TEXT_CHUNK`, `AI_AUDIO_URL`
 
 ### End Session
 
 **Action**: `end_session`
 
-Complete the speaking session.
-
-**Request**:
 ```json
-{
-  "action": "end_session",
-  "session_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD"
-}
+{ "action": "end_session", "session_id": "..." }
 ```
 
 **Response**:
 ```json
-{
-  "event": "SCORING_COMPLETE",
-  "session_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD"
-}
+{ "event": "SCORING_COMPLETE", "session_id": "..." }
 ```
 
 ---
@@ -905,11 +827,7 @@ Complete the speaking session.
 
 **GET** `/admin/users`
 
-List all users (admin only).
-
-**Query Parameters**:
-- `limit` (optional, default: 10)
-- `offset` (optional, default: 0)
+**Query Parameters**: `limit` (default: 20)
 
 **Response** (200 OK):
 ```json
@@ -922,13 +840,13 @@ List all users (admin only).
         "user_id": "794ab5cc-f0e1-708a-7902-6a087c2bb60c",
         "email": "user@example.com",
         "display_name": "John Doe",
-        "current_level": "A1",
-        "role": "user",
+        "role": "learner",
         "is_active": true,
-        "created_at": "2026-01-01T00:00:00+00:00"
+        "total_words_learned": 150,
+        "joined_at": "2026-01-01T00:00:00+00:00"
       }
     ],
-    "total": 1
+    "total_count": 1
   }
 }
 ```
@@ -937,38 +855,16 @@ List all users (admin only).
 
 **PATCH** `/admin/users/{user_id}`
 
-Update user information (admin only).
-
 **Request Body**:
 ```json
-{
-  "is_active": false,
-  "role": "admin"
-}
+{ "is_active": false, "current_level": "B1", "target_level": "C1" }
 ```
 
-**Response** (200 OK):
-```json
-{
-  "success": true,
-  "message": "Success",
-  "data": {
-    "user_id": "794ab5cc-f0e1-708a-7902-6a087c2bb60c",
-    "email": "user@example.com",
-    "display_name": "John Doe",
-    "current_level": "A1",
-    "role": "admin",
-    "is_active": false,
-    "created_at": "2026-01-01T00:00:00+00:00"
-  }
-}
-```
+**Response** (200 OK): Updated user object.
 
 ### List Admin Scenarios
 
 **GET** `/admin/scenarios`
-
-List all scenarios (admin only).
 
 **Response** (200 OK):
 ```json
@@ -979,13 +875,20 @@ List all scenarios (admin only).
     "scenarios": [
       {
         "scenario_id": "restaurant-ordering",
-        "title": "Restaurant Ordering",
-        "description": "Order food at a restaurant",
-        "level": "A1",
-        "created_at": "2026-01-01T00:00:00+00:00"
+        "scenario_title": "Restaurant Ordering",
+        "context": "restaurant",
+        "roles": ["customer", "waiter"],
+        "goals": ["order food", "ask for recommendations"],
+        "is_active": true,
+        "usage_count": 42,
+        "difficulty_level": "A1",
+        "order": 1,
+        "notes": "",
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00"
       }
     ],
-    "total": 1
+    "total_count": 1
   }
 }
 ```
@@ -994,210 +897,232 @@ List all scenarios (admin only).
 
 **POST** `/admin/scenarios`
 
-Create a new scenario (admin only).
-
 **Request Body**:
 ```json
 {
-  "scenario_id": "hotel-booking",
-  "title": "Hotel Booking",
-  "description": "Book a hotel room",
-  "level": "A2",
-  "roles": [
-    {
-      "role_id": "guest",
-      "name": "Guest",
-      "description": "You are a guest booking a hotel"
-    },
-    {
-      "role_id": "receptionist",
-      "name": "Receptionist",
-      "description": "You are a hotel receptionist"
-    }
-  ],
-  "goals": ["book a room", "ask about amenities", "negotiate price"]
+  "scenario_title": "Hotel Booking",
+  "context": "hotel",
+  "difficulty_level": "A2",
+  "roles": ["guest", "receptionist"],
+  "goals": ["book a room", "ask about amenities"],
+  "order": 2,
+  "notes": "",
+  "is_active": true
 }
 ```
 
-**Response** (201 Created):
-```json
-{
-  "success": true,
-  "message": "Created",
-  "data": {
-    "scenario_id": "hotel-booking",
-    "title": "Hotel Booking",
-    "description": "Book a hotel room",
-    "level": "A2",
-    "created_at": "2026-04-25T07:25:13.798100+00:00"
-  }
-}
-```
+> `roles` phải có đúng **2 phần tử** (learner role và AI role).
+
+**Response** (201 Created): Created scenario object.
 
 ### Update Admin Scenario
 
 **PATCH** `/admin/scenarios/{scenario_id}`
 
-Update scenario information (admin only).
-
-**Request Body**:
+**Request Body** (tất cả fields đều optional):
 ```json
 {
-  "title": "Hotel Booking (Updated)",
-  "description": "Book a hotel room with special requests"
+  "scenario_title": "Hotel Booking (Updated)",
+  "is_active": false,
+  "order": 3
 }
 ```
 
-**Response** (200 OK):
+**Response** (200 OK): Updated scenario object.
+
+---
+
+## Turn Analysis (Formative Assessment)
+
+### Analyze Turn (WebSocket Action)
+
+**Action:** `ANALYZE_TURN`
+
+Provides turn-by-turn formative assessment for learner's conversation.
+
+**Use case:** User clicks "Analyze" button after speaking to get feedback on their performance.
+
+**Request:**
 ```json
 {
-  "success": true,
-  "message": "Success",
-  "data": {
-    "scenario_id": "hotel-booking",
-    "title": "Hotel Booking (Updated)",
-    "description": "Book a hotel room with special requests",
-    "level": "A2",
-    "created_at": "2026-04-25T07:25:13.798100+00:00"
+  "action": "ANALYZE_TURN",
+  "session_id": "01HXXX...",
+  "turn_index": 3
+}
+```
+
+**Response Event:** `TURN_ANALYSIS`
+```json
+{
+  "event": "TURN_ANALYSIS",
+  "analysis": {
+    "markdown": {
+      "vi": "## ✅ Điểm mạnh\n- Bạn đã dùng từ vựng phù hợp...\n\n## ⚠️ Lỗi cần sửa\n- Thiếu động từ 'to be'...",
+      "en": "## ✅ Strengths\n- You used appropriate vocabulary...\n\n## ⚠️ Mistakes to Fix\n- Missing 'to be' verb..."
+    }
   }
 }
 ```
+
+**Analysis sections:**
+- **✅ Strengths**: What the learner did well
+- **⚠️ Mistakes**: Grammar, vocabulary, or usage errors
+- **💡 Improvements**: Suggestions for better expression
+- **🎯 Overall Assessment**: Summary and encouragement
+
+**Features:**
+- Level-adaptive feedback (A1-C2)
+- Bilingual markdown (Vietnamese + English)
+- AI provides immediate, actionable feedback
+- Consistent with hint system (both use WebSocket)
 
 ---
 
 ## AI Model Information
 
-### Amazon Nova Micro (Primary Model)
+### Amazon Nova Micro (Primary)
 
-- **Model ID**: `apac.amazon.nova-micro-v1:0` (APAC inference profile)
-- **Region**: ap-southeast-1 (Singapore)
-- **Use Cases**: 
-  - Conversation generation for speaking practice
-  - Performance scoring and feedback
-  - Contextual hint generation
-- **Max Tokens**: 40-250 (depends on proficiency level)
-- **Temperature**: 0.6-0.85 (depends on proficiency level)
+- **Model ID**: `apac.amazon.nova-micro-v1:0`
+- **Region**: ap-southeast-1
 
 ### Proficiency Level Configuration
 
-| Level | Model | Max Tokens | Temperature | Fallback |
-|-------|-------|-----------|-------------|----------|
-| A1 | Micro | 40 | 0.6 | None |
-| A2 | Micro | 60 | 0.65 | None |
-| B1 | Micro | 100 | 0.7 | Lite (5%) |
-| B2 | Micro | 150 | 0.75 | Lite (10%) |
-| C1 | Micro | 200 | 0.8 | Pro (30%) |
-| C2 | Micro | 250 | 0.85 | Pro (40%) |
+| Level | Max Tokens | Temperature | Fallback |
+|-------|-----------|-------------|----------|
+| A1 | 40 | 0.6 | None |
+| A2 | 60 | 0.65 | None |
+| B1 | 100 | 0.7 | Lite (5%) |
+| B2 | 150 | 0.75 | Lite (10%) |
+| C1 | 200 | 0.8 | Pro (30%) |
+| C2 | 250 | 0.85 | Pro (40%) |
 
 ---
 
-## Rate Limiting
+## Changelog
 
-- **Default**: 100 requests per minute per user
-- **Speaking Sessions**: 10 concurrent sessions per user
-- **WebSocket**: 1 connection per user
+### v2.3 (April 26, 2026)
+
+**Turn-by-Turn Analysis (Formative Assessment)**
+- New WebSocket action: `ANALYZE_TURN` (consistent with hint system)
+- Provides on-demand feedback with strengths, mistakes, improvements, and overall assessment
+- Bilingual markdown output (Vietnamese + English)
+- Level-adaptive analysis (A1-C2)
+- AI provides personalized guidance based on learner performance
+- Event: `TURN_ANALYSIS` with markdown payload
+
+**Prompt Caching Refactor**
+- Removed manual cache_control approach (Claude-specific)
+- Amazon Nova automatic prompt caching (no configuration needed)
+- Simplified code, removed unnecessary complexity
+
+### v2.2 (April 26, 2026)
+
+**Hint System — Rich Markdown Format**
+- Hint response changed from `{ hint: {vi, en} }` → `{ markdown: {vi, en} }` — full markdown string
+- Frontend renders with any markdown renderer, no custom parsing needed
+- Level-adaptive sections:
+  - A1/A2 `vocabulary_suggestion`: 💬 Tình huống · 📝 Từ khoá (với nghĩa) · ✅ Câu mẫu dùng ngay · 💡 Mẹo nhỏ
+  - B1/B2 `strategic_guidance`: 💬 Tình huống · 🎯 Cách tiếp cận · ✅ Câu mẫu tham khảo · 💡 Ngữ pháp & từ nối
+  - C1/C2 `metacognitive_prompt`: 💬 Tình huống · 🎯 Phân tích ngữ cảnh · ✅ Lựa chọn nâng cao · 💡 Phong cách & sắc thái
+- Delivery cue stripped from AI message before building hint context
+
+**Scenario & Admin API fixes**
+- `roles` is `List[str]` (e.g. `["customer", "waiter"]`), not array of objects
+- Admin create scenario: correct fields `scenario_title`, `context`, `difficulty_level`
+- Admin list/update user: correct fields `joined_at`, `total_words_learned`, `total_count`
+- Fixed `AdminController` type mismatch — use cases return dicts, not entity objects
+
+### v2.1 (April 26, 2026)
+
+**Vocabulary API**
+- `POST /vocabulary/translate` response now includes `definitions[]`, `phonetic`, `response_time_ms`, `cached`
+- Added `context` field to request for phrasal verb detection
+- New error codes: `WORD_NOT_FOUND` (404), `DICTIONARY_SERVICE_ERROR` (503)
+- Batch translation: word + definitions + examples in a single AWS Translate call
+
+**Flashcard API**
+- Removed `definition_vi` — use `translation_vi` instead
+
+**Hint System**
+- Hints available for all CEFR levels (previously A1/A2 only)
+- Level-adaptive strategies: `vocabulary_suggestion` / `strategic_guidance` / `metacognitive_prompt`
+- Delivery cue extraction fixed to match start of response only
+
+**Conversation**
+- Amazon Nova automatic prompt caching (no manual configuration needed)
+- Greeting generator fallback per level
+- `ScaffoldingSystem` removed — replaced by `StructuredHintGenerator`
 
 ---
 
 ## Troubleshooting
 
 ### 401 Unauthorized
+- Token expired or missing `Authorization: Bearer <TOKEN>` header
 
-- Token expired: Get a new token
-- Invalid token: Check token format
-- Missing Authorization header: Include `Authorization: Bearer <TOKEN>`
+### 404 WORD_NOT_FOUND
+- Word doesn't exist in dictionary API — show user-friendly message
+
+### 503 DICTIONARY_SERVICE_ERROR
+- Dictionary API temporarily down — retry after a few seconds
 
 ### 422 Unprocessable Entity
-
-- Missing required fields: Check request body
-- Invalid field values: Verify data types and formats
-- Validation failed: Check error message for details
+- Missing required fields or invalid data types
 
 ### 500 Internal Server Error
-
-- Bedrock service unavailable: Retry after a few seconds
-- Database error: Check CloudWatch logs
-- External service error: Check service status
-
-### WebSocket Connection Failed
-
-- Invalid token: Verify JWT token is valid
-- Token expired: Get a new token
-- Network issue: Check internet connection
+- Check CloudWatch logs: `/aws/lambda/lexi-be-*`
 
 ---
 
 ## Example Workflows
 
-### Complete Speaking Practice Session
+### Vocabulary → Flashcard
 
-1. **Create Session**
-   ```bash
-   POST /sessions
-   {
-     "scenario_id": "restaurant-ordering",
-     "learner_role_id": "customer",
-     "ai_role_id": "waiter",
-     "ai_gender": "female",
-     "level": "B1",
-     "selected_goals": ["order food"]
-   }
-   ```
+```bash
+# 1. Translate word (get enriched data)
+POST /vocabulary/translate
+{ "word": "run", "context": "I run every morning" }
 
-2. **Submit Turn**
-   ```bash
-   POST /sessions/{session_id}/turns
-   {
-     "text": "Hello, I would like to order a coffee please.",
-     "audio_url": "s3://bucket/audio.mp3",
-     "is_hint_used": false
-   }
-   ```
+# 2. Create flashcard using response data
+POST /flashcards
+{
+  "vocab": "run",
+  "vocab_type": "verb",
+  "translation_vi": "<from translation_vi>",
+  "example_sentence": "<from definitions[0].example_en>",
+  "phonetic": "<from phonetic>",
+  "audio_url": "<from audio_url>"
+}
 
-3. **Complete Session**
-   ```bash
-   POST /sessions/{session_id}/complete
-   ```
+# 3. Review flashcard
+POST /flashcards/{flashcard_id}/review
+{ "is_correct": true }
+```
 
-4. **Get Scoring**
-   - Response includes fluency, pronunciation, grammar, vocabulary scores
-   - Personalized feedback in Vietnamese
+### Speaking Practice Session
 
-### Vocabulary Learning
+```bash
+# 1. Create session
+POST /sessions
+{
+  "scenario_id": "restaurant-ordering",
+  "learner_role_id": "customer",
+  "ai_role_id": "waiter",
+  "ai_gender": "female",
+  "level": "B1",
+  "selected_goal": "order food"
+}
 
-1. **Translate Word**
-   ```bash
-   POST /vocabulary/translate
-   { "word": "hello" }
-   ```
+# 2. Submit turn
+POST /sessions/{session_id}/turns
+{ "text": "I'd like a coffee please.", "is_hint_used": false }
 
-2. **Create Flashcard**
-   ```bash
-   POST /flashcards
-   {
-     "word": "hello",
-     "translation": "xin chào",
-     "example_sentence": "Hello, how are you?"
-   }
-   ```
-
-3. **Review Flashcard**
-   ```bash
-   POST /flashcards/{flashcard_id}/review
-   { "is_correct": true }
-   ```
+# 3. Complete session
+POST /sessions/{session_id}/complete
+```
 
 ---
 
-## Support
-
-For issues or questions:
-- Check CloudWatch logs: `/aws/lambda/lexi-be-*`
-- Review error codes and messages
-- Contact development team
-
----
-
-**Last Updated**: April 25, 2026  
-**API Version**: 2.0  
+**Last Updated**: April 26, 2026  
+**API Version**: 2.2  
 **Status**: Production

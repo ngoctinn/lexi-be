@@ -92,13 +92,21 @@ def build_controller(session: Session):
     )
     complete_use_case = CompleteSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo)
 
+    # Create ScaffoldingSystem for hints
+    from domain.services.scaffolding_system import ScaffoldingSystem
+    scaffolding_system = ScaffoldingSystem(enable_scaffolding=True)
+
     controller = WebSocketSessionController(
         session_repo=session_repo,
+        turn_repo=turn_repo,
+        stt_service=None,  # Not used in these tests
+        streaming_stt_service=None,  # Not used in these tests
         submit_turn_use_case=submit_use_case,
         complete_use_case=complete_use_case,
         build_upload_payload=lambda session_id: ("https://upload.example.com", f"sessions/{session_id}/audio.webm"),
         send_message=lambda payload: sender_payloads.append(payload),
         verify_token=lambda token: {"sub": "user-1"} if token == "valid-token" else (_ for _ in ()).throw(ValueError("Token không hợp lệ.")),
+        scaffolding_system=scaffolding_system,
     )
     return controller, session_repo, turn_repo, scoring_repo, sender_payloads
 
@@ -112,7 +120,7 @@ def test_connect_accepts_valid_token_and_persists_connection_id():
         ai_role_id="barista",
         ai_gender=Gender.FEMALE,
         level=ProficiencyLevel.B1,
-        selected_goals=["order drink"],
+        selected_goal="order drink",
         prompt_snapshot="Prompt",
     )
     controller, session_repo, _, _, _ = build_controller(session)
@@ -132,7 +140,7 @@ def test_start_session_emits_session_ready_payload():
         ai_role_id="barista",
         ai_gender=Gender.FEMALE,
         level=ProficiencyLevel.B1,
-        selected_goals=["order drink"],
+        selected_goal="order drink",
         prompt_snapshot="Prompt",
     )
     controller, _, _, _, sender_payloads = build_controller(session)
@@ -154,7 +162,7 @@ def test_send_message_emits_turn_saved_and_ai_text():
         ai_role_id="barista",
         ai_gender=Gender.FEMALE,
         level=ProficiencyLevel.B1,
-        selected_goals=["order drink"],
+        selected_goal="order drink",
         prompt_snapshot="Prompt",
     )
     controller, session_repo, turn_repo, _, sender_payloads = build_controller(session)
@@ -182,7 +190,7 @@ def test_end_session_emits_scoring_complete():
         ai_role_id="barista",
         ai_gender=Gender.FEMALE,
         level=ProficiencyLevel.B1,
-        selected_goals=["order drink"],
+        selected_goal="order drink",
         prompt_snapshot="Prompt",
     )
     controller, _, _, scoring_repo, sender_payloads = build_controller(session)

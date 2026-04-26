@@ -11,7 +11,8 @@ configure_logging("lambda")
 logger = logging.getLogger(__name__)
 
 translate_service = ServiceFactory.create_translation_service()
-translate_vocabulary_uc = TranslateVocabularyUseCase(translate_service)
+dictionary_service = ServiceFactory.create_dictionary_service()
+translate_vocabulary_uc = TranslateVocabularyUseCase(dictionary_service, translate_service)
 vocabulary_controller = VocabularyController(translate_vocabulary_uc)
 
 
@@ -42,11 +43,29 @@ def handler(event, context):
         if result.is_success:
             return presenter.present_success(result.success)
         else:
-            error = result.error
-            return presenter._format_response(400, {
-                "error": error.message,
-                "code": error.code or "ERROR"
-            })
+            # Map error_code to HTTP status codes
+            error_code = result.error.code or "ERROR"
+            error_message = result.error.message or "An error occurred"
+            
+            if error_code == "WORD_NOT_FOUND":
+                return presenter._format_response(404, {
+                    "success": False,
+                    "message": error_message,
+                    "error": error_code
+                })
+            elif error_code == "DICTIONARY_SERVICE_ERROR":
+                return presenter._format_response(503, {
+                    "success": False,
+                    "message": error_message,
+                    "error": error_code
+                })
+            else:
+                # Default to 400 for validation errors and other client errors
+                return presenter._format_response(400, {
+                    "success": False,
+                    "message": error_message,
+                    "error": error_code
+                })
     except Exception as e:
         logger.exception("Error in vocabulary translation", extra={"context": {"error": str(e)}})
         raise

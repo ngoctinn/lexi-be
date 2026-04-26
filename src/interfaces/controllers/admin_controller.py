@@ -66,19 +66,22 @@ class AdminController:
                 logger.warning("Scenario creation failed", extra={"context": {"error": result.error}})
                 return OperationResult.fail(result.error, "CREATION_FAILED")
             
-            scenario = result.value
+            d = result.value  # dict from use case
             view_model = AdminScenarioViewModel(
-                scenario_id=str(scenario.scenario_id),
-                scenario_title=scenario.scenario_title,
-                context=scenario.context,
-                roles=list(scenario.roles),
-                goals=list(scenario.goals),
-                is_active=scenario.is_active,
-                usage_count=scenario.usage_count,
-                difficulty_level=scenario.difficulty_level,
-                order=scenario.order,
+                scenario_id=str(d["scenario_id"]),
+                scenario_title=d["scenario_title"],
+                context=d["context"],
+                roles=list(d["roles"]),
+                goals=list(d["goals"]),
+                is_active=d["is_active"],
+                usage_count=d["usage_count"],
+                difficulty_level=d["difficulty_level"],
+                order=d["order"],
+                notes=d["notes"],
+                created_at=d["created_at"],
+                updated_at=d["updated_at"],
             )
-            logger.info("Scenario created successfully", extra={"context": {"scenario_id": scenario.scenario_id}})
+            logger.info("Scenario created successfully", extra={"context": {"scenario_id": d["scenario_id"]}})
             return OperationResult.succeed(view_model)
         except ValidationError as exc:
             logger.warning("Validation error in create_scenario", extra={"context": {"errors": str(exc)}})
@@ -97,21 +100,25 @@ class AdminController:
                 logger.warning("Failed to list scenarios", extra={"context": {"error": result.error}})
                 return OperationResult.fail(result.error, "LIST_FAILED")
             
+            scenarios_data = result.value.get("scenarios", [])  # list of dicts from use case
             scenarios = [
                 AdminScenarioViewModel(
-                    scenario_id=str(s.scenario_id),
-                    scenario_title=s.scenario_title,
-                    context=s.context,
-                    roles=list(s.roles),
-                    goals=list(s.goals),
-                    is_active=s.is_active,
-                    usage_count=s.usage_count,
-                    difficulty_level=s.difficulty_level,
-                    order=s.order,
+                    scenario_id=str(d["scenario_id"]),
+                    scenario_title=d["scenario_title"],
+                    context=d["context"],
+                    roles=list(d["roles"]),
+                    goals=list(d["goals"]),
+                    is_active=d["is_active"],
+                    usage_count=d["usage_count"],
+                    difficulty_level=d["difficulty_level"],
+                    order=d["order"],
+                    notes=d.get("notes", ""),
+                    created_at=d.get("created_at", ""),
+                    updated_at=d.get("updated_at", ""),
                 )
-                for s in result.value
+                for d in scenarios_data
             ]
-            view_model = AdminScenarioListViewModel(scenarios=scenarios, total=len(scenarios))
+            view_model = AdminScenarioListViewModel(scenarios=scenarios, total_count=len(scenarios))
             return OperationResult.succeed(view_model)
         except Exception as exc:
             logger.exception("Error listing scenarios", extra={"context": {"error": str(exc)}})
@@ -143,20 +150,20 @@ class AdminController:
                 logger.warning("Scenario update failed", extra={"context": {"scenario_id": scenario_id, "error": result.error}})
                 return OperationResult.fail(result.error, "UPDATE_FAILED")
             
-            scenario = result.value
+            d = result.value  # dict from use case
             view_model = AdminScenarioViewModel(
-                scenario_id=str(scenario.scenario_id),
-                scenario_title=scenario.scenario_title,
-                context=scenario.context,
-                roles=list(scenario.roles),
-                goals=list(scenario.goals),
-                is_active=scenario.is_active,
-                usage_count=scenario.usage_count,
-                difficulty_level=scenario.difficulty_level,
-                order=scenario.order,
-                notes=scenario.notes if hasattr(scenario, 'notes') else "",
-                created_at=scenario.created_at if hasattr(scenario, 'created_at') else "",
-                updated_at=scenario.updated_at if hasattr(scenario, 'updated_at') else "",
+                scenario_id=str(d["scenario_id"]),
+                scenario_title=d["scenario_title"],
+                context=d["context"],
+                roles=list(d["roles"]),
+                goals=list(d["goals"]),
+                is_active=d["is_active"],
+                usage_count=d["usage_count"],
+                difficulty_level=d["difficulty_level"],
+                order=d["order"],
+                notes=d.get("notes", ""),
+                created_at=d.get("created_at", ""),
+                updated_at=d.get("updated_at", ""),
             )
             logger.info("Scenario updated successfully", extra={"context": {"scenario_id": scenario_id}})
             return OperationResult.succeed(view_model)
@@ -177,18 +184,20 @@ class AdminController:
                 logger.warning("Failed to list users", extra={"context": {"error": result.error}})
                 return OperationResult.fail(result.error, "LIST_FAILED")
             
+            users_data = result.value.get("users", [])
             users = [
                 AdminUserViewModel(
-                    user_id=u.user_id,
-                    email=u.email,
-                    display_name=u.display_name,
-                    role=u.role,
-                    is_active=u.is_active,
-                    created_at=u.created_at,
+                    user_id=u["user_id"],
+                    email=u["email"],
+                    display_name=u["display_name"],
+                    role=u.get("role", "learner"),
+                    is_active=u["is_active"],
+                    joined_at=u.get("last_completed_at", ""),
+                    total_words_learned=u.get("total_words_learned", 0),
                 )
-                for u in result.value
+                for u in users_data
             ]
-            view_model = AdminUserListViewModel(users=users, total=len(users))
+            view_model = AdminUserListViewModel(users=users, total_count=len(users))
             return OperationResult.succeed(view_model)
         except Exception as exc:
             logger.exception("Error listing users", extra={"context": {"error": str(exc)}})
@@ -205,23 +214,25 @@ class AdminController:
         try:
             logger.info("Updating user", extra={"context": {"user_id": user_id}})
             result = self._update_user_uc.execute(
-                user_id=user_id,
-                role=body.get("role"),
+                target_user_id=user_id,
                 is_active=body.get("is_active"),
+                current_level=body.get("current_level"),
+                target_level=body.get("target_level"),
             )
             
             if not result.is_success:
                 logger.warning("User update failed", extra={"context": {"user_id": user_id, "error": result.error}})
                 return OperationResult.fail(result.error, "UPDATE_FAILED")
             
-            user = result.value
+            d = result.value
             view_model = AdminUserViewModel(
-                user_id=user.user_id,
-                email=user.email,
-                display_name=user.display_name,
-                role=user.role,
-                is_active=user.is_active,
-                created_at=user.created_at,
+                user_id=d["user_id"],
+                email=d["email"],
+                display_name=d["display_name"],
+                role=d.get("role", "learner"),
+                is_active=d["is_active"],
+                joined_at=d.get("last_completed_at", ""),
+                total_words_learned=d.get("total_words_learned", 0),
             )
             logger.info("User updated successfully", extra={"context": {"user_id": user_id}})
             return OperationResult.succeed(view_model)

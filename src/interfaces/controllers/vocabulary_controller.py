@@ -10,6 +10,7 @@ from application.exceptions.vocabulary_errors import (
     VocabularyPersistenceError,
 )
 from application.use_cases.vocabulary_use_cases import TranslateSentenceUseCase, TranslateVocabularyUseCase
+from domain.exceptions.dictionary_exceptions import WordNotFoundError, DictionaryServiceError
 from interfaces.mapper.vocabulary_mapper import VocabularyMapper
 from interfaces.presenters.http_presenter import HttpPresenter
 from interfaces.view_models.base import OperationResult
@@ -48,6 +49,14 @@ class VocabularyController:
             
             if not result.is_success:
                 error = result.error
+                # Handle Dictionary API errors
+                if isinstance(error, WordNotFoundError):
+                    logger.warning("Word not found in dictionary", extra={"context": {"error": str(error)}})
+                    return OperationResult.fail("Word not found in dictionary", "WORD_NOT_FOUND")
+                if isinstance(error, DictionaryServiceError):
+                    logger.error("Dictionary service error", extra={"context": {"error": str(error)}})
+                    return OperationResult.fail("Dictionary service temporarily unavailable", "DICTIONARY_SERVICE_ERROR")
+                # Handle legacy errors
                 if isinstance(error, VocabularyNotFoundError):
                     logger.warning("Vocabulary not found", extra={"context": {"error": str(error)}})
                     return OperationResult.fail(str(error), "NOT_FOUND")
@@ -59,10 +68,7 @@ class VocabularyController:
             
             # Chuyển đổi Response DTO → View Model
             response = result.value
-            view_model = VocabularyTranslationViewModel(
-                word=response.word,
-                translation_vi=response.translation_vi,
-            )
+            view_model = VocabularyMapper.response_to_view_model(response)
             
             logger.info("Translation successful")
             return OperationResult.succeed(view_model)

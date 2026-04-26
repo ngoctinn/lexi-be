@@ -51,7 +51,7 @@ class FlashCardController:
             view_model = FlashcardViewModel(
                 flashcard_id=response.flashcard_id,
                 word=response.word,
-                meaning=response.definition_vi,
+                meaning=response.translation_vi,
                 example=response.example_sentence,
                 created_at=response.created_at,
             )

@@ -1,6 +1,7 @@
 """Flashcard Use Cases - Consolidated from individual files."""
 
 from typing import List, Optional
+from datetime import datetime, timezone
 from ulid import ULID
 from application.dtos.flashcard_dtos import CreateFlashCardCommand, CreateFlashCardResponse
 from application.repositories.flash_card_repository import FlashCardRepository
@@ -37,7 +38,6 @@ class CreateFlashCardUseCase:
                 user_id=command.user_id,
                 word=command.vocab,
                 translation_vi=command.translation_vi or "",
-                definition_vi=command.definition_vi,
                 phonetic=command.phonetic or "",
                 audio_url=command.audio_url or "",
                 example_sentence=command.example_sentence or "",
@@ -57,7 +57,11 @@ class CreateFlashCardUseCase:
         response = CreateFlashCardResponse(
             flashcard_id=flashcard.flashcard_id,
             word=flashcard.word,
-            message="Tạo thẻ từ vựng thành công."
+            translation_vi=flashcard.translation_vi,
+            phonetic=flashcard.phonetic,
+            audio_url=flashcard.audio_url,
+            example_sentence=flashcard.example_sentence,
+            created_at=datetime.now(timezone.utc).isoformat(),
         )
         return Result.success(response)
 

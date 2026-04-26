@@ -19,4 +19,7 @@ PyJWT[crypto]>=2.8.0
 # Docs: https://github.com/awslabs/amazon-transcribe-streaming-sdk
 # New SDK: https://github.com/awslabs/aws-sdk-python (experimental)
 amazon-transcribe>=0.6.2
+# Simplemma for dictionary-based lemmatization (phrasal verb detection)
+# Pure Python, no ML models, ~67MB package size
+simplemma==1.1.2
 

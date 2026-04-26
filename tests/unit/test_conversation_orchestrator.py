@@ -1,7 +1,7 @@
 """Tests for ConversationOrchestrator."""
 
 import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, MagicMock, patch
 from src.domain.services.conversation_orchestrator import (
     ConversationOrchestrator,
     ConversationGenerationRequest,
@@ -21,11 +21,9 @@ class TestConversationOrchestrator:
         """Create mock services."""
         return {
             "model_router": Mock(),
-            "prompt_builder": Mock(),
             "streaming_response": Mock(),
             "response_validator": Mock(),
             "metrics_logger": Mock(),
-            "scaffolding_system": Mock(),
         }
     
     @pytest.fixture
@@ -33,11 +31,9 @@ class TestConversationOrchestrator:
         """Create orchestrator with mocks."""
         return ConversationOrchestrator(
             model_router=mock_services["model_router"],
-            prompt_builder=mock_services["prompt_builder"],
             streaming_response=mock_services["streaming_response"],
             response_validator=mock_services["response_validator"],
             metrics_logger=mock_services["metrics_logger"],
-            scaffolding_system=mock_services["scaffolding_system"],
         )
     
     @pytest.fixture
@@ -71,9 +67,7 @@ class TestConversationOrchestrator:
         mock_routing.fallback_model = "amazon.nova-lite-v1:0"
         mock_routing.max_tokens = 40
         mock_routing.temperature = 0.7
-        mock_services["model_router"].route.return_value = mock_routing
-        
-        mock_services["prompt_builder"].build_optimized_prompt.return_value = "System prompt"
+        mock_services["model_router"].get_config.return_value = mock_routing
         
         mock_services["streaming_response"].invoke_with_streaming.return_value = {
             "text": "Hello! How are you? [warmly]",
@@ -83,18 +77,22 @@ class TestConversationOrchestrator:
             "output_tokens": 20,
         }
         
-        mock_services["response_validator"].validate.return_value = True
+        mock_validation = Mock()
+        mock_validation.is_valid = True
+        mock_services["response_validator"].validate.return_value = mock_validation
         mock_services["metrics_logger"]._calculate_cost.return_value = 0.008
         mock_services["metrics_logger"].create_metrics.return_value = Mock()
         
-        # Execute
-        request = ConversationGenerationRequest(
-            session=sample_session,
-            user_turn=sample_user_turn,
-            turn_history=[],
-        )
-        
-        response = orchestrator.generate_response(request)
+        # Mock OptimizedPromptBuilder.build()
+        with patch('src.domain.services.conversation_orchestrator.OptimizedPromptBuilder.build', return_value="System prompt"):
+            # Execute
+            request = ConversationGenerationRequest(
+                session=sample_session,
+                user_turn=sample_user_turn,
+                turn_history=[],
+            )
+            
+            response = orchestrator.generate_response(request)
         
         # Verify
         assert isinstance(response, ConversationGenerationResponse)
@@ -115,34 +113,27 @@ class TestConversationOrchestrator:
         mock_routing.fallback_model = "amazon.nova-lite-v1:0"
         mock_routing.max_tokens = 40
         mock_routing.temperature = 0.7
-        mock_services["model_router"].route.return_value = mock_routing
-        
-        mock_services["prompt_builder"].build_optimized_prompt.return_value = "System prompt"
+        mock_services["model_router"].get_config.return_value = mock_routing
         
         # Primary fails
-        mock_services["streaming_response"].invoke_with_streaming.side_effect = [
-            Exception("Timeout"),
-            {
-                "text": "Thanks for asking!",
-                "ttft_ms": 400.0,
-                "latency_ms": 2000.0,
-                "input_tokens": 100,
-                "output_tokens": 15,
-            }
-        ]
+        mock_services["streaming_response"].invoke_with_streaming.side_effect = Exception("Timeout")
         
-        mock_services["response_validator"].validate.return_value = True
+        mock_validation = Mock()
+        mock_validation.is_valid = True
+        mock_services["response_validator"].validate.return_value = mock_validation
         mock_services["metrics_logger"]._calculate_cost.return_value = 0.015
         mock_services["metrics_logger"].create_metrics.return_value = Mock()
         
-        # Execute
-        request = ConversationGenerationRequest(
-            session=sample_session,
-            user_turn=sample_user_turn,
-            turn_history=[],
-        )
-        
-        response = orchestrator.generate_response(request)
+        # Mock OptimizedPromptBuilder.build()
+        with patch('src.domain.services.conversation_orchestrator.OptimizedPromptBuilder.build', return_value="System prompt"):
+            # Execute
+            request = ConversationGenerationRequest(
+                session=sample_session,
+                user_turn=sample_user_turn,
+                turn_history=[],
+            )
+            
+            response = orchestrator.generate_response(request)
         
         # Verify fallback was used
         assert response.model_source == "fallback"
@@ -182,11 +173,9 @@ class TestConversationOrchestrator:
         mock_routing.fallback_model = "amazon.nova-lite-v1:0"
         mock_routing.max_tokens = 40
         mock_routing.temperature = 0.7
-        mock_services["model_router"].route.return_value = mock_routing
+        mock_services["model_router"].get_config.return_value = mock_routing
         
-        mock_services["prompt_builder"].build_optimized_prompt.return_value = "System prompt"
-        
-        # Primary succeeds but validation fails
+        # Primary succeeds but validation fails, then fallback succeeds
         mock_services["streaming_response"].invoke_with_streaming.side_effect = [
             {
                 "text": "Too short",
@@ -205,18 +194,24 @@ class TestConversationOrchestrator:
         ]
         
         # Validation fails for primary, passes for fallback
-        mock_services["response_validator"].validate.side_effect = [False, True]
+        mock_validation_fail = Mock()
+        mock_validation_fail.is_valid = False
+        mock_validation_pass = Mock()
+        mock_validation_pass.is_valid = True
+        mock_services["response_validator"].validate.side_effect = [mock_validation_fail, mock_validation_pass]
         mock_services["metrics_logger"]._calculate_cost.return_value = 0.015
         mock_services["metrics_logger"].create_metrics.return_value = Mock()
         
-        # Execute
-        request = ConversationGenerationRequest(
-            session=sample_session,
-            user_turn=sample_user_turn,
-            turn_history=[],
-        )
-        
-        response = orchestrator.generate_response(request)
+        # Mock OptimizedPromptBuilder.build()
+        with patch('src.domain.services.conversation_orchestrator.OptimizedPromptBuilder.build', return_value="System prompt"):
+            # Execute
+            request = ConversationGenerationRequest(
+                session=sample_session,
+                user_turn=sample_user_turn,
+                turn_history=[],
+            )
+            
+            response = orchestrator.generate_response(request)
         
         # Verify fallback was triggered
         assert response.model_source == "fallback"
@@ -231,9 +226,8 @@ class TestConversationOrchestrator:
         mock_routing.fallback_model = "amazon.nova-lite-v1:0"
         mock_routing.max_tokens = 40
         mock_routing.temperature = 0.7
-        mock_services["model_router"].route.return_value = mock_routing
+        mock_services["model_router"].get_config.return_value = mock_routing
         
-        mock_services["prompt_builder"].build_optimized_prompt.return_value = "System prompt"
         mock_services["streaming_response"].invoke_with_streaming.return_value = {
             "text": "Hello!",
             "ttft_ms": 350.0,
@@ -241,18 +235,22 @@ class TestConversationOrchestrator:
             "input_tokens": 100,
             "output_tokens": 5,
         }
-        mock_services["response_validator"].validate.return_value = True
+        mock_validation = Mock()
+        mock_validation.is_valid = True
+        mock_services["response_validator"].validate.return_value = mock_validation
         mock_services["metrics_logger"]._calculate_cost.return_value = 0.005
         mock_services["metrics_logger"].create_metrics.return_value = Mock()
         
-        # Execute
-        request = ConversationGenerationRequest(
-            session=sample_session,
-            user_turn=sample_user_turn,
-            turn_history=[],
-        )
-        
-        orchestrator.generate_response(request)
+        # Mock OptimizedPromptBuilder.build()
+        with patch('src.domain.services.conversation_orchestrator.OptimizedPromptBuilder.build', return_value="System prompt"):
+            # Execute
+            request = ConversationGenerationRequest(
+                session=sample_session,
+                user_turn=sample_user_turn,
+                turn_history=[],
+            )
+            
+            orchestrator.generate_response(request)
         
         # Verify metrics were logged
         mock_services["metrics_logger"].create_metrics.assert_called_once()

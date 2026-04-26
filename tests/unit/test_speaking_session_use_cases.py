@@ -174,7 +174,7 @@ def test_create_speaking_session_persists_assignment_and_prompt_snapshot():
             ai_role_id="Barista",
             ai_gender="female",
             level="B1",
-            selected_goals=["Chọn đồ uống"],
+            selected_goal="Chọn đồ uống",
             prompt_snapshot="client should be ignored",
         )
     )
@@ -196,7 +196,7 @@ def test_create_speaking_session_persists_assignment_and_prompt_snapshot():
         scenario_title="Gọi cà phê",
         learner_role="Khách hàng",
         ai_role="Barista",
-        selected_goals=["Chọn đồ uống"],
+        selected_goal="Chọn đồ uống",
         ai_gender="female"
     )
     
@@ -220,7 +220,7 @@ def test_submit_turn_saves_user_and_ai_turns_and_updates_session_counts():
         ai_role_id="barista",
         ai_gender=Gender.FEMALE,
         level=ProficiencyLevel.B1,
-        selected_goals=["order drink"],
+        selected_goal="order drink",
         prompt_snapshot="Scenario: cafe",
     )
     session_repo = FakeSessionRepository(session)
@@ -289,7 +289,7 @@ def test_create_speaking_session_handles_greeting_generation_failure():
             ai_role_id="Waiter",
             ai_gender="male",
             level="A1",
-            selected_goals=["Order food"],
+            selected_goal="Order food",
             prompt_snapshot="ignored",
         )
     )
@@ -350,7 +350,7 @@ def test_create_speaking_session_handles_speech_synthesis_failure():
             ai_role_id="Waiter",
             ai_gender="male",
             level="A1",
-            selected_goals=["Order food"],
+            selected_goal="Order food",
             prompt_snapshot="ignored",
         )
     )
@@ -370,7 +370,7 @@ def test_create_speaking_session_handles_speech_synthesis_failure():
         ai_role_id="barista",
         ai_gender=Gender.FEMALE,
         level=ProficiencyLevel.B1,
-        selected_goals=["order drink"],
+        selected_goal="order drink",
         prompt_snapshot="Scenario: cafe",
         total_turns=2,
         user_turns=1,

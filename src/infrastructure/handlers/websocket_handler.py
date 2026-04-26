@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 import boto3
 from botocore.exceptions import ClientError
+from botocore.config import Config
 from jwt import InvalidTokenError, PyJWKClient, decode
 
 from application.dtos.speaking_session_dtos import (
@@ -36,6 +37,23 @@ from shared.utils.ulid_util import new_ulid
 from shared.http_utils import dumps
 
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# AWS Best Practice: Initialize SDK clients outside handler (module-level)
+# Reference: https://docs.aws.amazon.com/amazonq/detector-library/python/lambda-client-reuse/
+# ============================================================================
+
+# Configure retry with exponential backoff + jitter (AWS recommended)
+_RETRY_CONFIG = Config(
+    retries={
+        "max_attempts": 3,  # Total attempts (1 initial + 2 retries)
+        "mode": "adaptive",  # Exponential backoff with jitter
+    }
+)
+
+# Module-level Bedrock client (reused across Lambda invocations)
+# Region is automatically set from AWS_REGION environment variable in Lambda
+_bedrock_client = boto3.client("bedrock-runtime", config=_RETRY_CONFIG)
 
 
 def _response(status: int, body: dict[str, Any]) -> dict[str, Any]:
@@ -195,7 +213,6 @@ class WebSocketSessionController:
     build_upload_payload: Callable[[str], tuple[str, str]]
     send_message: Callable[[dict[str, Any]], None]
     verify_token: Callable[[str], dict[str, Any]]
-    structured_hint_generator: Any = None  # Optional: StructuredHintGenerator for enhanced hints
 
     def connect(self, session_id: str, token: str, connection_id: str) -> dict[str, Any]:
         print(f"[ws] connect() called: session_id={session_id} token_len={len(token) if token else 0} connection_id={connection_id}")
@@ -336,98 +353,163 @@ class WebSocketSessionController:
     def use_hint(self, session_id: str, connection_id: str) -> dict[str, Any]:
         session = self._get_session(session_id)
         if not session:
+            logger.warning(f"Session not found: {session_id}")
             return _response(404, {"message": "Session không tồn tại."})
 
         self._sync_connection(session, connection_id)
-        turns = self.turn_repo.list_by_session(session_id)
         
-        # Try structured hint generation if generator is available
-        if self.structured_hint_generator:
-            try:
-                from domain.value_objects.enums import Speaker as SpeakerEnum
-                
-                # Find last AI turn
-                last_ai_turn = next(
-                    (t for t in reversed(turns) if (t.speaker.value if hasattr(t.speaker, "value") else t.speaker) == SpeakerEnum.AI.value),
-                    None,
-                )
-                
-                # Generate structured hint
-                structured_hint = self.structured_hint_generator.generate(
-                    session=session,
-                    last_ai_turn=last_ai_turn,
-                    turn_history=turns,
-                )
-                
-                # Send structured hint object
+        # Use StructuredHintGenerator for ALL levels (A1-C2)
+        try:
+            logger.info(f"Generating hint for session: {session_id}")
+            turns = self.turn_repo.list_by_session(session_id)
+            logger.info(f"Found {len(turns)} turns for session {session_id}")
+            
+            # Extract last AI message (what learner needs to respond to)
+            from domain.value_objects.enums import Speaker as SpeakerEnum
+            ai_turns = [t for t in turns if (t.speaker.value if hasattr(t.speaker, "value") else t.speaker) == SpeakerEnum.AI.value]
+            last_ai_turn = ai_turns[-1] if ai_turns else None
+            
+            if last_ai_turn:
+                logger.info(f"Last AI turn content: {last_ai_turn.content[:100]}...")
+            else:
+                logger.warning("No AI turns found")
+            
+            # Generate structured hint using LLM
+            from domain.services.structured_hint_generator import StructuredHintGenerator
+            hint_generator = StructuredHintGenerator(_bedrock_client)
+            
+            logger.info("Calling hint generator...")
+            hint = hint_generator.generate(
+                session=session,
+                last_ai_turn=last_ai_turn,
+                turn_history=turns,
+            )
+            logger.info(f"Hint generated successfully: {hint.type if hint else 'None'}")
+            
+            if hint:
                 try:
-                    self.send_message({"event": "HINT_TEXT", "hint": structured_hint.to_dict()})
+                    self.send_message({"event": "HINT_TEXT", "hint": hint.to_dict()})
                 except Exception as exc:
                     print(f"[ws] Failed to send structured hint: {exc}")
                     return _response(500, {"message": "Lỗi gửi gợi ý."})
                 
                 return _response(200, {"message": "Hint sent"})
-                
-            except Exception as e:
-                logger.warning(
-                    f"Failed to generate structured hint: {e}",
-                    extra={"session_id": session_id, "error": str(e)}
-                )
-                # Fall through to simple hint fallback
-        
-        # Fallback to simple hint format (backward compatibility)
-        hint = self._generate_contextual_hint(session, turns)
-        try:
-            self.send_message({"event": "HINT_TEXT", "hint": hint})
-        except Exception as exc:
-            print(f"[ws] Failed to send hint: {exc}")
-            return _response(500, {"message": "Lỗi gửi gợi ý."})
-        return _response(200, {"message": "Hint sent"})
-
-    def _generate_contextual_hint(self, session: Session, turns: list) -> str:
-        """Tạo hint có ngữ cảnh dùng Bedrock LLM (Amazon Nova Micro)."""
-        from domain.value_objects.enums import Speaker as SpeakerEnum
-        last_ai = next(
-            (t for t in reversed(turns) if (t.speaker.value if hasattr(t.speaker, "value") else t.speaker) == SpeakerEnum.AI.value),
-            None,
-        )
-        goal = session.selected_goals[0] if session.selected_goals else "continue the conversation"
-        level = session.level.value if hasattr(session.level, "value") else str(session.level)
-
-        hint_prompt = (
-            f"The learner is stuck in an English conversation. "
-            f"Last AI message: '{last_ai.content if last_ai else 'Start of conversation'}'. "
-            f"Current goal: {goal}. Learner level: {level}. "
-            f"Give a 1-sentence hint starting with 'You could say:' using simple English appropriate for {level}."
-        )
-
-        try:
-            import boto3
-            bedrock = boto3.client("bedrock-runtime")
-            # Amazon Nova format (per AWS docs: https://docs.aws.amazon.com/nova/latest/userguide/complete-request-schema.html)
-            body = dumps({
-                "system": [{"text": "You are a helpful English tutor providing hints to learners."}],
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [{"text": hint_prompt}]
+            else:
+                # Fallback: send empty hint with correct structure
+                fallback_hint = {
+                    "markdown": {
+                        "vi": "💡 Không có gợi ý nào khả dụng lúc này. Vui lòng thử lại sau.",
+                        "en": "💡 No hint available at this moment. Please try again later.",
                     }
-                ],
-                "inferenceConfig": {
-                    "maxTokens": 60,
-                    "temperature": 0.5
                 }
-            })
-            response = bedrock.invoke_model(
-                modelId="apac.amazon.nova-micro-v1:0",  # Use inference profile for APAC regions
-                body=body,
-            )
-            result = json.loads(response["body"].read())
-            # Nova response format: {"output": {"message": {"content": [{"text": "..."}]}}}
-            return result["output"]["message"]["content"][0]["text"].strip()
+                try:
+                    self.send_message({"event": "HINT_TEXT", "hint": fallback_hint})
+                except Exception as exc:
+                    print(f"[ws] Failed to send fallback hint: {exc}")
+                return _response(200, {"message": "No hint available"})
+                
         except Exception as e:
-            print(f"[ws] Hint generation failed: {e}")
-            return f"You could say something about: {goal}"
+            logger.error(
+                f"Failed to generate hint: {e}",
+                extra={"session_id": session_id, "error": str(e), "error_type": type(e).__name__},
+                exc_info=True  # Include full traceback
+            )
+            # Fallback: send error hint with correct structure
+            fallback_hint = {
+                "markdown": {
+                    "vi": "💡 Hệ thống gợi ý đang gặp sự cố tạm thời. Vui lòng thử lại sau vài giây.",
+                    "en": "💡 Hint system is temporarily unavailable. Please try again in a few seconds.",
+                }
+            }
+            try:
+                self.send_message({"event": "HINT_TEXT", "hint": fallback_hint})
+            except Exception as exc:
+                print(f"[ws] Failed to send error hint: {exc}")
+            return _response(500, {"message": "Lỗi tạo gợi ý."})
+
+    def analyze_turn(self, session_id: str, turn_index: int, connection_id: str) -> dict[str, Any]:
+        """Analyze a specific turn for formative assessment."""
+        session = self._get_session(session_id)
+        if not session:
+            return _response(404, {"message": "Session không tồn tại."})
+
+        self._sync_connection(session, connection_id)
+        
+        try:
+            # Get turns for this session
+            turns = self.turn_repo.list_by_session(session_id)
+            
+            # Find the requested turn (learner's message)
+            from domain.value_objects.enums import Speaker as SpeakerEnum
+            learner_turn = None
+            ai_turn = None
+            
+            for turn in turns:
+                speaker_val = turn.speaker.value if hasattr(turn.speaker, "value") else turn.speaker
+                if turn.turn_index == turn_index and speaker_val == SpeakerEnum.USER.value:
+                    learner_turn = turn
+                elif turn.turn_index == turn_index and speaker_val == SpeakerEnum.AI.value:
+                    ai_turn = turn
+            
+            if not learner_turn:
+                return _response(404, {"message": "Turn không tồn tại."})
+            
+            # Get AI response (may be None if turn is incomplete)
+            ai_response = ai_turn.content if ai_turn else "No AI response yet"
+            
+            # Analyze turn using ConversationAnalyzer
+            from domain.services.conversation_analyzer import ConversationAnalyzer
+            analyzer = ConversationAnalyzer(bedrock_client=_bedrock_client)
+            
+            level_str = session.level.value if hasattr(session.level, "value") else str(session.level)
+            scenario_context = f"{session.scenario_title or 'Conversation'}"
+            
+            analysis = analyzer.analyze_turn(
+                learner_message=learner_turn.content,
+                ai_response=ai_response,
+                level=level_str,
+                scenario_context=scenario_context,
+            )
+            
+            # Send analysis via WebSocket
+            try:
+                self.send_message({
+                    "event": "TURN_ANALYSIS",
+                    "analysis": {
+                        "markdown": {
+                            "vi": analysis.markdown_vi,
+                            "en": analysis.markdown_en,
+                        }
+                    }
+                })
+            except Exception as exc:
+                print(f"[ws] Failed to send analysis: {exc}")
+                return _response(500, {"message": "Lỗi gửi phân tích."})
+            
+            return _response(200, {"message": "Analysis sent"})
+            
+        except Exception as e:
+            logger.exception(f"Failed to analyze turn: {e}")
+            # Send fallback analysis event to prevent FE timeout
+            fallback_analysis = {
+                "markdown_vi": "## 🎯 Phân tích tạm thời không khả dụng\n\nXin lỗi, hệ thống phân tích đang gặp sự cố. Vui lòng thử lại sau.",
+                "markdown_en": "## 🎯 Analysis Temporarily Unavailable\n\nSorry, the analysis system is experiencing issues. Please try again later.",
+            }
+            try:
+                self.send_message({
+                    "event": "TURN_ANALYSIS",
+                    "analysis": {
+                        "markdown": {
+                            "vi": fallback_analysis["markdown_vi"],
+                            "en": fallback_analysis["markdown_en"],
+                        }
+                    }
+                })
+            except Exception as send_exc:
+                print(f"[ws] Failed to send fallback analysis: {send_exc}")
+            return _response(500, {"message": "Lỗi phân tích turn."})
+
+
 
     def send_message_turn(self, session_id: str, connection_id: str, body: dict[str, Any]) -> dict[str, Any]:
         session = self._get_session(session_id)
@@ -794,11 +876,7 @@ class WebSocketSessionController:
             session.connection_id = connection_id
             self.session_repo.save(session)
 
-    def _build_hint(self, session: Session) -> str:
-        # Kept for backward compatibility — use_hint now calls _generate_contextual_hint
-        if session.selected_goals:
-            return f"Hãy thử nói ngắn gọn về: {session.selected_goals[0]}"
-        return "Hãy trả lời bằng một câu ngắn, rõ ý."
+
 
 
 def _build_upload_payload(session_id: str) -> tuple[str, str]:
@@ -858,11 +936,6 @@ def get_websocket_controller() -> WebSocketSessionController:
     )
     complete_use_case = CompleteSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo, BedrockScorerAdapter())
 
-    # Create StructuredHintGenerator with bedrock client
-    from domain.services.structured_hint_generator import StructuredHintGenerator
-    from infrastructure.services.speaking_pipeline_services import _bedrock_client
-    structured_hint_generator = StructuredHintGenerator(bedrock_client=_bedrock_client)
-
     return WebSocketSessionController(
         session_repo=session_repo,
         turn_repo=turn_repo,
@@ -873,7 +946,6 @@ def get_websocket_controller() -> WebSocketSessionController:
         build_upload_payload=_build_upload_payload,
         send_message=lambda payload: None,
         verify_token=_verify_cognito_jwt,
-        structured_hint_generator=structured_hint_generator,
     )
 
 
@@ -962,6 +1034,11 @@ def handler(event, context):
             return controller.submit_transcript(str(session_id), connection_id, body)
         if action == "USE_HINT":
             return controller.use_hint(str(session_id), connection_id)
+        if action == "ANALYZE_TURN":
+            turn_index = body.get("turn_index")
+            if turn_index is None:
+                return _response(400, {"message": "Missing turn_index"})
+            return controller.analyze_turn(str(session_id), int(turn_index), connection_id)
         if action == "END_SESSION":
             return controller.end_session(str(session_id), connection_id)
         if action == "SEND_MESSAGE":

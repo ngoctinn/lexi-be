@@ -2,32 +2,244 @@
 
 ## Introduction
 
-This feature upgrades the vocabulary translation endpoint to provide comprehensive word information by integrating Dictionary API (https://dictionaryapi.dev/) with AWS Translate. Currently, the system only translates words using AWS Translate. The upgrade will enrich responses with pronunciation (IPA), part of speech, contextual examples, and synonyms—all translated to Vietnamese—enabling learners to understand word usage more deeply.
+Upgrade `/vocabulary/translate` endpoint to fetch word information from Dictionary API (https://dictionaryapi.dev/) and translate to Vietnamese using AWS Translate.
 
-The upgrade maintains backward compatibility with existing endpoints while enhancing the `/vocabulary/translate` endpoint to return richer data structures.
+**Current:** Returns `{ word, translate_vi }`  
+**New:** Returns `{ word, translate_vi, phonetic, audio_url, meanings[] }`
+
+The upgrade maintains backward compatibility with existing clients.
 
 ---
 
 ## Glossary
 
-- **Dictionary_API**: External service at https://dictionaryapi.dev/ that provides English word definitions, pronunciations, examples, and synonyms
-- **AWS_Translate**: AWS service that translates text between languages (English to Vietnamese)
-- **TranslationService**: Port (abstraction) in Clean Architecture that defines translation contract
-- **DictionaryService**: New port that defines contract for fetching word definitions from Dictionary API
-- **TranslateVocabularyUseCase**: Use case that orchestrates vocabulary translation workflow
-- **Word_Definition**: Complete word information including pronunciation, part of speech, definitions, examples, and synonyms
-- **IPA_Phonetic**: International Phonetic Alphabet representation of word pronunciation
-- **Part_of_Speech**: Grammatical category (noun, verb, adjective, adverb, etc.)
-- **Example_Sentence**: Contextual usage of a word in a sentence
-- **Synonym**: Word with similar meaning
-- **Response_Time**: Time from request receipt to response transmission (measured in milliseconds)
-- **Backward_Compatible**: API changes that do not break existing client implementations
+- **Dictionary_API**: External service at https://dictionaryapi.dev/ that provides English word definitions, pronunciations, and examples
+- **AWS_Translate**: AWS service that translates text from English to Vietnamese
+- **Vocabulary**: Domain entity containing word information (word, phonetic, meanings, audio)
+- **Meaning**: Part of speech with definition and example
+- **Response_Time**: Time from request to response (milliseconds)
+
+---
+
+## API Response Structure
+
+```json
+{
+  "word": "hello",
+  "translate_vi": "xin chào",
+  "phonetic": "həˈləʊ",
+  "audio_url": "//ssl.gstatic.com/dictionary/static/sounds/20200429/hello--_gb_1.mp3",
+  "meanings": [
+    {
+      "part_of_speech": "exclamation",
+      "definition": "used as a greeting or to begin a phone conversation",
+      "definition_vi": "được dùng để chào hỏi hoặc bắt đầu cuộc gọi điện thoại",
+      "example": "hello there, Katie!",
+      "example_vi": "xin chào Katie!"
+    },
+    {
+      "part_of_speech": "noun",
+      "definition": "an utterance of 'hello'; a greeting",
+      "definition_vi": "lời chào",
+      "example": "she was getting polite nods and hellos from people",
+      "example_vi": "cô ấy nhận được những cái gật đầu lịch sự và lời chào từ mọi người"
+    }
+  ]
+}
+```
 
 ---
 
 ## Requirements
 
 ### Requirement 1: Fetch Word Definitions from Dictionary API
+
+**User Story:** As a learner, I want to see word pronunciation, definitions, and examples, so I can understand how to use the word correctly.
+
+#### Acceptance Criteria
+
+1. WHEN a valid English word is requested via POST `/vocabulary/translate`, THE system SHALL fetch word data from Dictionary API endpoint `https://api.dictionaryapi.dev/api/v2/entries/en/{word}`
+
+2. WHEN Dictionary API returns HTTP 200, THE system SHALL extract:
+   - `word` (string)
+   - `phonetic` (string) - primary phonetic from top-level field
+   - `audio_url` (string) - first audio URL from `phonetics[0].audio`
+   - `meanings` (array) - ALL meanings from response
+
+3. FOR EACH meaning, THE system SHALL extract:
+   - `part_of_speech` (string) - from `meanings[i].partOfSpeech`
+   - `definition` (string) - FIRST definition only from `meanings[i].definitions[0].definition`
+   - `example` (string, optional) - FIRST example only from `meanings[i].definitions[0].example`
+
+4. WHEN Dictionary API returns HTTP 404 (word not found), THE system SHALL return HTTP 404 with error message "Word not found"
+
+5. WHEN Dictionary API is unavailable or returns HTTP 5xx, THE system SHALL return HTTP 503 with error message "Dictionary service temporarily unavailable"
+
+6. WHEN Dictionary API response exceeds 30 seconds, THE system SHALL timeout and return HTTP 503
+
+7. THE system SHALL implement exponential backoff retry with maximum 2 retries for transient failures (HTTP 429, 5xx):
+   - First retry: 1 second delay
+   - Second retry: 2 seconds delay
+
+---
+
+### Requirement 2: Translate Definitions and Examples to Vietnamese
+
+**User Story:** As a learner, I want definitions and examples in Vietnamese, so I can understand the meaning in my native language.
+
+#### Acceptance Criteria
+
+1. WHEN word data is retrieved from Dictionary API, THE system SHALL translate using AWS Translate:
+   - Word → `translate_vi`
+   - Each `definition` → `definition_vi`
+   - Each `example` → `example_vi` (if example exists)
+
+2. WHEN AWS Translate translation succeeds, THE system SHALL include both English and Vietnamese text in response
+
+3. WHEN AWS Translate translation fails, THE system SHALL return empty string for `*_vi` fields and continue (graceful degradation)
+
+4. WHEN translating multiple items, THE system SHALL batch translate them in a single AWS Translate call to optimize performance
+
+5. THE system SHALL complete the entire workflow (fetch + translate) within 2000 milliseconds
+
+---
+
+### Requirement 3: Return Enriched Vocabulary Response
+
+**User Story:** As a learner, I want to receive complete word information in a single response, so I can learn effectively.
+
+#### Acceptance Criteria
+
+1. WHEN POST `/vocabulary/translate` is called with a valid word, THE API SHALL return HTTP 200 with response containing:
+   - `word` (string) - original English word
+   - `translate_vi` (string) - Vietnamese translation
+   - `phonetic` (string) - IPA notation
+   - `audio_url` (string, optional) - pronunciation audio URL
+   - `meanings` (array) - all meanings with translations
+
+2. EACH meaning in `meanings` array SHALL contain:
+   - `part_of_speech` (string)
+   - `definition` (string) - English definition
+   - `definition_vi` (string) - Vietnamese translation
+   - `example` (string, optional) - English example
+   - `example_vi` (string, optional) - Vietnamese translation
+
+3. WHEN a meaning has no example, THE `example` and `example_vi` fields SHALL be empty strings
+
+4. WHEN audio is not available, THE `audio_url` field SHALL be null or empty string
+
+5. THE response SHALL maintain backward compatibility by including `word` and `translate_vi` at top level
+
+---
+
+### Requirement 4: Handle Dictionary API Errors Gracefully
+
+**User Story:** As a system, I want to handle errors gracefully, so users receive clear error messages.
+
+#### Acceptance Criteria
+
+1. WHEN Dictionary API returns HTTP 404 (word not found), THE API SHALL return HTTP 404 with error response:
+   ```json
+   {
+     "success": false,
+     "message": "Word not found in dictionary",
+     "error": "WORD_NOT_FOUND"
+   }
+   ```
+
+2. WHEN Dictionary API is unavailable (HTTP 5xx or timeout), THE API SHALL return HTTP 503 with error response:
+   ```json
+   {
+     "success": false,
+     "message": "Dictionary service temporarily unavailable",
+     "error": "DICTIONARY_SERVICE_ERROR"
+   }
+   ```
+
+3. WHEN Dictionary API returns rate limit error (HTTP 429), THE system SHALL retry with exponential backoff (1s, 2s) before returning error
+
+4. WHEN AWS Translate fails but Dictionary API succeeds, THE API SHALL return HTTP 200 with word data and empty strings for untranslated fields
+
+5. WHEN both Dictionary API and AWS Translate fail, THE API SHALL return HTTP 503
+
+---
+
+### Requirement 5: Maintain Backward Compatibility
+
+**User Story:** As an existing client, I want the API to continue working, so I don't need to update my code.
+
+#### Acceptance Criteria
+
+1. THE POST `/vocabulary/translate` endpoint SHALL accept the same request format:
+   ```json
+   {
+     "word": "hello"
+   }
+   ```
+
+2. THE response SHALL include `word` and `translate_vi` fields at top level with same data types
+
+3. THE response SHALL include new fields (`phonetic`, `audio_url`, `meanings`) that existing clients can safely ignore
+
+4. WHEN an existing client only reads `word` and `translate_vi` fields, THE API SHALL function correctly without requiring code changes
+
+5. THE POST `/vocabulary/translate-sentence` endpoint SHALL remain unchanged
+
+---
+
+### Requirement 6: Implement Caching for Performance
+
+**User Story:** As a system, I want to cache responses, so repeated requests are fast.
+
+#### Acceptance Criteria
+
+1. THE system SHALL implement two-tier caching:
+   - In-memory cache for Lambda warm starts
+   - DynamoDB fallback for persistent caching across invocations
+
+2. THE system SHALL cache successful Dictionary API responses for 24 hours
+
+3. THE cache key format SHALL be: `vocabulary:definition:{word_lowercase}`
+
+4. WHEN a word is cached, THE response time SHALL be less than 500 milliseconds
+
+5. WHEN cache storage fails, THE system SHALL continue without caching (graceful degradation)
+
+6. THE system SHALL log cache hits and misses for monitoring
+
+---
+
+### Requirement 7: Performance and Response Time
+
+**User Story:** As a learner, I want fast responses, so the learning experience is smooth.
+
+#### Acceptance Criteria
+
+1. THE POST `/vocabulary/translate` endpoint SHALL return response within 2000 milliseconds for 95% of requests (non-cached)
+
+2. WHEN a word is cached, THE response time SHALL be less than 500 milliseconds
+
+3. THE system SHALL log response times for all requests for performance monitoring
+
+---
+
+### Requirement 8: Error Handling and Logging
+
+**User Story:** As an operator, I want comprehensive logging, so I can debug issues and monitor system health.
+
+#### Acceptance Criteria
+
+1. THE system SHALL log all Dictionary API calls with: word, response status, response time, error details (if any)
+
+2. THE system SHALL log all translation operations with: word, translation status, error details (if any)
+
+3. WHEN an error occurs, THE system SHALL include error code and descriptive message in response
+
+4. THE system SHALL NOT log sensitive user data (user IDs, authentication tokens)
+
+5. ALL errors from external services SHALL be caught and converted to appropriate HTTP status codes
+
+---
 
 **User Story:** As a learner, I want to see comprehensive word information (pronunciation, part of speech, examples), so that I can understand how to use the word correctly in context.
 

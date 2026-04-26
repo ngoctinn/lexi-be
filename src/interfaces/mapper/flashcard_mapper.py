@@ -15,7 +15,7 @@ class FlashCardMapper:
         {
             "vocab": "word or phrase",
             "vocab_type": "noun|verb|adj|...",
-            "definition_vi": "Nghĩa tiếng Việt",
+            "translation_vi": "Nghĩa tiếng Việt",
             "phonetic": "Phiên âm (optional)",
             "audio_url": "URL audio (optional)",
             "example_sentence": "Câu ví dụ (optional)",
@@ -29,7 +29,6 @@ class FlashCardMapper:
             vocab=body.get("vocab", ""),
             vocab_type=body.get("vocab_type", "noun"),
             translation_vi=body.get("translation_vi", ""),
-            definition_vi=body.get("definition_vi", ""),
             phonetic=body.get("phonetic", ""),
             audio_url=body.get("audio_url", ""),
             example_sentence=body.get("example_sentence", ""),

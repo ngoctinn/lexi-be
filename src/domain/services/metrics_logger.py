@@ -167,6 +167,10 @@ class MetricsLogger:
         cache_write_tokens: int = 0,
         quality_metrics: Optional[QualityMetrics] = None,
         hint_metrics: Optional[HintMetrics] = None,
+        # Enhanced context (Fix #7)
+        user_utterance_length: int = 0,
+        turn_count: int = 0,
+        selected_goals: Optional[list[str]] = None,
     ) -> ConversationMetrics:
         """
         Create metrics object for a conversation turn.
@@ -190,6 +194,9 @@ class MetricsLogger:
             cache_write_tokens: Tokens written to cache
             quality_metrics: QualityMetrics object (optional)
             hint_metrics: HintMetrics object (optional)
+            user_utterance_length: Length of user utterance (Fix #7)
+            turn_count: Total turn count in session (Fix #7)
+            selected_goals: Selected learning goals (Fix #7)
             
         Returns:
             ConversationMetrics object

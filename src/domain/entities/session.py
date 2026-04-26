@@ -18,7 +18,7 @@ class Session:
     ai_role_id: str = ""             # Vai AI đã nhận trong session
     ai_gender: Gender = Gender.FEMALE # Giới tính của giọng nói AI
     level: ProficiencyLevel = ProficiencyLevel.B1 # Trình độ ngoại ngữ của session
-    selected_goals: list[str] = field(default_factory=list)
+    selected_goal: str = ""          # Mục tiêu học tập được chọn cho session này
     # Snapshot: final built prompt used to run the session (serialize as plain string)
     prompt_snapshot: str = ""      # Lưu prompt hoàn chỉnh để replay/debug
     status: str = "ACTIVE"         # Trạng thái phiên học
@@ -45,7 +45,6 @@ class Session:
     def __post_init__(self):
         if not self.user_id or not self.scenario_id:
             raise ValueError("user_id và scenario_id là bắt buộc để mở Session")
-        self.selected_goals = list(self.selected_goals) if self.selected_goals is not None else []
 
     def increment_turns(self, is_user: bool = True):
         """Ghi nhận lượt thoại mới vào session."""

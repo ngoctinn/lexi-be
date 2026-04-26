@@ -39,7 +39,7 @@ CREATE_RESP=$(curl -s -X POST "$API_URL/sessions" \
     "ai_role_id": "waiter",
     "ai_gender": "female",
     "level": "B1",
-    "selected_goals": ["order food"]
+    "selected_goal": "order food"
   }')
 
 SESSION_ID=$(echo "$CREATE_RESP" | jq -r '.data.session_id // .session_id')

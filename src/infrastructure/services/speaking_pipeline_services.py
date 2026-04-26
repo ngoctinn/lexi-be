@@ -75,22 +75,18 @@ def _build_llm_system_prompt(session: Session) -> list[dict]:
     """
     level = _enum_value(session.level)
     
-    # Get cache-optimized prompt split
-    static_prefix, dynamic_suffix = OptimizedPromptBuilder.build_with_cache_split(
+    # Build prompt (Nova auto-caches static prefix)
+    prompt = OptimizedPromptBuilder.build(
         scenario_title=session.scenario_title,
         learner_role=session.learner_role_id,
         ai_role=session.ai_role_id,
         level=level,
-        selected_goals=session.selected_goals,
+        selected_goal=session.selected_goal,
         ai_gender=_enum_value(session.ai_gender),
     )
     
-    # Return as list of system content blocks
-    # Per AWS docs: system is list of {"text": "string"} objects
-    return [
-        {"text": static_prefix},
-        {"text": dynamic_suffix}
-    ]
+    # Return as list of system content blocks (Nova format)
+    return [{"text": prompt}]
 
 
 def _build_messages_for_llm(turns: List[Turn]) -> List[dict]:
@@ -207,7 +203,7 @@ class RuleBasedConversationGenerationService(ConversationGenerationService):
         turn_history: List[Turn],
     ) -> str:
         topic = analysis.key_phrases[0] if analysis.key_phrases else "that idea"
-        goal = session.selected_goals[0] if session.selected_goals else "the task"
+        goal = session.selected_goal if session.selected_goal else "the task"
         level = _enum_value(session.level)
 
         if level in {ProficiencyLevel.A1.value, ProficiencyLevel.A2.value}:

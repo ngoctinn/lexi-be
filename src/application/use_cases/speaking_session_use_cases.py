@@ -67,7 +67,7 @@ def _scenario_roles(scenario: Scenario) -> list[str]:
 
 
 def _get_scenario_keywords(scenario_title: str) -> list[str]:
-    """Get keywords for scenario (reuse from OffTopicDetector).
+    """Get keywords for scenario.
     
     Args:
         scenario_title: Scenario title
@@ -75,9 +75,31 @@ def _get_scenario_keywords(scenario_title: str) -> list[str]:
     Returns:
         List of keywords for scenario
     """
-    from domain.services.off_topic_detector import OffTopicDetector
-    detector = OffTopicDetector()
-    return detector._get_scenario_keywords(scenario_title)
+    # Scenario vocabulary mappings (A1-A2 level)
+    SCENARIO_KEYWORDS = {
+        "Restaurant": [
+            "food", "menu", "order", "waiter", "table", "reservation",
+            "bill", "tip", "delicious", "hungry", "thirsty", "drink",
+            "breakfast", "lunch", "dinner", "dessert", "appetizer",
+        ],
+        "Airport": [
+            "flight", "gate", "boarding", "passport", "luggage", "baggage",
+            "check-in", "security", "departure", "arrival", "ticket", "delay",
+            "terminal", "customs", "immigration",
+        ],
+        "Hotel": [
+            "room", "reservation", "check-in", "check-out", "key", "lobby",
+            "reception", "bed", "bathroom", "towel", "wifi", "breakfast",
+            "elevator", "floor", "night", "stay",
+        ],
+        "Shopping": [
+            "buy", "price", "expensive", "cheap", "discount", "sale",
+            "size", "color", "try", "fitting room", "cash", "card",
+            "receipt", "return", "exchange", "store",
+        ],
+    }
+    
+    return SCENARIO_KEYWORDS.get(scenario_title, [])
 
 
 def _extract_scaffolding_context(
@@ -106,7 +128,7 @@ def _extract_scaffolding_context(
         "scenario_title": scenario.scenario_title,
         "scenario_vocabulary": scenario_vocabulary,
         "last_utterance": last_utterance,
-        "conversation_goals": list(session.selected_goals),
+        "conversation_goal": session.selected_goal,
     }
 
 
@@ -154,7 +176,7 @@ def _session_to_response(
         ai_gender=_enum_value(session.ai_gender),
         level=_enum_value(session.level),
         prompt_snapshot=session.prompt_snapshot,
-        selected_goals=list(session.selected_goals),
+        selected_goal=session.selected_goal,
         total_turns=session.total_turns,
         user_turns=session.user_turns,
         hint_used_count=session.hint_used_count,
@@ -217,15 +239,18 @@ class CreateSpeakingSessionUseCase:
             if len(allowed_roles) < 2:
                 return Result.failure("Kịch bản phải có ít nhất 2 vai để tạo session.")
 
-            selected_goals = list(request.selected_goals or [])
-            if not selected_goals:
-                selected_goals = list(scenario.goals)
-            if not selected_goals:
-                return Result.failure("Kịch bản không có goal hợp lệ để tạo session.")
-
-            invalid_goals = [goal for goal in selected_goals if goal not in scenario.goals]
-            if invalid_goals:
-                return Result.failure("Selected goals phải nằm trong danh sách goals của kịch bản.")
+            # Validate selected_goal
+            selected_goal = (request.selected_goal or "").strip()
+            if not selected_goal:
+                # If no goal provided, use first goal from scenario
+                if scenario.goals:
+                    selected_goal = scenario.goals[0]
+                else:
+                    return Result.failure("Kịch bản không có goal hợp lệ để tạo session.")
+            
+            # Validate goal is in scenario's goals
+            if selected_goal not in scenario.goals:
+                return Result.failure(f"Selected goal '{selected_goal}' không nằm trong danh sách goals của kịch bản.")
 
             learner_role_id = (request.learner_role_id or allowed_roles[0]).strip()
             if request.ai_role_id:
@@ -245,7 +270,7 @@ class CreateSpeakingSessionUseCase:
                 learner_role=learner_role_id,
                 ai_role=ai_role_id,
                 level=request.level,
-                selected_goals=selected_goals,
+                selected_goal=selected_goal,
                 ai_gender=request.ai_gender,
             )
 
@@ -258,7 +283,7 @@ class CreateSpeakingSessionUseCase:
                 ai_role_id=ai_role_id,
                 ai_gender=Gender(request.ai_gender),
                 level=ProficiencyLevel(request.level),
-                selected_goals=selected_goals,
+                selected_goal=selected_goal,
                 prompt_snapshot=prompt_snapshot,
                 status="ACTIVE",
                 connection_id=request.connection_id or "",
@@ -276,7 +301,7 @@ class CreateSpeakingSessionUseCase:
                     scenario_title=scenario.scenario_title,
                     learner_role=learner_role_id,
                     ai_role=ai_role_id,
-                    selected_goals=selected_goals,
+                    selected_goal=selected_goal,
                     ai_gender=request.ai_gender,
                     session_id=str(session_id),
                 )

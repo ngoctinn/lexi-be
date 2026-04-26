@@ -14,7 +14,6 @@ from domain.services.prompt_builder import OptimizedPromptBuilder
 from domain.services.streaming_response import StreamingResponse
 from domain.services.response_validator import ResponseValidator
 from domain.services.metrics_logger import MetricsLogger
-from domain.services.scaffolding_system import ScaffoldingSystem
 from domain.services.speaking_performance_scorer import SpeakingPerformanceScorer
 from infrastructure.persistence.dynamo_scoring_repo import DynamoScoringRepo
 from infrastructure.persistence.dynamo_scenario_repo import DynamoScenarioRepository
@@ -72,12 +71,10 @@ def build_session_controller(
         
         conversation_orchestrator = ConversationOrchestrator(
             model_router=ModelRouter(),
-            prompt_builder=OptimizedPromptBuilder(),
-            streaming_response=StreamingResponse(bedrock_client=_bedrock_client),  # ✅ Pass bedrock client
+            streaming_response=StreamingResponse(bedrock_client=_bedrock_client),
             response_validator=ResponseValidator(),
             metrics_logger=MetricsLogger(),
-            scaffolding_system=ScaffoldingSystem(),
-            bedrock_client=_bedrock_client,  # Pass to orchestrator as well
+            bedrock_client=_bedrock_client,
         )
     
     # Build SpeakingPerformanceScorer with Bedrock adapter

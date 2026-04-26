@@ -36,3 +36,7 @@ class AwsTranslateService(TranslationService):
         except (ClientError, BotoCoreError):
             logger.exception("AWS Translate failed for text: %.50s", text)
             return text
+
+    def translate_batch(self, texts: list[str]) -> list[str]:
+        """Translate multiple texts individually. Kept for backward compatibility."""
+        return [self.translate_en_to_vi(t) if t else "" for t in texts]

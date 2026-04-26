@@ -100,7 +100,8 @@ Respond in JSON format only:
         system_content = [{"text": prompt}]
 
         try:
-            response = self.bedrock_client.invoke_model(
+            # Use streaming for better UX
+            response = self.bedrock_client.invoke_model_with_response_stream(
                 modelId="apac.amazon.nova-micro-v1:0",  # Use inference profile for APAC regions
                 body=dumps(
                     {
@@ -119,10 +120,19 @@ Respond in JSON format only:
                 ),
             )
 
-            response_body = json.loads(response["body"].read())
-            # Nova response format: {"output": {"message": {"content": [{"text": "..."}]}}}
-            content = response_body["output"]["message"]["content"][0]["text"]
-            scoring_data = json.loads(content)
+            # Collect streamed response
+            content = ""
+            for event in response["body"]:
+                if "chunk" in event:
+                    chunk = json.loads(event["chunk"]["bytes"].decode())
+                    
+                    # Extract content delta
+                    if "contentBlockDelta" in chunk:
+                        delta = chunk["contentBlockDelta"].get("delta", {})
+                        if "text" in delta:
+                            content += delta["text"]
+            
+            scoring_data = json.loads(content.strip())
 
             # Validate and clamp scores
             for key in [

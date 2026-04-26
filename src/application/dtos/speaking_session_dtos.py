@@ -43,7 +43,7 @@ class SpeakingSessionResponse(BaseDTO):
     ai_gender: str
     level: str
     prompt_snapshot: str
-    selected_goals: List[str] = Field(default_factory=list)
+    selected_goal: str = ""
     total_turns: int = 0
     user_turns: int = 0
     hint_used_count: int = 0
@@ -68,7 +68,7 @@ class CreateSpeakingSessionCommand(BaseDTO):
     ai_role_id: Optional[str] = None
     ai_gender: str
     level: str
-    selected_goals: List[str] = Field(default_factory=list)
+    selected_goal: str = ""
     prompt_snapshot: str
     connection_id: Optional[str] = None
 

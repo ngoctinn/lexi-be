@@ -15,7 +15,6 @@ class CreateFlashCardCommand(BaseDTO):
 
     # Translation fields
     translation_vi: Optional[str] = Field(default="")
-    definition_vi: str = Field(...)
 
     # Optional fields
     phonetic: Optional[str] = Field(default="")
@@ -55,7 +54,6 @@ class CreateFlashCardResponse(BaseDTO):
     flashcard_id: str
     word: str
     translation_vi: str = ""
-    definition_vi: str = ""
     phonetic: str = ""
     audio_url: str = ""
     example_sentence: str = ""

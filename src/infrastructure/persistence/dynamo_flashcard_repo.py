@@ -28,7 +28,6 @@ class DynamoFlashCardRepository(FlashCardRepository):
             "user_id": card.user_id,
             "word": card.word,
             "translation_vi": card.translation_vi,
-            "definition_vi": card.definition_vi,
             "phonetic": card.phonetic,
             "audio_url": card.audio_url,
             "example_sentence": card.example_sentence,
@@ -69,10 +68,12 @@ class DynamoFlashCardRepository(FlashCardRepository):
 
     def get_by_user_and_word(self, user_id: str, word: str) -> Optional[FlashCard]:
         """Kiểm tra xem người dùng đã có thẻ cho từ này chưa."""
-        # Cần scan hoặc GSI vì word không phải key
-        # Tạm thời trả về None để cho phép tạo mới
-        # TODO: Implement GSI hoặc scan nếu cần check trùng lặp
-        return None
+        # Scan DynamoDB để tìm flashcard với user_id + word
+        response = self._table.scan(
+            FilterExpression=Key("user_id").eq(user_id) & Key("word").eq(word.lower())
+        )
+        items = response.get("Items", [])
+        return self._to_entity(items[0]) if items else None
 
     def get_by_user_and_id(self, user_id: str, flashcard_id: str) -> Optional[FlashCard]:
         """Lấy thẻ theo user_id + flashcard_id (dùng PK + SK trực tiếp)."""
@@ -139,7 +140,6 @@ class DynamoFlashCardRepository(FlashCardRepository):
             user_id=item.get("user_id", ""),
             word=item.get("word", ""),
             translation_vi=item.get("translation_vi", ""),
-            definition_vi=item.get("definition_vi", ""),
             phonetic=item.get("phonetic", ""),
             audio_url=item.get("audio_url", ""),
             example_sentence=item.get("example_sentence", ""),

@@ -27,14 +27,14 @@ class TestPromptCache:
         key1 = cache.generate_cache_key(
             scenario_title="Restaurant",
             level="A1",
-            selected_goals=["ordering", "greeting"],
+            selected_goal="ordering",
         )
         
         # Same inputs should generate same key
         key2 = cache.generate_cache_key(
             scenario_title="Restaurant",
             level="A1",
-            selected_goals=["ordering", "greeting"],
+            selected_goal="ordering",
         )
         
         assert key1 == key2
@@ -66,13 +66,13 @@ class TestPromptCache:
         key1 = cache.generate_cache_key(
             scenario_title="Restaurant",
             level="A1",
-            selected_goals=["ordering", "greeting"],
+            selected_goal="ordering",
         )
         
         key2 = cache.generate_cache_key(
             scenario_title="Restaurant",
             level="A1",
-            selected_goals=["greeting", "ordering"],
+            selected_goal="greeting",
         )
         
         # Order shouldn't matter (goals are sorted)

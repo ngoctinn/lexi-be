@@ -37,7 +37,7 @@ SESSION_RESPONSE=$(curl -s -X POST "$API_URL/sessions" \
   -d '{
     "scenario_id": "scenario-1",
     "level": "A1",
-    "selected_goals": ["greeting"]
+    "selected_goal": "greeting"
   }')
 
 SESSION_ID=$(echo $SESSION_RESPONSE | jq -r '.session_id // .data.session_id // empty')
