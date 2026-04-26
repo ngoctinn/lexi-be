@@ -42,7 +42,7 @@ class TestVocabularyFlashcardWorkflow:
 
         # Step 2: Create flashcard using translation data
         flashcard_payload = {
-            "vocab": translate_data["word"],
+            "word": translate_data["word"],
             "vocab_type": translate_data["definitions"][0].get("part_of_speech", "noun"),
             "translation_vi": translate_data["translation_vi"],
             "example_sentence": translate_data["definitions"][0]["example_en"],
@@ -88,7 +88,7 @@ class TestVocabularyFlashcardWorkflow:
 
             # Create flashcard
             flashcard_payload = {
-                "vocab": translate_data["word"],
+                "word": translate_data["word"],
                 "vocab_type": "verb",
                 "translation_vi": translate_data["translation_vi"],
                 "example_sentence": translate_data["definitions"][0]["example_en"],
@@ -117,7 +117,7 @@ class TestVocabularyFlashcardWorkflow:
         """Test: Workflow error handling - invalid flashcard data"""
         # Create flashcard with invalid data
         flashcard_payload = {
-            "vocab": "test",
+            "word": "test",
             "vocab_type": "invalid_type",
             "translation_vi": "test"
         }
@@ -192,7 +192,7 @@ class TestVocabularyFlashcardWorkflow:
 
         # Step 2: Create flashcard (should fail)
         flashcard_response = public_client.post("/flashcards", {
-            "vocab": "run",
+            "word": "run",
             "translation_vi": "chạy"
         })
         assert flashcard_response.status_code == 401

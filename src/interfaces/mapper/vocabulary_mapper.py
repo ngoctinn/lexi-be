@@ -66,6 +66,7 @@ class VocabularyMapper:
             word=response.word,
             translation_vi=response.translate_vi,
             phonetic=response.phonetic,
+            audio_url=response.audio_url,
             definitions=definitions_vm,
             synonyms=synonyms_vm,
             response_time_ms=response.response_time_ms,

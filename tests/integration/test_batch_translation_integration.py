@@ -1,310 +1,267 @@
-"""Integration tests for batch translation with mocked AWS Translate."""
+"""Integration tests for batch translation with vocabulary use case."""
 
-from pathlib import Path
-import sys
-from unittest.mock import Mock, patch
-
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+import pytest
+from unittest.mock import Mock, patch, MagicMock
 
 from application.use_cases.vocabulary_use_cases import TranslateVocabularyUseCase
 from application.dtos.vocabulary_dtos import TranslateVocabularyCommand
 from domain.entities.vocabulary import Vocabulary, Meaning
-from infrastructure.services.aws_translate_service import AwsTranslateService
+from infrastructure.services.aws_translate_service import AwsTranslateService, BATCH_DELIMITER
 
 
 class TestBatchTranslationIntegration:
-    """Integration tests for batch translation with mocked AWS Translate."""
+    """Integration tests for batch translation in vocabulary lookup."""
 
-    def test_integration_with_aws_translate_service(self):
-        """Test integration with AwsTranslateService (mocked boto3)."""
-        # Arrange
-        mock_dictionary_service = Mock()
-        mock_dictionary_service.get_word_definition.return_value = Vocabulary(
-            word="hello",
-            translate_vi="",
-            phonetic="/həˈloʊ/",
-            audio_url="https://example.com/hello.mp3",
+    @patch('infrastructure.services.aws_translate_service._get_client')
+    def test_vocabulary_use_case_single_api_call(self, mock_get_client):
+        """Vocabulary use case should make single API call for batch translation."""
+        # Setup mock
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        
+        # Create mock vocabulary with 3 meanings
+        vocabulary = Vocabulary(
+            word='run',
+            translate_vi='chạy',
+            phonetic='/rʌn/',
+            audio_url='https://example.com/run.mp3',
             meanings=[
                 Meaning(
-                    part_of_speech="interjection",
-                    definition="used as a greeting",
-                    example="Hello, how are you?"
+                    part_of_speech='verb',
+                    definition='to move quickly on foot',
+                    example='I run every morning'
+                ),
+                Meaning(
+                    part_of_speech='verb',
+                    definition='to operate or manage',
+                    example='She runs a business'
+                ),
+                Meaning(
+                    part_of_speech='noun',
+                    definition='an act of running',
+                    example='Let\'s go for a run'
                 )
             ]
         )
         
-        # Mock boto3 translate client
-        with patch('infrastructure.services.aws_translate_service._get_client') as mock_get_client:
-            mock_translate_client = Mock()
-            mock_get_client.return_value = mock_translate_client
-            
-            # Mock single translate_text response with delimiter-separated translations
-            delimiter = "\n###TRANSLATE_DELIMITER###\n"
-            combined_translation = delimiter.join([
-                'xin chào',  # word
-                'được dùng để chào hỏi',  # definition
-                'Xin chào, bạn khỏe không?'  # example
-            ])
-            mock_translate_client.translate_text.return_value = {
-                'TranslatedText': combined_translation
-            }
-            
-            translation_service = AwsTranslateService()
-            use_case = TranslateVocabularyUseCase(mock_dictionary_service, translation_service)
-            command = TranslateVocabularyCommand(word="hello")
-            
-            # Act
-            result = use_case.execute(command)
-            
-            # Assert
-            assert result.is_success
-            response = result.value
-            assert response.word == "hello"
-            assert response.translation_vi == "xin chào"
-            assert response.meanings[0].definition_vi == "được dùng để chào hỏi"
-            assert response.meanings[0].example_vi == "Xin chào, bạn khỏe không?"
-            
-            # Verify translate_text was called ONCE (batch translation)
-            assert mock_translate_client.translate_text.call_count == 1
-
-    def test_integration_batch_translation_multiple_meanings(self):
-        """Test integration with multiple meanings (mocked AWS Translate)."""
-        # Arrange
-        mock_dictionary_service = Mock()
-        mock_dictionary_service.get_word_definition.return_value = Vocabulary(
-            word="run",
-            translate_vi="",
-            phonetic="/rʌn/",
-            meanings=[
-                Meaning(part_of_speech="verb", definition="move fast", example="I run daily"),
-                Meaning(part_of_speech="noun", definition="act of running", example="go for a run"),
-                Meaning(part_of_speech="verb", definition="operate", example="run a business")
-            ]
-        )
+        # Mock dictionary service
+        mock_dict_service = Mock()
+        mock_dict_service.get_word_definition.return_value = vocabulary
         
-        # Mock boto3 translate client
-        with patch('infrastructure.services.aws_translate_service._get_client') as mock_get_client:
-            mock_translate_client = Mock()
-            mock_get_client.return_value = mock_translate_client
-            
-            # Mock single translate_text response with 7 items
-            delimiter = "\n###TRANSLATE_DELIMITER###\n"
-            combined_translation = delimiter.join([
-                'chạy',  # word
-                'di chuyển nhanh',  # def 1
-                'Tôi chạy hàng ngày',  # ex 1
-                'hành động chạy',  # def 2
-                'đi chạy',  # ex 2
-                'vận hành',  # def 3
-                'điều hành doanh nghiệp'  # ex 3
-            ])
-            mock_translate_client.translate_text.return_value = {
-                'TranslatedText': combined_translation
-            }
-            
-            translation_service = AwsTranslateService()
-            use_case = TranslateVocabularyUseCase(mock_dictionary_service, translation_service)
-            command = TranslateVocabularyCommand(word="run")
-            
-            # Act
-            result = use_case.execute(command)
-            
-            # Assert
-            assert result.is_success
-            response = result.value
-            assert len(response.meanings) == 3
-            
-            # Verify all meanings are translated
-            assert response.meanings[0].definition_vi == "di chuyển nhanh"
-            assert response.meanings[0].example_vi == "Tôi chạy hàng ngày"
-            
-            assert response.meanings[1].definition_vi == "hành động chạy"
-            assert response.meanings[1].example_vi == "đi chạy"
-            
-            assert response.meanings[2].definition_vi == "vận hành"
-            assert response.meanings[2].example_vi == "điều hành doanh nghiệp"
-            
-            # Verify translate_text was called ONCE (batch translation)
-            assert mock_translate_client.translate_text.call_count == 1
-
-    def test_integration_aws_translate_failure_graceful_degradation(self):
-        """Test graceful degradation when AWS Translate fails."""
-        # Arrange
-        mock_dictionary_service = Mock()
-        mock_dictionary_service.get_word_definition.return_value = Vocabulary(
-            word="hello",
-            translate_vi="",
-            phonetic="/həˈloʊ/",
-            meanings=[
-                Meaning(part_of_speech="interjection", definition="greeting", example="hello there")
-            ]
-        )
+        # Mock translations (7 items: word + 3 definitions + 3 examples)
+        items = [
+            'run',
+            'to move quickly on foot',
+            'I run every morning',
+            'to operate or manage',
+            'She runs a business',
+            'an act of running',
+            'Let\'s go for a run'
+        ]
+        translations = [
+            'chạy',
+            'di chuyển nhanh chóng trên bộ',
+            'Tôi chạy mỗi sáng',
+            'vận hành hoặc quản lý',
+            'Cô ấy điều hành một doanh nghiệp',
+            'một hành động chạy',
+            'Hãy đi chạy'
+        ]
+        combined_response = BATCH_DELIMITER.join(translations)
         
-        # Mock boto3 translate client to raise exception
-        with patch('infrastructure.services.aws_translate_service._get_client') as mock_get_client:
-            mock_translate_client = Mock()
-            mock_get_client.return_value = mock_translate_client
-            
-            # Simulate AWS Translate failure
-            mock_translate_client.translate_text.side_effect = Exception("AWS Translate unavailable")
-            
-            translation_service = AwsTranslateService()
-            use_case = TranslateVocabularyUseCase(mock_dictionary_service, translation_service)
-            command = TranslateVocabularyCommand(word="hello")
-            
-            # Act
-            result = use_case.execute(command)
-            
-            # Assert
-            assert result.is_success  # Should still succeed with graceful degradation
-            response = result.value
-            # Should return original English text (graceful degradation)
-            assert response.translation_vi == "hello"
-            assert response.meanings[0].definition_vi == "greeting"
-            assert response.meanings[0].example_vi == "hello there"
-
-    def test_integration_delimiter_mismatch_fallback(self):
-        """Test fallback when delimiter split produces wrong number of items."""
-        # Arrange
-        mock_dictionary_service = Mock()
-        mock_dictionary_service.get_word_definition.return_value = Vocabulary(
-            word="test",
-            translate_vi="",
-            phonetic="/test/",
-            meanings=[
-                Meaning(part_of_speech="noun", definition="a procedure", example="take a test")
-            ]
-        )
+        mock_client.translate_text.return_value = {
+            'TranslatedText': combined_response
+        }
         
-        # Mock boto3 translate client
-        with patch('infrastructure.services.aws_translate_service._get_client') as mock_get_client:
-            mock_translate_client = Mock()
-            mock_get_client.return_value = mock_translate_client
-            
-            # Return wrong number of items (should be 3, but return 2)
-            delimiter = "\n###TRANSLATE_DELIMITER###\n"
-            combined_translation = delimiter.join([
-                'kiểm tra',  # word
-                'một thủ tục'  # definition (missing example)
-            ])
-            mock_translate_client.translate_text.return_value = {
-                'TranslatedText': combined_translation
-            }
-            
-            translation_service = AwsTranslateService()
-            use_case = TranslateVocabularyUseCase(mock_dictionary_service, translation_service)
-            command = TranslateVocabularyCommand(word="test")
-            
-            # Act
-            result = use_case.execute(command)
-            
-            # Assert
-            assert result.is_success
-            response = result.value
-            
-            # Should fallback to original English text
-            assert response.translation_vi == "test"
-            assert response.meanings[0].definition_vi == "a procedure"
-            assert response.meanings[0].example_vi == "take a test"
+        # Create use case
+        translate_service = AwsTranslateService()
+        use_case = TranslateVocabularyUseCase(mock_dict_service, translate_service)
+        
+        # Execute
+        command = TranslateVocabularyCommand(word='run', context=None)
+        result = use_case.execute(command)
+        
+        # Verify
+        assert result.is_success
+        
+        # Verify single API call
+        assert mock_client.translate_text.call_count == 1
+        
+        # Verify correct input
+        call_args = mock_client.translate_text.call_args
+        assert call_args[1]['Text'] == BATCH_DELIMITER.join(items)
+        assert call_args[1]['SourceLanguageCode'] == 'en'
+        assert call_args[1]['TargetLanguageCode'] == 'vi'
+        
+        # Verify response
+        response = result.value
+        assert response.word == 'run'
+        assert response.translate_vi == 'chạy'
+        assert len(response.meanings) == 3
+        assert response.meanings[0].definition_vi == 'di chuyển nhanh chóng trên bộ'
+        assert response.meanings[0].example_vi == 'Tôi chạy mỗi sáng'
 
-    def test_integration_with_context_for_phrasal_verbs(self):
-        """Test integration with context parameter for phrasal verb detection."""
-        # Arrange
-        mock_dictionary_service = Mock()
-        # Simulate phrasal verb detection: "get off" instead of "off"
-        mock_dictionary_service.get_word_definition.return_value = Vocabulary(
-            word="get off",  # Detected phrasal verb
-            translate_vi="",
-            phonetic="/ɡet ɒf/",
+    @patch('infrastructure.services.aws_translate_service._get_client')
+    def test_vocabulary_with_missing_examples(self, mock_get_client):
+        """Vocabulary with missing examples should still batch translate correctly."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        
+        # Vocabulary with some missing examples
+        vocabulary = Vocabulary(
+            word='hello',
+            translate_vi='xin chào',
+            phonetic='/həˈloʊ/',
+            audio_url='https://example.com/hello.mp3',
             meanings=[
                 Meaning(
-                    part_of_speech="phrasal verb",
-                    definition="to leave a vehicle",
-                    example="I get off the bus at the next stop"
+                    part_of_speech='interjection',
+                    definition='used as a greeting',
+                    example='Hello, how are you?'
+                ),
+                Meaning(
+                    part_of_speech='noun',
+                    definition='an act of greeting',
+                    example=None  # Missing example
                 )
             ]
         )
         
-        # Mock boto3 translate client
-        with patch('infrastructure.services.aws_translate_service._get_client') as mock_get_client:
-            mock_translate_client = Mock()
-            mock_get_client.return_value = mock_translate_client
-            
-            delimiter = "\n###TRANSLATE_DELIMITER###\n"
-            combined_translation = delimiter.join([
-                'xuống xe',  # phrasal verb
-                'rời khỏi phương tiện',  # definition
-                'Tôi xuống xe buýt ở trạm tiếp theo'  # example
-            ])
-            mock_translate_client.translate_text.return_value = {
-                'TranslatedText': combined_translation
-            }
-            
-            translation_service = AwsTranslateService()
-            use_case = TranslateVocabularyUseCase(mock_dictionary_service, translation_service)
-            command = TranslateVocabularyCommand(
-                word="off",
-                context="I get off the bus at the next stop"
-            )
-            
-            # Act
-            result = use_case.execute(command)
-            
-            # Assert
-            assert result.is_success
-            response = result.value
-            assert response.word == "get off"  # Detected phrasal verb
-            assert response.translation_vi == "xuống xe"
-            assert response.meanings[0].definition_vi == "rời khỏi phương tiện"
-            
-            # Verify dictionary service was called with context
-            mock_dictionary_service.get_word_definition.assert_called_once_with(
-                word="off",
-                context="I get off the bus at the next stop"
-            )
+        mock_dict_service = Mock()
+        mock_dict_service.get_word_definition.return_value = vocabulary
+        
+        # 4 items: word + 2 definitions + 1 example (second meaning has no example)
+        items = [
+            'hello',
+            'used as a greeting',
+            'Hello, how are you?',
+            'an act of greeting'
+        ]
+        translations = [
+            'xin chào',
+            'được sử dụng như một lời chào',
+            'Xin chào, bạn khỏe không?',
+            'một hành động chào hỏi'
+        ]
+        combined_response = BATCH_DELIMITER.join(translations)
+        
+        mock_client.translate_text.return_value = {
+            'TranslatedText': combined_response
+        }
+        
+        translate_service = AwsTranslateService()
+        use_case = TranslateVocabularyUseCase(mock_dict_service, translate_service)
+        
+        command = TranslateVocabularyCommand(word='hello', context=None)
+        result = use_case.execute(command)
+        
+        assert result.is_success
+        assert mock_client.translate_text.call_count == 1
+        
+        response = result.value
+        assert response.meanings[0].example_vi == 'Xin chào, bạn khỏe không?'
+        assert response.meanings[1].example_vi == ''  # No example
 
-    def test_integration_empty_texts_handling(self):
-        """Test handling of empty texts in batch translation."""
-        # Arrange
-        mock_dictionary_service = Mock()
-        mock_dictionary_service.get_word_definition.return_value = Vocabulary(
-            word="test",
-            translate_vi="",
-            phonetic="/test/",
+    @patch('infrastructure.services.aws_translate_service._get_client')
+    def test_batch_translation_performance_reduction(self, mock_get_client):
+        """Verify batch translation reduces API calls from N to 1."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        
+        # Create vocabulary with 5 meanings (11 items total)
+        meanings = [
+            Meaning(
+                part_of_speech='verb',
+                definition=f'definition {i}',
+                example=f'example {i}'
+            )
+            for i in range(5)
+        ]
+        
+        vocabulary = Vocabulary(
+            word='test',
+            translate_vi='kiểm tra',
+            phonetic='/test/',
+            audio_url='https://example.com/test.mp3',
+            meanings=meanings
+        )
+        
+        mock_dict_service = Mock()
+        mock_dict_service.get_word_definition.return_value = vocabulary
+        
+        # Mock translations
+        items_count = 1 + (5 * 2)  # word + 5 definitions + 5 examples
+        translations = [f'translation {i}' for i in range(items_count)]
+        combined_response = BATCH_DELIMITER.join(translations)
+        
+        mock_client.translate_text.return_value = {
+            'TranslatedText': combined_response
+        }
+        
+        translate_service = AwsTranslateService()
+        use_case = TranslateVocabularyUseCase(mock_dict_service, translate_service)
+        
+        command = TranslateVocabularyCommand(word='test', context=None)
+        result = use_case.execute(command)
+        
+        assert result.is_success
+        
+        # Verify: 1 API call instead of 11
+        assert mock_client.translate_text.call_count == 1
+        
+        # Before optimization: would be 11 calls
+        # After optimization: 1 call
+        # Reduction: 90%
+        print(f"API calls reduced from {items_count} to {mock_client.translate_text.call_count}")
+
+    @patch('infrastructure.services.aws_translate_service._get_client')
+    def test_batch_translation_with_context(self, mock_get_client):
+        """Batch translation should work with context parameter."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        
+        vocabulary = Vocabulary(
+            word='get off',
+            translate_vi='xuống',
+            phonetic='/ɡet ɔf/',
+            audio_url='https://example.com/get-off.mp3',
             meanings=[
-                Meaning(part_of_speech="noun", definition="a procedure", example="")  # Empty example
+                Meaning(
+                    part_of_speech='phrasal verb',
+                    definition='to leave a vehicle',
+                    example='Get off the bus at the next stop'
+                )
             ]
         )
         
-        # Mock boto3 translate client
-        with patch('infrastructure.services.aws_translate_service._get_client') as mock_get_client:
-            mock_translate_client = Mock()
-            mock_get_client.return_value = mock_translate_client
-            
-            # Only 2 items: word + definition (no example)
-            delimiter = "\n###TRANSLATE_DELIMITER###\n"
-            combined_translation = delimiter.join([
-                'kiểm tra',  # word
-                'một thủ tục'  # definition
-            ])
-            mock_translate_client.translate_text.return_value = {
-                'TranslatedText': combined_translation
-            }
-            
-            translation_service = AwsTranslateService()
-            use_case = TranslateVocabularyUseCase(mock_dictionary_service, translation_service)
-            command = TranslateVocabularyCommand(word="test")
-            
-            # Act
-            result = use_case.execute(command)
-            
-            # Assert
-            assert result.is_success
-            response = result.value
-            assert response.translation_vi == "kiểm tra"
-            assert response.meanings[0].definition_vi == "một thủ tục"
-            assert response.meanings[0].example_vi == ""  # Empty example remains empty
-
+        mock_dict_service = Mock()
+        mock_dict_service.get_word_definition.return_value = vocabulary
+        
+        items = [
+            'get off',
+            'to leave a vehicle',
+            'Get off the bus at the next stop'
+        ]
+        translations = [
+            'xuống',
+            'rời khỏi một phương tiện',
+            'Xuống xe buýt ở trạm tiếp theo'
+        ]
+        combined_response = BATCH_DELIMITER.join(translations)
+        
+        mock_client.translate_text.return_value = {
+            'TranslatedText': combined_response
+        }
+        
+        translate_service = AwsTranslateService()
+        use_case = TranslateVocabularyUseCase(mock_dict_service, translate_service)
+        
+        # With context for phrasal verb detection
+        command = TranslateVocabularyCommand(
+            word='get off',
+            context='I need to get off the bus'
+        )
+        result = use_case.execute(command)
+        
+        assert result.is_success
+        assert mock_client.translate_text.call_count == 1

@@ -58,7 +58,7 @@ class TranslateVocabularyUseCase:
             )
             logger.info(f"Fetched definition for word: {vocabulary.word}")
             
-            # Step 2: Collect items to translate
+            # Step 2: Collect items to translate (LIMIT to first 2 meanings for performance)
             items_to_translate = []
             item_indices = []  # Track which item belongs to which meaning
             
@@ -66,8 +66,9 @@ class TranslateVocabularyUseCase:
             items_to_translate.append(vocabulary.word)
             item_indices.append(("word", None))
             
-            # Add definitions and examples from meanings
-            for idx, meaning in enumerate(vocabulary.meanings):
+            # Add definitions and examples from meanings (LIMIT to first 2)
+            max_meanings = 2
+            for idx, meaning in enumerate(vocabulary.meanings[:max_meanings]):
                 # Add definition
                 items_to_translate.append(meaning.definition)
                 item_indices.append(("definition", idx))
@@ -77,12 +78,9 @@ class TranslateVocabularyUseCase:
                     items_to_translate.append(meaning.example)
                     item_indices.append(("example", idx))
             
-            # Step 3: Translate each item individually
-            logger.info(f"Translating {len(items_to_translate)} items")
-            translations = [
-                self._translation_service.translate_en_to_vi(item) if item else ""
-                for item in items_to_translate
-            ]
+            # Step 3: Batch translate all items with single API call
+            logger.info(f"Batch translating {len(items_to_translate)} items")
+            translations = self._translation_service.translate_batch(items_to_translate)
             
             # Step 4: Map translations back to vocabulary
             translation_map = {}
@@ -94,15 +92,16 @@ class TranslateVocabularyUseCase:
                         translation_map[idx] = {}
                     translation_map[idx][item_type] = translations[i] if i < len(translations) else ""
             
-            # Build MeaningDTOs with translations
+            # Build MeaningDTOs with translations (only first 2 meanings)
             meanings_dto = []
-            for idx, meaning in enumerate(vocabulary.meanings):
+            max_meanings = 2
+            for idx, meaning in enumerate(vocabulary.meanings[:max_meanings]):
                 trans = translation_map.get(idx, {})
                 meanings_dto.append(MeaningDTO(
                     part_of_speech=meaning.part_of_speech,
                     definition=meaning.definition,
                     definition_vi=trans.get("definition", ""),
-                    example=meaning.example,
+                    example=meaning.example or "",
                     example_vi=trans.get("example", "")
                 ))
             

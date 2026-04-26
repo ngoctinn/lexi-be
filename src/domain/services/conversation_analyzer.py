@@ -48,47 +48,107 @@ class ConversationAnalyzer:
         system_prompt = self._build_system_prompt(level, scenario_context)
         user_prompt = self._build_user_prompt(learner_message, ai_response, level)
 
+        # Define JSON schema for structured output (Nova best practice)
+        tool_config = {
+            "tools": [
+                {
+                    "toolSpec": {
+                        "name": "TurnAnalysis",
+                        "description": "Analyze learner's English turn with bilingual feedback",
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {
+                                    "mistakes_vi": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "Mistakes in Vietnamese (explanation) with English examples"
+                                    },
+                                    "mistakes_en": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "Mistakes in English (explanation) with English examples"
+                                    },
+                                    "improvements_vi": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "Improvements in Vietnamese (explanation) with English examples"
+                                    },
+                                    "improvements_en": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "Improvements in English (explanation) with English examples"
+                                    }
+                                },
+                                "required": []  # All fields optional (no mistakes = empty arrays)
+                            }
+                        }
+                    }
+                }
+            ],
+            "toolChoice": {
+                "tool": {
+                    "name": "TurnAnalysis"
+                }
+            }
+        }
+
         # Retry logic for transient Bedrock errors
         max_retries = 2
         for attempt in range(max_retries + 1):
             try:
-                request_body = json.dumps({
-                    "system": [{"text": system_prompt}],
-                    "messages": [{"role": "user", "content": [{"text": user_prompt}]}],
-                    "inferenceConfig": {
-                        "maxTokens": 500,
-                        "temperature": 0.3,
-                    },
-                })
-
-                # Use streaming for better UX
-                response = self.bedrock_client.invoke_model_with_response_stream(
+                # Use Converse API with structured output (Nova best practice)
+                # Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/structured-output.html
+                # AWS best practices:
+                # - temperature=0 for structured output (greedy decoding)
+                # - performanceConfig.latency="optimized" for 20-30% latency reduction
+                response = self.bedrock_client.converse_stream(
                     modelId=self._model_id,
-                    body=request_body,
+                    system=[{"text": system_prompt}],
+                    messages=[{"role": "user", "content": [{"text": user_prompt}]}],
+                    toolConfig=tool_config,
+                    inferenceConfig={
+                        "maxTokens": 500,
+                        "temperature": 0,
+                    },
+                    performanceConfig={
+                        "latency": "optimized"  # AWS best practice: 20-30% latency reduction
+                    },
                 )
 
                 # Collect streamed response
-                analysis_text = ""
                 input_tokens = 0
                 output_tokens = 0
+                tool_use_data = None
                 
-                for event in response["body"]:
-                    if "chunk" in event:
-                        chunk = json.loads(event["chunk"]["bytes"].decode())
-                        
-                        # Extract content delta
-                        if "contentBlockDelta" in chunk:
-                            delta = chunk["contentBlockDelta"].get("delta", {})
-                            if "text" in delta:
-                                analysis_text += delta["text"]
-                        
-                        # Extract token usage from metadata
-                        if "metadata" in chunk:
-                            usage = chunk["metadata"].get("usage", {})
-                            input_tokens = usage.get("inputTokens", input_tokens)
-                            output_tokens = usage.get("outputTokens", output_tokens)
+                for event in response["stream"]:
+                    # Handle tool use (structured output)
+                    if "contentBlockStart" in event:
+                        start = event["contentBlockStart"]
+                        if "toolUse" in start.get("start", {}):
+                            tool_use_data = start["start"]["toolUse"]
+                    
+                    if "contentBlockDelta" in event:
+                        delta = event["contentBlockDelta"].get("delta", {})
+                        if "toolUse" in delta:
+                            # Accumulate tool input
+                            if tool_use_data is None:
+                                tool_use_data = {}
+                            if "input" not in tool_use_data:
+                                tool_use_data["input"] = ""
+                            tool_use_data["input"] += delta["toolUse"].get("input", "")
+                    
+                    # Extract token usage from metadata
+                    if "metadata" in event:
+                        usage = event["metadata"].get("usage", {})
+                        input_tokens = usage.get("inputTokens", input_tokens)
+                        output_tokens = usage.get("outputTokens", output_tokens)
 
-                data = json.loads(analysis_text)
+                # Parse tool use input as JSON
+                if tool_use_data and "input" in tool_use_data:
+                    data = json.loads(tool_use_data["input"])
+                else:
+                    raise ValueError("No tool use data received from Bedrock")
 
                 # Validate response structure and content
                 is_valid, validation_errors = validate_conversation_analyzer_response(data)
@@ -179,103 +239,76 @@ class ConversationAnalyzer:
 
     def _build_system_prompt(self, level: str, scenario_context: str) -> str:
         level_guidance = {
-            "A1": "Tập trung vào lỗi cơ bản: từ vựng, thì động từ, cấu trúc câu đơn giản.",
-            "A2": "Tập trung vào lỗi thường gặp: thì, giới từ, cấu trúc câu.",
-            "B1": "Tập trung vào lỗi ảnh hưởng đến rõ ràng: thì, giới từ, từ nối.",
-            "B2": "Tập trung vào lỗi về sự trôi chảy: từ vựng chính xác, cấu trúc phức tạp.",
-            "C1": "Tập trung vào lỗi tinh tế: phong cách, sắc thái, cách diễn đạt.",
-            "C2": "Tập trung vào lỗi về sự thuần thục: nuance, register, idiom.",
+            "A1": "Focus on basic errors: vocabulary, verb tense, simple sentence structure.",
+            "A2": "Focus on common errors: tense, prepositions, sentence structure.",
+            "B1": "Focus on errors affecting clarity: tense, prepositions, connectors.",
+            "B2": "Focus on fluency errors: precise vocabulary, complex structures.",
+            "C1": "Focus on subtle errors: style, nuance, expression.",
+            "C2": "Focus on mastery errors: nuance, register, idiom.",
         }
 
-        return f"""Bạn là giáo viên tiếng Anh phân tích lỗi của học viên Việt Nam.
+        return f"""You are an English teacher analyzing errors from Vietnamese learners.
 
-Ngữ cảnh: {scenario_context}
-Trình độ: {level}
-Hướng dẫn: {level_guidance.get(level, level_guidance["B1"])}
+Context: {scenario_context}
+Level: {level}
+Guidance: {level_guidance.get(level, level_guidance["B1"])}
 
-NHIỆM VỤ: Phân tích lỗi và gợi ý cải thiện
-- **GIẢI THÍCH bằng tiếng Việt** (để học viên hiểu)
-- **VÍ DỤ/CÂU SỬA LUÔN bằng tiếng Anh** (để học đúng)
-- **TUYỆT ĐỐI KHÔNG dịch câu tiếng Anh sang tiếng Việt**
+TASK: Analyze errors and suggest improvements
+- EXPLAIN in Vietnamese (so learner understands)
+- EXAMPLES/CORRECTIONS ALWAYS in English (so learner learns correctly)
+- NEVER translate English sentences to Vietnamese
 
-QUY TẮC VÀNG:
-- Mỗi lỗi: chỉ ra từ/cấu trúc sai (tiếng Anh), giải thích tại sao sai (tiếng Việt)
-- Mỗi gợi ý: đưa ra cách diễn đạt đúng (tiếng Anh), giải thích tại sao đúng hơn (tiếng Việt)
-- Tối đa 2-3 lỗi, 2-3 gợi ý
-- Trả về ĐÚNG JSON, không có markdown bao ngoài"""
+GOLDEN RULES:
+- Each mistake: show wrong phrase (English), explain why (Vietnamese)
+- Each improvement: show better way (English), explain why better (Vietnamese)
+- Maximum 2-3 mistakes, 2-3 improvements
+- Return ONLY valid JSON, no markdown wrapper"""
 
     def _build_user_prompt(self, learner_message: str, ai_response: str, level: str) -> str:
-        return f"""Phân tích câu này:
+        """Build user prompt with few-shot examples.
+        
+        AWS best practice: Few-shot prompting improves accuracy and consistency.
+        Reference: https://docs.aws.amazon.com/nova/latest/userguide/prompting-examples.html
+        """
+        # Few-shot examples (diverse: basic, intermediate, advanced)
+        examples = [
+            {
+                "input": 'Learner: "I go to school yesterday" | Level: A1',
+                "output": """{
+  "mistakes_vi": ["Bạn nhầm lẫn ở ~~go~~ (hiện tại), nên sửa thành **went** (quá khứ)\\n\\nVì khi có 'yesterday' thì động từ phải ở dạng quá khứ. Dùng **past simple** cho sự kiện đã xảy ra."],
+  "mistakes_en": ["You mixed up ~~go~~ (present), should be **went** (past)\\n\\nBecause when you have 'yesterday', the verb needs past tense. Use **past simple** for completed actions."],
+  "improvements_vi": [],
+  "improvements_en": []
+}"""
+            },
+            {
+                "input": 'Learner: "I like drink coffee" | Level: A2',
+                "output": """{
+  "mistakes_vi": ["Bạn nhầm lẫn ở ~~drink~~, nên sửa thành **drinking**\\n\\nVì sau 'like' cần dùng gerund (V-ing): **like + V-ing**. Ví dụ: like drinking, like playing."],
+  "mistakes_en": ["You mixed up ~~drink~~, should be **drinking**\\n\\nBecause after 'like' you need gerund (V-ing): **like + V-ing**. Examples: like drinking, like playing."],
+  "improvements_vi": [],
+  "improvements_en": []
+}"""
+            }
+        ]
 
-**Học viên nói:** {learner_message}
+        prompt = f"""Learner message: "{learner_message}"
+AI response: "{ai_response}"
+Level: {level}
 
-**AI phản hồi:** {ai_response}
+EXAMPLES (few-shot):
+Example 1: {examples[0]['input']}
+Output: {examples[0]['output']}
 
-NHIỆM VỤ: Phản hồi theo phong cách NÓI CHUYỆN TỰ NHIÊN (như người với người):
-1. Nếu có lỗi: Nói "Bạn nhầm lẫn..." hoặc "Bạn có thể sửa..." (thân thiện, không dùng label "Lỗi:")
-2. Gợi ý cải thiện: "Bạn có thể nói..." hoặc "Thử nói..." (khuyến khích, không áp đặt)
-3. Phong cách: Như đang chat với bạn bè, tự nhiên, thân thiện
+Example 2: {examples[1]['input']}
+Output: {examples[1]['output']}
 
-Trả về JSON (SONG NGỮ - tiếng Việt + tiếng Anh):
+NOW, analyze this learner message:
+Learner: "{learner_message}" | Level: {level}
 
-⚠️ QUY TẮC VÀNG - TUYỆT ĐỐI TUÂN THỦ:
-- **GIẢI THÍCH bằng tiếng Việt** (để học viên hiểu)
-- **VÍ DỤ/CÂU SỬA LUÔN bằng tiếng Anh** (để học đúng)
-- **TUYỆT ĐỐI KHÔNG dịch câu tiếng Anh sang tiếng Việt**
-- KHÔNG thêm icon 💡 hoặc ⚠️ vào text (hệ thống tự động thêm)
-- KHÔNG dùng label "Lỗi:" hay "Mistake:" - nói tự nhiên như người với người
-- Giữ NGUYÊN câu tiếng Anh và in đậm **text** trong phần tiếng Việt
-- Dùng ~~text~~ để gạch ngang phần sai (tiếng Anh)
-- Dẫn dắt như đang giải thích cho bạn bè
+Return ONLY the JSON object (no preamble, no markdown wrapper)."""
 
-FORMAT CHO LỖI (mistakes) - Phong cách tự nhiên:
-"Bạn nhầm lẫn chút ở ~~[phần sai - TIẾNG ANH]~~, nên sửa thành **[phần đúng - TIẾNG ANH]**\n\nVì [giải thích thân thiện bằng TIẾNG VIỆT, xuống dòng để dễ đọc]"
-hoặc
-"Ở đây bạn dùng ~~[sai - TIẾNG ANH]~~ nhưng nên dùng **[đúng - TIẾNG ANH]**\n\nVì [giải thích bằng TIẾNG VIỆT]"
-
-FORMAT CHO GỢI Ý (improvements) - Phong cách khuyến khích:
-"Bạn có thể nói **[Câu hay hơn - TIẾNG ANH]**\n\nĐể [lý do bằng TIẾNG VIỆT] nghe tự nhiên hơn"
-hoặc
-"Thử nói **[Câu hay hơn - TIẾNG ANH]**\n\nSẽ [lý do bằng TIẾNG VIỆT] và nghe pro hơn nha"
-
-Nếu CÓ LỖI:
-{{
-  "mistakes_vi": ["Bạn nhầm lẫn chút ở ~~[sai - TIẾNG ANH]~~, nên sửa thành **[đúng - TIẾNG ANH]**\\n\\nVì [giải thích thân thiện bằng TIẾNG VIỆT]"],
-  "mistakes_en": ["You mixed up ~~[wrong - ENGLISH]~~ here, should be **[correct - ENGLISH]**\\n\\nBecause [friendly explanation in ENGLISH]"],
-  "improvements_vi": ["Bạn có thể nói **[Câu hay hơn - TIẾNG ANH]**\\n\\nĐể [lý do bằng TIẾNG VIỆT] nghe tự nhiên hơn"],
-  "improvements_en": ["You could say **[Better sentence - ENGLISH]**\\n\\nTo [reason in ENGLISH] sound more natural"]
-}}
-
-VÍ DỤ CỤ THỂ (ĐÚNG - phong cách nói chuyện tự nhiên):
-{{
-  "mistakes_vi": ["Bạn nhầm lẫn ở ~~go to school~~, nên sửa thành **went to school**\\n\\nVì khi có 'yesterday' thì động từ phải ở dạng quá khứ. **Past simple tense** được dùng cho sự kiện đã xảy ra."],
-  "mistakes_en": ["You mixed up ~~go to school~~ here, should be **went to school**\\n\\nBecause when you have 'yesterday', the verb needs to be in past tense. **Past simple tense** is used for completed actions."],
-  "improvements_vi": ["Bạn có thể nói **I went to school yesterday**\\n\\nĐể sắp xếp đúng trật tự từ. Trạng từ thời gian như 'yesterday' thường đứng ở cuối câu: **subject + verb + object + time**."],
-  "improvements_en": ["You could say **I went to school yesterday**\\n\\nTo follow correct word order. Time adverbs like 'yesterday' usually go at the end: **subject + verb + object + time**."]
-}}
-
-VÍ DỤ KHÁC (ĐÚNG - không có lỗi, chỉ có gợi ý):
-{{
-  "improvements_vi": ["Thử nói **I really enjoy drinking coffee in the morning**\\n\\nSẽ phong phú hơn. **Really enjoy** thể hiện cảm xúc mạnh hơn **like**, và thêm **in the morning** cho cụ thể hơn."],
-  "improvements_en": ["Try saying **I really enjoy drinking coffee in the morning**\\n\\nTo make it richer. **Really enjoy** shows stronger feeling than **like**, and adding **in the morning** gives more detail."]
-}}
-
-VÍ DỤ KHÁC (ĐÚNG - phong cách thân thiện):
-{{
-  "mistakes_vi": ["Ở đây bạn dùng ~~I go~~ nhưng nên dùng **I went**\\n\\nVì đang kể chuyện đã xảy ra rồi. Khi kể chuyện hôm qua, tuần trước thì dùng **past simple**: **went, stayed, visited**."],
-  "mistakes_en": ["Here you used ~~I go~~ but should use **I went**\\n\\nBecause you're talking about something that already happened. When telling stories about yesterday or last week, use **past simple**: **went, stayed, visited**."],
-  "improvements_vi": ["Bạn có thể thêm chi tiết như **I went to school yesterday and met my friends**\\n\\nĐể câu chuyện sinh động hơn. Dùng **and** để nối hai hành động: **action 1 + and + action 2**."],
-  "improvements_en": ["You could add details like **I went to school yesterday and met my friends**\\n\\nTo make the story more vivid. Use **and** to connect two actions: **action 1 + and + action 2**."]
-}}
-
-⛔ VÍ DỤ SAI (KHÔNG ĐƯỢC LÀM NHƯ THẾ):
-{{
-  "mistakes_vi": ["Bạn nhầm lẫn ở ~~đi học~~ (go to school), nên sửa thành **đã đi học~~ (went to school)\\n\\nVì..."],
-  "improvements_vi": ["Thử nói **Tôi thực sự thích uống cà phê vào buổi sáng**\\n\\nSẽ phong phú hơn..."]
-}}
-❌ SAI VÌ: Dịch câu tiếng Anh sang tiếng Việt - điều này PHẠM LUẬT học tiếng Anh!
-
-Chỉ trả về JSON, không có text khác."""
+        return prompt
 
     def _format_markdown_vi(self, mistakes: list[str], improvements: list[str]) -> str:
         sections = []

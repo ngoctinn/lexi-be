@@ -92,10 +92,6 @@ def build_controller(session: Session):
     )
     complete_use_case = CompleteSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo)
 
-    # Create ScaffoldingSystem for hints
-    from domain.services.scaffolding_system import ScaffoldingSystem
-    scaffolding_system = ScaffoldingSystem(enable_scaffolding=True)
-
     controller = WebSocketSessionController(
         session_repo=session_repo,
         turn_repo=turn_repo,
@@ -106,7 +102,6 @@ def build_controller(session: Session):
         build_upload_payload=lambda session_id: ("https://upload.example.com", f"sessions/{session_id}/audio.webm"),
         send_message=lambda payload: sender_payloads.append(payload),
         verify_token=lambda token: {"sub": "user-1"} if token == "valid-token" else (_ for _ in ()).throw(ValueError("Token không hợp lệ.")),
-        scaffolding_system=scaffolding_system,
     )
     return controller, session_repo, turn_repo, scoring_repo, sender_payloads
 
@@ -153,7 +148,7 @@ def test_start_session_emits_session_ready_payload():
     assert sender_payloads[0]["s3_key"] == f"sessions/{session.session_id}/audio.webm"
 
 
-def test_send_message_emits_turn_saved_and_ai_text():
+def test_send_message_emits_turn_saved_and_ai_response():
     session = Session(
         session_id=new_ulid(),
         scenario_id="scenario-1",
@@ -177,8 +172,8 @@ def test_send_message_emits_turn_saved_and_ai_text():
     assert session_repo.saved_sessions[-1].connection_id == "conn-1"
     assert len(turn_repo.saved_turns) == 2
     assert sender_payloads[0]["event"] == "TURN_SAVED"
-    assert sender_payloads[1]["event"] == "AI_TEXT_CHUNK"
-    assert sender_payloads[1]["done"] is True
+    assert sender_payloads[1]["event"] == "AI_RESPONSE"
+    assert "text" in sender_payloads[1]
 
 
 def test_end_session_emits_scoring_complete():

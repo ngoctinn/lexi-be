@@ -11,7 +11,6 @@ from domain.services.conversation_orchestrator import ConversationOrchestrator
 from domain.services.greeting_generator import GreetingGenerator
 from domain.services.model_router import ModelRouter
 from domain.services.prompt_builder import OptimizedPromptBuilder
-from domain.services.streaming_response import StreamingResponse
 from domain.services.response_validator import ResponseValidator
 from domain.services.metrics_logger import MetricsLogger
 from domain.services.speaking_performance_scorer import SpeakingPerformanceScorer
@@ -64,17 +63,12 @@ def build_session_controller(
     speech_synthesis_service = speech_synthesis_service or PollySpeechSynthesisService()
     
     # AWS Best Practice: Enable ConversationOrchestrator for Phase 5 metrics
-    # This enables TTFT, latency, cost tracking, and quality validation
+    # This enables latency, cost tracking, and quality validation
     if conversation_orchestrator is None:
-        # Import module-level bedrock client from speaking_pipeline_services
-        from infrastructure.services.speaking_pipeline_services import _bedrock_client
-        
         conversation_orchestrator = ConversationOrchestrator(
             model_router=ModelRouter(),
-            streaming_response=StreamingResponse(bedrock_client=_bedrock_client),
             response_validator=ResponseValidator(),
             metrics_logger=MetricsLogger(),
-            bedrock_client=_bedrock_client,
         )
     
     # Build SpeakingPerformanceScorer with Bedrock adapter

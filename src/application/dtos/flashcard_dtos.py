@@ -8,7 +8,7 @@ from application.dtos.base_dto import BaseDTO
 
 class CreateFlashCardCommand(BaseDTO):
     user_id: str = Field(strict=True, min_length=1)
-    vocab: str = Field(strict=True, min_length=1, max_length=100)
+    word: str = Field(strict=True, min_length=1, max_length=100)
 
     # Required fields
     vocab_type: str = Field(...)
@@ -20,18 +20,70 @@ class CreateFlashCardCommand(BaseDTO):
     phonetic: Optional[str] = Field(default="")
     audio_url: Optional[str] = Field(default="")
     example_sentence: str = Field(default="", max_length=500)
-    source_api: Optional[str] = Field(default="internal")
 
     # Source tracking (từ session)
     source_session_id: Optional[str] = Field(default=None)
     source_turn_index: Optional[int] = Field(default=None)
 
-    @field_validator("vocab")
+    @field_validator("word")
     @classmethod
-    def validate_no_special_chars(cls, v: str) -> str:
-        if not re.match(r"^[a-zA-Z\s\-]+$", v):
-            raise ValueError("Vocabulary should only contain letters, spaces, or hyphens")
-        return v.lower()
+    def validate_word_format(cls, v: str) -> str:
+        """Validate word format.
+        
+        Allows:
+        - Letters (a-z, A-Z)
+        - Spaces (for phrases like "phrasal verb")
+        - Hyphens (-) for compound words (e.g., "well-known")
+        - Apostrophes (') for contractions (e.g., "don't", "I'm")
+        - Dots (.) for abbreviations (e.g., "Mr.", "etc.")
+        
+        Rejects:
+        - Long sentences (> 50 characters)
+        - Multiple sentences (multiple . or !)
+        - Sentence punctuation (!?;:,)
+        
+        Examples:
+            Valid: "run", "phrasal verb", "don't", "Mr. Smith", "well-known"
+            Invalid: "Hello! I'm Sarah.", "This is a long sentence."
+        """
+        # Trim whitespace
+        v = v.strip()
+        
+        # Check length (prevent full sentences)
+        if len(v) > 50:
+            raise ValueError(
+                "Word too long (max 50 characters). "
+                "Please enter a single word or short phrase, not a full sentence."
+            )
+        
+        # Check for sentence punctuation (indicators of full sentences)
+        sentence_indicators = ['!', '?', ';', ':', ',']
+        if any(char in v for char in sentence_indicators):
+            raise ValueError(
+                f"Word should not contain sentence punctuation ({', '.join(sentence_indicators)}). "
+                "Please enter a word or phrase only."
+            )
+        
+        # Check for multiple sentences (multiple dots not at end)
+        # Allow single dot at end (e.g., "Mr.") but not multiple dots
+        if v.count('.') > 1:
+            raise ValueError(
+                "Word should be a single word or phrase, not multiple sentences."
+            )
+        
+        # Allow letters, spaces, hyphens, apostrophes, single dot
+        if not re.match(r"^[a-zA-Z\s\-'.]+$", v):
+            raise ValueError(
+                "Word should only contain letters, spaces, hyphens (-), apostrophes ('), or dots (.)."
+            )
+        
+        # Additional check: If it looks like a full sentence (starts with capital + ends with .)
+        if v[0].isupper() and v.endswith('.') and len(v) > 20:
+            raise ValueError(
+                "This looks like a full sentence. Please enter only the word or phrase you want to learn."
+            )
+        
+        return v.strip().lower()
 
     @field_validator("vocab_type")
     @classmethod

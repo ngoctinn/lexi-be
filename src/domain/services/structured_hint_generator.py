@@ -98,14 +98,15 @@ class StructuredHintGenerator:
         turn_index = len(turn_history)
         
         try:
-            # Build prompt with context
+            # Build system and user prompts (AWS best practice: separate roles)
             prompt_start = time.time()
-            prompt = self._build_prompt(session, last_ai_turn, turn_history)
+            system_prompt = self._build_system_prompt(session)
+            user_prompt = self._build_user_prompt(session, last_ai_turn, turn_history)
             prompt_time = (time.time() - prompt_start) * 1000
             
             # Call Bedrock with retry logic (Fix #4)
             bedrock_start = time.time()
-            hint_data, input_tokens, output_tokens = self._call_bedrock_with_retry(prompt)
+            hint_data, input_tokens, output_tokens = self._call_bedrock_with_retry(system_prompt, user_prompt)
             bedrock_time = (time.time() - bedrock_start) * 1000
             
             # Validate response
@@ -181,21 +182,39 @@ class StructuredHintGenerator:
             )
             raise
 
-    def _build_prompt(
+    def _build_system_prompt(self, session: Any) -> str:
+        """Build system prompt (behavioral parameters).
+        
+        AWS best practice: System role establishes overall behavioral parameters.
+        Reference: https://docs.aws.amazon.com/nova/latest/userguide/prompting-text-understanding.html
+        """
+        return """You are an English teacher creating natural, conversational hints for Vietnamese learners.
+
+Your role:
+- Explain context in Vietnamese (so learner understands)
+- Provide examples in English (so learner learns correctly)
+- NEVER translate English examples to Vietnamese
+- Use markdown formatting: bullet points for examples, bold for key phrases
+- Keep natural and conversational tone
+
+Output format: Return ONLY valid JSON with these fields:
+- level: CEFR level (A1, A2, B1, B2, C1, C2)
+- type: "hint"
+- markdown_vi: Vietnamese explanation with English examples
+- markdown_en: English explanation with English examples"""
+
+    def _build_user_prompt(
         self,
         session: Any,
         last_ai_turn: Optional[Any],
         turn_history: list[Any],
     ) -> str:
-        """Build prompt for natural, conversational hints (chain-of-hints approach).
+        """Build user prompt (context + task + few-shot examples).
         
-        Based on research: "Designing and Evaluating Chain-of-Hints for Scientific Question Answering"
-        - Hints should scaffold learner toward understanding, not give away answer
-        - Natural language flow, not rigid sections
-        - Focus on guiding thinking, not providing solutions
+        AWS best practice: Few-shot prompting with diverse examples improves accuracy.
+        Reference: https://docs.aws.amazon.com/nova/latest/userguide/prompting-examples.html
         """
         last_ai_content = last_ai_turn.content if last_ai_turn else "Let's start the conversation!"
-        # Strip delivery cue from AI content if present
         import re
         last_ai_content = re.sub(r"^\[[^\]]+\]\s*", "", last_ai_content).strip()
 
@@ -203,62 +222,57 @@ class StructuredHintGenerator:
         level_str = session.level.value if hasattr(session.level, "value") else str(session.level)
         ai_character = session.ai_character if hasattr(session, 'ai_character') else "Sarah"
 
-        prompt = f"""You are an English teacher creating natural, conversational hints for Vietnamese learners.
+        # Few-shot examples (diverse: basic question, follow-up, complex scenario)
+        examples = [
+            {
+                "input": 'AI: "What do you usually do in the morning?" | Level: A1',
+                "output": """{
+  "level": "A1",
+  "type": "hint",
+  "markdown_vi": "Sarah muốn biết thói quen sáng của bạn. Hãy kể về những hoạt động từ lúc thức dậy đến khi đi làm/học.\\n\\n- I wake up at 6 AM, have breakfast, take a shower, and then go to work\\n- I usually wake up late, drink coffee, and rush to school\\n\\n💡 Dùng simple present tense (I wake up, I have, I go) để nói về thói quen hàng ngày.",
+  "markdown_en": "Sarah is asking about your morning routine. Tell what you do from waking up to going to work/school.\\n\\n- I wake up at 6 AM, have breakfast, take a shower, and then go to work\\n- I usually wake up late, drink coffee, and rush to school\\n\\n💡 Use simple present tense (I wake up, I have, I go) for daily habits."
+}"""
+            },
+            {
+                "input": 'AI: "What did you do last weekend?" | Level: B1',
+                "output": """{
+  "level": "B1",
+  "type": "hint",
+  "markdown_vi": "Sarah muốn biết bạn đã làm gì vào cuối tuần vừa rồi. Kể lại các hoạt động đã xảy ra.\\n\\n- I went to the beach with my friends and we had a great time\\n- I stayed home, watched movies, and relaxed\\n\\n💡 Dùng past simple (went, stayed, watched) để kể chuyện đã xảy ra. Dùng 'and' để nối các hành động.",
+  "markdown_en": "Sarah is asking what you did last weekend. Tell her about activities that happened.\\n\\n- I went to the beach with my friends and we had a great time\\n- I stayed home, watched movies, and relaxed\\n\\n💡 Use past simple (went, stayed, watched) for completed actions. Use 'and' to connect actions."
+}"""
+            }
+        ]
 
-CONTEXT:
+        prompt = f"""CONTEXT:
 - Scenario: {session.scenario_title or 'Conversation'}
 - Goal: {current_goal}
 - Level: {level_str}
 - AI Character: {ai_character}
 - AI just said: "{last_ai_content}"
 
-CRITICAL RULES:
-1. EXPLANATION in Vietnamese (learner understands context)
-2. EXAMPLES ALWAYS in English (learner learns correct English)
-3. NEVER translate English examples to Vietnamese
-4. Use markdown with bullet points and bold text
-5. Keep it natural and conversational
+TASK: Create a natural hint for this learner.
 
-TASK: Create a natural hint:
-1. Start with "{ai_character} wants to know..." or "{ai_character} is asking..."
-2. Explain context in Vietnamese (2-3 sentences)
-3. Provide 2-3 example sentences in English (bullet points, bold)
-4. End with 💡 tip in Vietnamese explaining grammar/vocabulary
-5. Total: 3-5 sentences + examples
+EXAMPLES (few-shot):
+Example 1: {examples[0]['input']}
+Output: {examples[0]['output']}
 
-RETURN ONLY JSON (no other text):
-{{
-  "level": "{level_str}",
-  "type": "hint",
-  "markdown_vi": "Vietnamese explanation with English examples",
-  "markdown_en": "English explanation with English examples"
-}}
+Example 2: {examples[1]['input']}
+Output: {examples[1]['output']}
 
-CORRECT EXAMPLE:
-AI said: "What do you usually do in the morning?"
-Character: Sarah
-{{
-  "markdown_vi": "Sarah muốn biết thói quen sáng của bạn. Hãy kể về những hoạt động từ lúc thức dậy đến khi đi làm/học.
-- **I wake up at 6 AM, have breakfast, take a shower, and then go to work**
-- **I usually wake up late, drink coffee, and rush to school**
+NOW, create a hint for:
+AI: "{last_ai_content}" | Level: {level_str}
 
-💡 Dùng **simple present tense** (I wake up, I have, I go) để nói về thói quen hàng ngày.",
-  "markdown_en": "Sarah is asking about your morning routine. Tell what you do from waking up to going to work/school.
-- **I wake up at 6 AM, have breakfast, take a shower, and then go to work**
-- **I usually wake up late, drink coffee, and rush to school**
-
-💡 Use **simple present tense** (I wake up, I have, I go) for daily habits."
-}}
-
-REMEMBER: Vietnamese explanation + English examples = effective learning."""
+Return ONLY the JSON object (no preamble, no markdown wrapper)."""
 
         return prompt
 
-    def _call_bedrock_with_retry(self, prompt: str, max_retries: int = 2) -> tuple[dict, int, int]:
+    def _call_bedrock_with_retry(self, system_prompt: str, user_prompt: str, max_retries: int = 2) -> tuple[dict, int, int]:
         """Call Bedrock with retry logic for transient errors (Fix #4).
         
         Args:
-            prompt: Prompt string
+            system_prompt: System role prompt (behavioral parameters)
+            user_prompt: User role prompt (context + task + examples)
             max_retries: Maximum number of retries (default: 2)
             
         Returns:
@@ -272,7 +286,7 @@ REMEMBER: Vietnamese explanation + English examples = effective learning."""
         
         for attempt in range(max_retries + 1):
             try:
-                return self._call_bedrock(prompt)
+                return self._call_bedrock(system_prompt, user_prompt)
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 
@@ -301,11 +315,15 @@ REMEMBER: Vietnamese explanation + English examples = effective learning."""
                 # Don't retry on non-ClientError exceptions
                 raise
 
-    def _call_bedrock(self, prompt: str) -> tuple[dict, int, int]:
+    def _call_bedrock(self, system_prompt: str, user_prompt: str) -> tuple[dict, int, int]:
         """Call Bedrock with streaming and parse JSON response.
         
+        Uses Nova's structured output with tool config for guaranteed JSON compliance.
+        Reference: https://docs.aws.amazon.com/nova/latest/userguide/concept-chapter-servicename.html
+        
         Args:
-            prompt: Prompt string
+            system_prompt: System role prompt (behavioral parameters)
+            user_prompt: User role prompt (context + task + examples)
             
         Returns:
             Tuple of (parsed_json_dict, input_tokens, output_tokens)
@@ -314,22 +332,70 @@ REMEMBER: Vietnamese explanation + English examples = effective learning."""
             Exception: If Bedrock call fails or JSON parsing fails
         """
         try:
-            # Amazon Nova format with streaming
-            # Reference: https://docs.aws.amazon.com/nova/latest/userguide/complete-request-schema.html
-            response = self._bedrock.invoke_model_with_response_stream(
-                modelId="apac.amazon.nova-lite-v1:0",
-                body=json.dumps({
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [{"text": prompt}],
+            # Define JSON schema for structured output (Nova best practice)
+            # Constrained decoding ensures valid JSON output
+            tool_config = {
+                "tools": [
+                    {
+                        "toolSpec": {
+                            "name": "StructuredHint",
+                            "description": "Generate a structured bilingual hint for English learners",
+                            "inputSchema": {
+                                "json": {
+                                    "type": "object",
+                                    "properties": {
+                                        "level": {
+                                            "type": "string",
+                                            "description": "CEFR level (A1, A2, B1, B2, C1, C2)"
+                                        },
+                                        "type": {
+                                            "type": "string",
+                                            "description": "Hint type (hint, vocabulary_suggestion, strategic_guidance, metacognitive_prompt)"
+                                        },
+                                        "markdown_vi": {
+                                            "type": "string",
+                                            "description": "Full hint in Vietnamese with English examples (markdown format)"
+                                        },
+                                        "markdown_en": {
+                                            "type": "string",
+                                            "description": "Full hint in English with English examples (markdown format)"
+                                        }
+                                    },
+                                    "required": ["level", "type", "markdown_vi", "markdown_en"]
+                                }
+                            }
                         }
-                    ],
-                    "inferenceConfig": {
-                        "maxTokens": 500,  # Reduced from 1000 (hints don't need that much)
-                        "temperature": 0.7,
-                    },
-                }),
+                    }
+                ],
+                "toolChoice": {
+                    "tool": {
+                        "name": "StructuredHint"
+                    }
+                }
+            }
+            
+            # Amazon Nova format with streaming + structured output
+            # Reference: https://docs.aws.amazon.com/nova/latest/userguide/concept-chapter-servicename.html
+            # AWS best practices:
+            # - temperature=0 for structured output (greedy decoding)
+            # - performanceConfig.latency="optimized" for 20-30% latency reduction
+            response = self._bedrock.converse_stream(
+                modelId="apac.amazon.nova-lite-v1:0",
+                system=[{"text": system_prompt}],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"text": user_prompt}],
+                    }
+                ],
+                toolConfig=tool_config,
+                inferenceConfig={
+                    "maxTokens": 500,
+                    "temperature": 0,
+                },
+                performanceConfig={
+                    "latency": "optimized"  # AWS best practice: 20-30% latency reduction
+                },
             )
             
             # Collect streamed response with timeout
@@ -338,49 +404,41 @@ REMEMBER: Vietnamese explanation + English examples = effective learning."""
             output_tokens = 0
             chunk_count = 0
             max_chunks = 100  # Safety limit to prevent infinite loops
+            tool_use_data = None
             
-            for event in response["body"]:
+            for event in response["stream"]:
                 chunk_count += 1
                 if chunk_count > max_chunks:
                     logger.warning(f"Bedrock response exceeded {max_chunks} chunks, truncating")
                     break
-                    
-                if "chunk" in event:
-                    chunk = json.loads(event["chunk"]["bytes"].decode())
-                    
-                    # Extract content delta
-                    if "contentBlockDelta" in chunk:
-                        delta = chunk["contentBlockDelta"].get("delta", {})
-                        if "text" in delta:
-                            content_text += delta["text"]
-                    
-                    # Extract token usage from metadata
-                    if "metadata" in chunk:
-                        usage = chunk["metadata"].get("usage", {})
-                        input_tokens = usage.get("inputTokens", input_tokens)
-                        output_tokens = usage.get("outputTokens", output_tokens)
+                
+                # Handle tool use (structured output)
+                if "contentBlockStart" in event:
+                    start = event["contentBlockStart"]
+                    if "toolUse" in start.get("start", {}):
+                        tool_use_data = start["start"]["toolUse"]
+                
+                if "contentBlockDelta" in event:
+                    delta = event["contentBlockDelta"].get("delta", {})
+                    if "toolUse" in delta:
+                        # Accumulate tool input
+                        if tool_use_data is None:
+                            tool_use_data = {}
+                        if "input" not in tool_use_data:
+                            tool_use_data["input"] = ""
+                        tool_use_data["input"] += delta["toolUse"].get("input", "")
+                
+                # Extract token usage from metadata
+                if "metadata" in event:
+                    usage = event["metadata"].get("usage", {})
+                    input_tokens = usage.get("inputTokens", input_tokens)
+                    output_tokens = usage.get("outputTokens", output_tokens)
             
-            # Parse JSON from collected content
-            # Fix: Handle literal newlines in JSON strings by escaping them
-            content_text = content_text.strip()
-            # Replace unescaped newlines in the JSON string with escaped newlines
-            # This handles cases where Bedrock returns actual newlines instead of \n
-            import re
-            # Find all string values and escape their newlines
-            def escape_newlines_in_json(text):
-                """Escape literal newlines in JSON string values."""
-                try:
-                    # Try parsing first - if it works, no need to fix
-                    return json.loads(text)
-                except json.JSONDecodeError as e:
-                    if "Invalid control character" in str(e):
-                        # Replace literal newlines with escaped newlines
-                        # This is a bit hacky but necessary for Bedrock responses
-                        text = text.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
-                        return json.loads(text)
-                    raise
-            
-            hint_data = escape_newlines_in_json(content_text)
+            # Parse tool use input as JSON
+            if tool_use_data and "input" in tool_use_data:
+                hint_data = json.loads(tool_use_data["input"])
+            else:
+                raise ValueError("No tool use data received from Bedrock")
             
             # Validate response structure and content
             is_valid, validation_errors = validate_structured_hint_response(hint_data)

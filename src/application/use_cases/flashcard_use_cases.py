@@ -36,7 +36,7 @@ class CreateFlashCardUseCase:
             flashcard = FlashCard(
                 flashcard_id=str(ULID()),
                 user_id=command.user_id,
-                word=command.vocab,
+                word=command.word,
                 translation_vi=command.translation_vi or "",
                 phonetic=command.phonetic or "",
                 audio_url=command.audio_url or "",

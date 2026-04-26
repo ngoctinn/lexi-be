@@ -11,7 +11,6 @@ from domain.services.conversation_orchestrator import ConversationOrchestrator
 from domain.services.greeting_generator import GreetingGenerator
 from domain.services.model_router import ModelRouter
 from domain.services.prompt_builder import OptimizedPromptBuilder
-from domain.services.streaming_response import StreamingResponse
 from domain.services.response_validator import ResponseValidator
 from domain.services.metrics_logger import MetricsLogger
 from domain.services.speaking_performance_scorer import SpeakingPerformanceScorer
@@ -47,16 +46,12 @@ def build_session_controller(
     conversation_generation_service = conversation_generation_service or BedrockConversationGenerationService()
     speech_synthesis_service = speech_synthesis_service or PollySpeechSynthesisService()
     
-    # Build ConversationOrchestrator with bedrock client
+    # Build ConversationOrchestrator
     if conversation_orchestrator is None:
-        from infrastructure.services.speaking_pipeline_services import _bedrock_client
-        
         conversation_orchestrator = ConversationOrchestrator(
             model_router=ModelRouter(),
-            streaming_response=StreamingResponse(bedrock_client=_bedrock_client),
             response_validator=ResponseValidator(),
             metrics_logger=MetricsLogger(),
-            bedrock_client=_bedrock_client,
         )
     
     # Build SpeakingPerformanceScorer with Bedrock adapter

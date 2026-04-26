@@ -214,28 +214,12 @@ class WebSocketSessionController:
     send_message: Callable[[dict[str, Any]], None]
     verify_token: Callable[[str], dict[str, Any]]
 
-    def _stream_text_chunks(self, text: str, chunk_size: int = 10) -> None:
-        """Stream text in chunks to client via WebSocket."""
-        if not text:
-            self.send_message({"event": "AI_TEXT_CHUNK", "chunk": "", "done": True})
-            return
-        
-        # Split text into chunks (by words to avoid breaking mid-word)
-        words = text.split()
-        current_chunk = ""
-        
-        for i, word in enumerate(words):
-            current_chunk += word + " "
-            
-            # Send chunk when it reaches chunk_size words or at the end
-            is_last = (i == len(words) - 1)
-            if len(current_chunk.split()) >= chunk_size or is_last:
-                self.send_message({
-                    "event": "AI_TEXT_CHUNK",
-                    "chunk": current_chunk.strip(),
-                    "done": is_last
-                })
-                current_chunk = ""
+    def _send_ai_response(self, text: str) -> None:
+        """Send full AI response to client via WebSocket (non-streaming)."""
+        self.send_message({
+            "event": "AI_RESPONSE",
+            "text": text or "",
+        })
 
     def connect(self, session_id: str, token: str, connection_id: str) -> dict[str, Any]:
         print(f"[ws] connect() called: session_id={session_id} token_len={len(token) if token else 0} connection_id={connection_id}")
@@ -361,7 +345,7 @@ class WebSocketSessionController:
         response = result.value
         try:
             self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
-            self._stream_text_chunks(response.ai_turn.content)
+            self._send_ai_response(response.ai_turn.content)
             if response.ai_turn.audio_url:
                 self.send_message({
                     "event": "AI_AUDIO_URL",
@@ -468,7 +452,16 @@ class WebSocketSessionController:
             return _response(500, {"message": "Lỗi tạo gợi ý."})
 
     def analyze_turn(self, session_id: str, turn_index: int, connection_id: str) -> dict[str, Any]:
-        """Analyze a specific turn for formative assessment."""
+        """Analyze a specific turn for formative assessment.
+        
+        Args:
+            session_id: Session ID
+            turn_index: Index of the USER turn to analyze (must be even: 0, 2, 4...)
+            connection_id: WebSocket connection ID
+            
+        Returns:
+            Response dict with status and message
+        """
         session = self._get_session(session_id)
         if not session:
             return _response(404, {"message": "Session không tồn tại."})
@@ -476,23 +469,45 @@ class WebSocketSessionController:
         self._sync_connection(session, connection_id)
         
         try:
-            # Get turns for this session
-            turns = self.turn_repo.list_by_session(session_id)
+            # Validate turn_index
+            if turn_index < 0:
+                return _response(400, {"message": "turn_index phải >= 0"})
             
-            # Find the requested turn (learner's message)
+            # Get turns for this session (sorted by turn_index)
+            turns = self.turn_repo.list_by_session(session_id)
+            sorted_turns = sorted(turns, key=lambda t: t.turn_index)
+            
+            # Check turn_index exists
+            if turn_index >= len(sorted_turns):
+                return _response(404, {
+                    "message": f"Turn {turn_index} không tồn tại (session chỉ có {len(sorted_turns)} turns)"
+                })
+            
+            # Find the requested USER turn and its corresponding AI response
             from domain.value_objects.enums import Speaker as SpeakerEnum
             learner_turn = None
             ai_turn = None
             
-            for turn in turns:
+            for i, turn in enumerate(sorted_turns):
                 speaker_val = turn.speaker.value if hasattr(turn.speaker, "value") else turn.speaker
+                
+                # Found the USER turn at requested index
                 if turn.turn_index == turn_index and speaker_val == SpeakerEnum.USER.value:
                     learner_turn = turn
-                elif turn.turn_index == turn_index and speaker_val == SpeakerEnum.AI.value:
-                    ai_turn = turn
+                    
+                    # Find next AI turn (should be at index i+1)
+                    if i + 1 < len(sorted_turns):
+                        next_turn = sorted_turns[i + 1]
+                        next_speaker = next_turn.speaker.value if hasattr(next_turn.speaker, "value") else next_turn.speaker
+                        if next_speaker == SpeakerEnum.AI.value:
+                            ai_turn = next_turn
+                    break
             
+            # Validate that turn_index is a USER turn
             if not learner_turn:
-                return _response(404, {"message": "Turn không tồn tại."})
+                return _response(404, {
+                    "message": f"Turn {turn_index} không phải là USER turn hoặc không tồn tại"
+                })
             
             # Get AI response (may be None if turn is incomplete)
             ai_response = ai_turn.content if ai_turn else "No AI response yet"
@@ -580,7 +595,7 @@ class WebSocketSessionController:
         response = result.value
         try:
             self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
-            self._stream_text_chunks(response.ai_turn.content)
+            self._send_ai_response(response.ai_turn.content)
             if response.ai_turn.audio_url:
                 self.send_message(
                     {
@@ -798,7 +813,7 @@ class WebSocketSessionController:
             response = result.value
             try:
                 self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
-                self._stream_text_chunks(response.ai_turn.content)
+                self._send_ai_response(response.ai_turn.content)
                 if response.ai_turn.audio_url:
                     self.send_message(
                         {
@@ -874,7 +889,7 @@ class WebSocketSessionController:
             response = result.value
             try:
                 self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
-                self._stream_text_chunks(response.ai_turn.content)
+                self._send_ai_response(response.ai_turn.content)
                 if response.ai_turn.audio_url:
                     self.send_message(
                         {

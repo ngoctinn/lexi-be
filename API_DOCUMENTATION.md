@@ -365,7 +365,7 @@ Translate an English word to Vietnamese with dictionary enrichment (phonetic, me
 **Request Body**:
 ```json
 {
-  "vocab": "run",
+  "word": "run",
   "vocab_type": "verb",
   "translation_vi": "chạy",
   "example_sentence": "She runs five miles every day.",
@@ -374,7 +374,24 @@ Translate an English word to Vietnamese with dictionary enrichment (phonetic, me
 }
 ```
 
-> `definition_vi` field đã bị xóa. Dùng `translation_vi` cho nghĩa của thẻ.
+| Field | Required | Description |
+|-------|----------|-------------|
+| `word` | ✅ | English word or phrase (1-50 chars) |
+| `vocab_type` | ✅ | Part of speech (noun, verb, adj, etc.) |
+| `translation_vi` | ✅ | Vietnamese translation |
+| `phonetic` | ❌ | IPA phonetic notation |
+| `audio_url` | ❌ | Audio pronunciation URL |
+| `example_sentence` | ❌ | Example sentence (max 500 chars) |
+| `source_session_id` | ❌ | Source session ID (if from speaking) |
+| `source_turn_index` | ❌ | Source turn index (if from speaking) |
+
+> **Note:** Use data from `/vocabulary/translate` response to populate these fields.
+
+**Validation Rules:**
+- `word`: Letters, spaces, hyphens (-), apostrophes ('), dots (.) only
+- `word`: Max 50 characters (prevents full sentences)
+- `word`: No sentence punctuation (!?;:,)
+- `vocab_type`: Must be valid part of speech (noun, verb, adj, adv, etc.)
 
 **Response** (201 Created):
 ```json
@@ -392,6 +409,15 @@ Translate an English word to Vietnamese with dictionary enrichment (phonetic, me
   }
 }
 ```
+
+**Error Responses:**
+
+| Status | Code | Example |
+|--------|------|---------|
+| `400` | `VALIDATION_ERROR` | Word too long (max 50 characters) |
+| `400` | `VALIDATION_ERROR` | Word should not contain sentence punctuation |
+| `400` | `VALIDATION_ERROR` | Invalid vocab_type |
+| `401` | `UNAUTHORIZED` | Missing or invalid token |
 
 ### List Flashcards
 

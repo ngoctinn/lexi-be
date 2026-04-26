@@ -116,7 +116,7 @@ class TestDataFactory:
     def valid_flashcard_data():
         """Generate valid flashcard creation data."""
         return {
-            "vocab": f"word_{uuid.uuid4().hex[:8]}",
+            "word": f"word_{uuid.uuid4().hex[:8]}",
             "vocab_type": "verb",
             "translation_vi": "chạy",
             "example_sentence": "She runs five miles every day.",
@@ -128,7 +128,7 @@ class TestDataFactory:
     def invalid_flashcard_missing_field():
         """Generate flashcard data missing required field."""
         return {
-            "vocab": "run",
+            "word": "run",
             "vocab_type": "verb"
             # Missing: translation_vi
         }
@@ -137,7 +137,7 @@ class TestDataFactory:
     def invalid_flashcard_invalid_type():
         """Generate flashcard data with invalid vocab_type."""
         return {
-            "vocab": "run",
+            "word": "run",
             "vocab_type": "invalid_type",
             "translation_vi": "chạy"
         }

@@ -41,7 +41,7 @@ class TestFlashcardCreate:
         logger.info("✓ Create flashcard success")
 
     def test_create_flashcard_missing_vocab(self, api_client):
-        """Test: POST /flashcards without vocab returns 400"""
+        """Test: POST /flashcards without word returns 400"""
         payload = {
             "vocab_type": "verb",
             "translation_vi": "chạy"
@@ -51,12 +51,12 @@ class TestFlashcardCreate:
         assert response.status_code == 400
         data = response.json()
         ResponseValidator.validate_error_response(data, "VALIDATION_ERROR")
-        logger.info("✓ Create flashcard missing vocab")
+        logger.info("✓ Create flashcard missing word")
 
     def test_create_flashcard_missing_translation(self, api_client):
         """Test: POST /flashcards without translation_vi returns 400"""
         payload = {
-            "vocab": "run",
+            "word": "run",
             "vocab_type": "verb"
         }
         response = api_client.post("/flashcards", payload)
@@ -69,7 +69,7 @@ class TestFlashcardCreate:
     def test_create_flashcard_invalid_vocab_type(self, api_client):
         """Test: POST /flashcards with invalid vocab_type returns 400"""
         payload = {
-            "vocab": "run",
+            "word": "run",
             "vocab_type": "invalid_type",
             "translation_vi": "chạy"
         }

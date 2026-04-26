@@ -29,6 +29,7 @@ class VocabularyTranslationViewModel:
     word: str
     translation_vi: str
     phonetic: str = ""
+    audio_url: Optional[str] = None
     definitions: List[DefinitionVM] = field(default_factory=list)
     synonyms: List[SynonymVM] = field(default_factory=list)
     response_time_ms: int = 0

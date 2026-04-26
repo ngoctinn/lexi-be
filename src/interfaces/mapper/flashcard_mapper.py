@@ -13,26 +13,24 @@ class FlashCardMapper:
         
         Expected body:
         {
-            "vocab": "word or phrase",
+            "word": "word or phrase",
             "vocab_type": "noun|verb|adj|...",
             "translation_vi": "Nghĩa tiếng Việt",
             "phonetic": "Phiên âm (optional)",
             "audio_url": "URL audio (optional)",
             "example_sentence": "Câu ví dụ (optional)",
-            "source_api": "Nguồn API (optional)",
             "source_session_id": "Session ID (optional)",
             "source_turn_index": "Turn index (optional)"
         }
         """
         return CreateFlashCardCommand(
             user_id=user_id,
-            vocab=body.get("vocab", ""),
+            word=body.get("word", ""),
             vocab_type=body.get("vocab_type", "noun"),
             translation_vi=body.get("translation_vi", ""),
             phonetic=body.get("phonetic", ""),
             audio_url=body.get("audio_url", ""),
             example_sentence=body.get("example_sentence", ""),
-            source_api=body.get("source_api", "internal"),
             source_session_id=body.get("source_session_id"),
             source_turn_index=body.get("source_turn_index"),
         )
