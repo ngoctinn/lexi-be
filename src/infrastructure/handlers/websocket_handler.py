@@ -214,6 +214,29 @@ class WebSocketSessionController:
     send_message: Callable[[dict[str, Any]], None]
     verify_token: Callable[[str], dict[str, Any]]
 
+    def _stream_text_chunks(self, text: str, chunk_size: int = 10) -> None:
+        """Stream text in chunks to client via WebSocket."""
+        if not text:
+            self.send_message({"event": "AI_TEXT_CHUNK", "chunk": "", "done": True})
+            return
+        
+        # Split text into chunks (by words to avoid breaking mid-word)
+        words = text.split()
+        current_chunk = ""
+        
+        for i, word in enumerate(words):
+            current_chunk += word + " "
+            
+            # Send chunk when it reaches chunk_size words or at the end
+            is_last = (i == len(words) - 1)
+            if len(current_chunk.split()) >= chunk_size or is_last:
+                self.send_message({
+                    "event": "AI_TEXT_CHUNK",
+                    "chunk": current_chunk.strip(),
+                    "done": is_last
+                })
+                current_chunk = ""
+
     def connect(self, session_id: str, token: str, connection_id: str) -> dict[str, Any]:
         print(f"[ws] connect() called: session_id={session_id} token_len={len(token) if token else 0} connection_id={connection_id}")
         
@@ -338,7 +361,7 @@ class WebSocketSessionController:
         response = result.value
         try:
             self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
-            self.send_message({"event": "AI_TEXT_CHUNK", "chunk": response.ai_turn.content, "done": True})
+            self._stream_text_chunks(response.ai_turn.content)
             if response.ai_turn.audio_url:
                 self.send_message({
                     "event": "AI_AUDIO_URL",
@@ -362,7 +385,9 @@ class WebSocketSessionController:
         try:
             logger.info(f"Generating hint for session: {session_id}")
             turns = self.turn_repo.list_by_session(session_id)
-            logger.info(f"Found {len(turns)} turns for session {session_id}")
+            # Limit to last 10 turns for context (avoid fetching entire history)
+            turns = turns[-10:] if len(turns) > 10 else turns
+            logger.info(f"Using {len(turns)} turns (limited to 10) for session {session_id}")
             
             # Extract last AI message (what learner needs to respond to)
             from domain.value_objects.enums import Speaker as SpeakerEnum
@@ -388,7 +413,12 @@ class WebSocketSessionController:
             
             if hint:
                 try:
-                    self.send_message({"event": "HINT_TEXT", "hint": hint.to_dict()})
+                    self.send_message({
+                        "event": "HINT_TEXT",
+                        "hint": hint.to_dict(),
+                        "isStreaming": False,
+                        "isDone": True
+                    })
                 except Exception as exc:
                     print(f"[ws] Failed to send structured hint: {exc}")
                     return _response(500, {"message": "Lỗi gửi gợi ý."})
@@ -403,7 +433,12 @@ class WebSocketSessionController:
                     }
                 }
                 try:
-                    self.send_message({"event": "HINT_TEXT", "hint": fallback_hint})
+                    self.send_message({
+                        "event": "HINT_TEXT",
+                        "hint": fallback_hint,
+                        "isStreaming": False,
+                        "isDone": True
+                    })
                 except Exception as exc:
                     print(f"[ws] Failed to send fallback hint: {exc}")
                 return _response(200, {"message": "No hint available"})
@@ -422,7 +457,12 @@ class WebSocketSessionController:
                 }
             }
             try:
-                self.send_message({"event": "HINT_TEXT", "hint": fallback_hint})
+                self.send_message({
+                    "event": "HINT_TEXT",
+                    "hint": fallback_hint,
+                    "isStreaming": False,
+                    "isDone": True
+                })
             except Exception as exc:
                 print(f"[ws] Failed to send error hint: {exc}")
             return _response(500, {"message": "Lỗi tạo gợi ý."})
@@ -540,13 +580,7 @@ class WebSocketSessionController:
         response = result.value
         try:
             self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
-            self.send_message(
-                {
-                    "event": "AI_TEXT_CHUNK",
-                    "chunk": response.ai_turn.content,
-                    "done": True,
-                }
-            )
+            self._stream_text_chunks(response.ai_turn.content)
             if response.ai_turn.audio_url:
                 self.send_message(
                     {
@@ -764,7 +798,7 @@ class WebSocketSessionController:
             response = result.value
             try:
                 self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
-                self.send_message({"event": "AI_TEXT_CHUNK", "chunk": response.ai_turn.content, "done": True})
+                self._stream_text_chunks(response.ai_turn.content)
                 if response.ai_turn.audio_url:
                     self.send_message(
                         {
@@ -840,7 +874,7 @@ class WebSocketSessionController:
             response = result.value
             try:
                 self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
-                self.send_message({"event": "AI_TEXT_CHUNK", "chunk": response.ai_turn.content, "done": True})
+                self._stream_text_chunks(response.ai_turn.content)
                 if response.ai_turn.audio_url:
                     self.send_message(
                         {

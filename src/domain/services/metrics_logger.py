@@ -115,12 +115,19 @@ class MetricsLogger:
 
     # Model pricing (USD per 1M tokens)
     PRICING = {
-        "amazon.nova-micro-v1:0": {
-            "input": 0.03,
-            "output": 0.06,
-            "cache_read": 0.015,
-            "cache_write": 0.06,
+        "apac.amazon.nova-lite-v1:0": {
+            "input": 0.06,
+            "output": 0.24,
+            "cache_read": 0.03,
+            "cache_write": 0.24,
         },
+        "apac.amazon.nova-pro-v1:0": {
+            "input": 0.80,
+            "output": 2.40,
+            "cache_read": 0.40,
+            "cache_write": 2.40,
+        },
+        # Legacy model IDs (for backward compatibility)
         "amazon.nova-lite-v1:0": {
             "input": 0.06,
             "output": 0.24,

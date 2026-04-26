@@ -45,7 +45,7 @@ class TestSessionCreate:
         payload = {
             "learner_role_id": "customer",
             "ai_role_id": "waiter",
-            "ai_gender": "female",
+            "ai_character": "Sarah",
             "level": "B1",
             "selected_goal": "order food"
         }
@@ -62,7 +62,7 @@ class TestSessionCreate:
             "scenario_id": "restaurant-ordering",
             "learner_role_id": "customer",
             "ai_role_id": "waiter",
-            "ai_gender": "female",
+            "ai_character": "Sarah",
             "selected_goal": "order food"
         }
         response = api_client.post("/sessions", payload)
@@ -78,7 +78,7 @@ class TestSessionCreate:
             "scenario_id": "restaurant-ordering",
             "learner_role_id": "customer",
             "ai_role_id": "waiter",
-            "ai_gender": "female",
+            "ai_character": "Sarah",
             "level": "INVALID",
             "selected_goal": "order food"
         }
@@ -95,7 +95,7 @@ class TestSessionCreate:
             "scenario_id": "invalid-scenario-12345",
             "learner_role_id": "customer",
             "ai_role_id": "waiter",
-            "ai_gender": "female",
+            "ai_character": "Sarah",
             "level": "B1",
             "selected_goal": "order food"
         }

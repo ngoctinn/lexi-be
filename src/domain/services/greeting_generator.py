@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -19,19 +20,19 @@ class GreetingResult:
 
 
 class GreetingGenerator:
-    """Generates level-appropriate greetings and first questions for session start."""
+    """Generates level-appropriate greetings and first questions for session start using LLM."""
 
-    # Greeting templates per proficiency level (cached, no LLM call)
-    _GREETING_TEMPLATES = {
-        "A1": "Hi! How are you?",
-        "A2": "Hello! How are you doing?",
-        "B1": "Hi there! How's it going?",
-        "B2": "Hello! How have you been?",
-        "C1": "Hi! How are things with you?",
-        "C2": "Greetings! How have you been lately?",
+    # Fallback greetings per proficiency level (if LLM fails)
+    _FALLBACK_GREETINGS = {
+        "A1": "Hi! I'm {character}. Nice to meet you!",
+        "A2": "Hello! I'm {character}. How are you?",
+        "B1": "Hi there! I'm {character}. How's it going?",
+        "B2": "Hello! I'm {character}. How have you been?",
+        "C1": "Hi! I'm {character}. How are things with you?",
+        "C2": "Greetings! I'm {character}. How have you been lately?",
     }
     
-    # Fallback first questions per proficiency level (Fix #5)
+    # Fallback first questions per proficiency level (if LLM fails)
     _FALLBACK_FIRST_QUESTIONS = {
         "A1": "What do you like?",
         "A2": "What do you want to do?",
@@ -56,10 +57,10 @@ class GreetingGenerator:
         learner_role: str,
         ai_role: str,
         selected_goal: str,
-        ai_gender: str,
+        ai_character: str,
         session_id: Optional[str] = None,
     ) -> GreetingResult:
-        """Generate greeting and first question for session start.
+        """Generate full greeting using LLM (character introduces themselves + first question).
         
         Args:
             level: Proficiency level (A1-C2)
@@ -67,7 +68,7 @@ class GreetingGenerator:
             learner_role: Role of the learner in the scenario
             ai_role: Role of the AI in the scenario
             selected_goal: Selected learning goal
-            ai_gender: Gender of the AI (male/female)
+            ai_character: Character name (Sarah, Marco, Emma, James)
             session_id: Optional session ID for logging
             
         Returns:
@@ -77,20 +78,17 @@ class GreetingGenerator:
             ValueError: If level is invalid
             Exception: If Bedrock call fails
         """
-        import time
         start_time = time.time()
         
         try:
-            # Get greeting template (cached, no LLM call)
-            greeting_text = self._get_greeting_template(level)
-            
-            # Generate first question using Bedrock
-            first_question, input_tokens, output_tokens = self._generate_first_question(
+            # Generate full greeting using LLM
+            greeting_text, first_question, input_tokens, output_tokens = self._generate_full_greeting(
                 level=level,
                 scenario_title=scenario_title,
                 learner_role=learner_role,
                 ai_role=ai_role,
                 selected_goal=selected_goal,
+                ai_character=ai_character,
             )
             
             # Combine greeting and first question
@@ -99,9 +97,8 @@ class GreetingGenerator:
             # Calculate metrics
             latency_ms = (time.time() - start_time) * 1000
             
-            # Estimate cost (Amazon Nova Micro pricing)
-            # Input: $0.000035 per 1K tokens, Output: $0.00014 per 1K tokens
-            cost_usd = (input_tokens / 1000 * 0.000035) + (output_tokens / 1000 * 0.00014)
+            # Estimate cost (Amazon Nova Lite pricing)
+            cost_usd = (input_tokens / 1000 * 0.00006) + (output_tokens / 1000 * 0.00024)
             
             # Log performance metrics
             logger.info(
@@ -110,6 +107,7 @@ class GreetingGenerator:
                     "session_id": session_id,
                     "level": level,
                     "scenario": scenario_title,
+                    "character": ai_character,
                     "latency_ms": round(latency_ms, 2),
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
@@ -131,6 +129,7 @@ class GreetingGenerator:
                     "session_id": session_id,
                     "level": level,
                     "scenario": scenario_title,
+                    "character": ai_character,
                     "error": str(e),
                 }
             )
@@ -145,6 +144,7 @@ class GreetingGenerator:
                     "session_id": session_id,
                     "level": level,
                     "scenario": scenario_title,
+                    "character": ai_character,
                     "latency_ms": round(latency_ms, 2),
                     "error": str(e),
                     "error_type": type(e).__name__,
@@ -212,9 +212,9 @@ Generate a natural first question to start the conversation. The question should
 Generate ONLY the question, no other text. Keep it to one sentence."""
 
         try:
-            # Call Bedrock with Amazon Nova Micro (streaming)
+            # Call Bedrock with Amazon Nova Lite (streaming)
             response = self._bedrock.invoke_model_with_response_stream(
-                modelId="apac.amazon.nova-micro-v1:0",
+                modelId="apac.amazon.nova-lite-v1:0",
                 body=json.dumps({
                     "messages": [
                         {
@@ -263,3 +263,130 @@ Generate ONLY the question, no other text. Keep it to one sentence."""
             )
             fallback = self._FALLBACK_FIRST_QUESTIONS.get(level, "What would you like to talk about?")
             return fallback, 0, 0
+
+    def _generate_full_greeting(
+        self,
+        level: str,
+        scenario_title: str,
+        learner_role: str,
+        ai_role: str,
+        selected_goal: str,
+        ai_character: str,
+    ) -> tuple[str, str, int, int]:
+        """Generate full greeting using LLM (character introduces + first question).
+        
+        Args:
+            level: Proficiency level (A1-C2)
+            scenario_title: Title of the scenario
+            learner_role: Role of the learner
+            ai_role: Role of the AI
+            selected_goal: Selected learning goal
+            ai_character: Character name (Sarah, Marco, Emma, James)
+            
+        Returns:
+            Tuple of (greeting_text, first_question, input_tokens, output_tokens)
+        """
+        goal_text = selected_goal if selected_goal else "general conversation"
+        
+        prompt = f"""You are an English conversation partner in a role-play scenario.
+
+Scenario: {scenario_title}
+Your character name: {ai_character}
+Your role: {ai_role}
+Learner's role: {learner_role}
+Learning goal: {goal_text}
+Proficiency level: {level}
+
+Generate a natural greeting where you introduce yourself and ask the first question. Format:
+1. First line: Greeting + introduce yourself by name (e.g., "Hi! I'm Sarah, a waiter here.")
+2. Second line: First question to start the conversation
+
+Requirements:
+- Be appropriate for proficiency level {level}
+- Keep it SHORT and NATURAL
+- Establish the scenario context clearly
+- Help the learner work toward the goal
+
+Output format (2 lines only):
+[GREETING]: <greeting with character introduction>
+[QUESTION]: <first question>"""
+
+        try:
+            # Call Bedrock with Amazon Nova Lite (streaming)
+            response = self._bedrock.invoke_model_with_response_stream(
+                modelId="apac.amazon.nova-lite-v1:0",
+                body=json.dumps({
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": prompt,
+                        }
+                    ],
+                    "max_tokens": 150,
+                    "temperature": 0.7,
+                }),
+            )
+            
+            # Collect streamed response
+            full_response = ""
+            input_tokens = 0
+            output_tokens = 0
+            
+            for event in response["body"]:
+                if "chunk" in event:
+                    chunk = json.loads(event["chunk"]["bytes"].decode())
+                    
+                    # Extract content delta
+                    if "contentBlockDelta" in chunk:
+                        delta = chunk["contentBlockDelta"].get("delta", {})
+                        if "text" in delta:
+                            full_response += delta["text"]
+                    
+                    # Extract token usage from metadata
+                    if "metadata" in chunk:
+                        usage = chunk["metadata"].get("usage", {})
+                        input_tokens = usage.get("inputTokens", input_tokens)
+                        output_tokens = usage.get("outputTokens", output_tokens)
+            
+            # Parse response
+            greeting_text = ""
+            first_question = ""
+            
+            for line in full_response.split("\n"):
+                line = line.strip()
+                if line.startswith("[GREETING]:"):
+                    greeting_text = line.replace("[GREETING]:", "").strip()
+                elif line.startswith("[QUESTION]:"):
+                    first_question = line.replace("[QUESTION]:", "").strip()
+            
+            # Fallback if parsing fails
+            if not greeting_text or not first_question:
+                logger.warning(
+                    "Failed to parse LLM greeting response, using fallback",
+                    extra={
+                        "level": level,
+                        "scenario": scenario_title,
+                        "character": ai_character,
+                        "response": full_response[:200],
+                    }
+                )
+                greeting_text = self._FALLBACK_GREETINGS.get(level, "Hi! I'm {character}.").format(character=ai_character)
+                first_question = self._FALLBACK_FIRST_QUESTIONS.get(level, "What would you like to talk about?")
+            
+            return greeting_text, first_question, input_tokens, output_tokens
+            
+        except (json.JSONDecodeError, ClientError, Exception) as e:
+            # Use fallback greeting
+            logger.warning(
+                "Full greeting generation failed, using fallback",
+                extra={
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "level": level,
+                    "scenario": scenario_title,
+                    "character": ai_character,
+                }
+            )
+            greeting_text = self._FALLBACK_GREETINGS.get(level, "Hi! I'm {character}.").format(character=ai_character)
+            first_question = self._FALLBACK_FIRST_QUESTIONS.get(level, "What would you like to talk about?")
+            return greeting_text, first_question, 0, 0

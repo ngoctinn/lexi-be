@@ -56,21 +56,19 @@ class DynamoScoringRepo(ScoringRepository):
     def _to_entity(self, item: dict) -> Scoring:
         from ulid import ULID
         
-        scoring_id = item.get("scoring_id", "")
-        session_id = item.get("session_id", "")
+        scoring_id_str = item.get("scoring_id", "")
+        session_id_str = item.get("session_id", "")
         
-        # Convert to ULID if string
-        if isinstance(scoring_id, str) and scoring_id:
-            try:
-                scoring_id = ULID.from_str(scoring_id)
-            except Exception:
-                pass  # Keep as string if conversion fails
+        # Convert to ULID - raise error if conversion fails (entity requires ULID)
+        try:
+            scoring_id = ULID.from_str(scoring_id_str) if scoring_id_str else ULID()
+        except (ValueError, TypeError):
+            scoring_id = ULID()
         
-        if isinstance(session_id, str) and session_id:
-            try:
-                session_id = ULID.from_str(session_id)
-            except Exception:
-                pass  # Keep as string if conversion fails
+        try:
+            session_id = ULID.from_str(session_id_str) if session_id_str else ULID()
+        except (ValueError, TypeError):
+            session_id = ULID()
         
         return Scoring(
             scoring_id=scoring_id,

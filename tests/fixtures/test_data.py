@@ -207,7 +207,7 @@ class TestDataFactory:
             "scenario_id": scenario_id,
             "learner_role_id": "customer",
             "ai_role_id": "waiter",
-            "ai_gender": "female",
+            "ai_character": "Sarah",
             "level": "B1",
             "selected_goal": "order food"
         }
@@ -228,7 +228,7 @@ class TestDataFactory:
             "scenario_id": "restaurant-ordering",
             "learner_role_id": "customer",
             "ai_role_id": "waiter",
-            "ai_gender": "female",
+            "ai_character": "Sarah",
             "level": "INVALID",
             "selected_goal": "order food"
         }

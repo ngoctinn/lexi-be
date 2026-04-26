@@ -247,7 +247,7 @@ def build_session_prompt(
     ai_role: str,
     level: str,
     selected_goal: str,
-    ai_gender: str,
+    ai_character: str,
     prompt_version: str = "v1",
 ) -> str:
     """
@@ -267,10 +267,11 @@ def build_session_prompt(
         f"Context: {context}\n"
         f"Learner role: {learner_role}\n"
         f"AI role: {ai_role}\n"
-        f"AI gender: {ai_gender}\n"
+        f"AI character: {ai_character}\n"
         f"Level: {level}\n"
         f"Goal: {goal_text}\n\n"
         f"You are playing the role of {ai_role} in a roleplay conversation.\n"
+        f"Your character name is {ai_character}.\n"
         f"LANGUAGE LEVEL: {level} — {level_instruction}\n\n"
         f"IMPLICIT ERROR CORRECTION:\n"
         f"{implicit_correction_instruction}\n\n"
@@ -335,7 +336,7 @@ class OptimizedPromptBuilder:
         ai_role: str,
         level: str,
         selected_goal: str,
-        ai_gender: str = "female",
+        ai_character: str = "Sarah",
     ) -> str:
         """
         Build 4-dimension optimized prompt per AWS best practices.
@@ -360,6 +361,7 @@ class OptimizedPromptBuilder:
         role_definition = (
             f"## ROLE DEFINITION\n"
             f"You are a friendly English conversation partner.\n"
+            f"Your character name: {ai_character}\n"
             f"Personality: {_PERSONALITY_TRAITS[level]}\n"
             f"Emotional tone: {_EMOTIONAL_TONE[level]}\n"
             f"Show genuine interest in the learner's ideas and encourage participation."

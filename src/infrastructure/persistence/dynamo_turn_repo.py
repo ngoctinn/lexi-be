@@ -60,8 +60,17 @@ class DynamoTurnRepo(TurnRepository):
 
     def _to_entity(self, item: dict) -> Turn:
         from decimal import Decimal
+        from ulid import ULID
+        
+        # Convert session_id from string to ULID
+        session_id_str = item.get("session_id", "")
+        try:
+            session_id = ULID.from_str(session_id_str) if session_id_str else ULID()
+        except (ValueError, TypeError):
+            session_id = ULID()
+        
         return Turn(
-            session_id=item.get("session_id", ""),
+            session_id=session_id,
             turn_index=int(item.get("turn_index", 0)),
             speaker=Speaker(item.get("speaker", Speaker.AI.value)),
             content=item.get("content", ""),

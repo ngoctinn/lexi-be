@@ -47,6 +47,9 @@ class StreamingResponse:
         self.metrics = StreamingMetrics()
         self._start_time = None
         self._first_token_time = None
+        # Store token counts from metadata
+        self._input_tokens = 0
+        self._output_tokens = 0
 
     def collect_response(self, event_stream) -> tuple[str, StreamingMetrics]:
         """
@@ -59,6 +62,8 @@ class StreamingResponse:
             Tuple of (complete_response_text, metrics)
         """
         self._start_time = time.time()
+        # Reset metrics for this collection session
+        self.metrics = StreamingMetrics()
         response_text = ""
         
         try:
@@ -86,16 +91,31 @@ class StreamingResponse:
                         chunk_bytes = chunk["bytes"]
                         chunk_text = chunk_bytes.decode("utf-8")
                         
-                        # Parse JSON to extract text (Anthropic Claude format)
-                        # Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-runtime_example_bedrock-runtime_InvokeModelWithResponseStream_AnthropicClaude_section.html
+                        # Parse JSON to extract text (supports both Nova and Claude formats)
+                        # Nova Reference: https://docs.aws.amazon.com/nova/latest/nova2-userguide/streaming-responses.html
+                        # Claude Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-runtime_example_bedrock-runtime_InvokeModelWithResponseStream_AnthropicClaude_section.html
                         try:
                             chunk_json = json.loads(chunk_text)
                             
+                            # Amazon Nova format: contentBlockDelta.delta.text
+                            if "contentBlockDelta" in chunk_json:
+                                delta = chunk_json["contentBlockDelta"].get("delta", {})
+                                if "text" in delta:
+                                    token_text = delta["text"]
+                                    if token_text:  # Only count non-empty text
+                                        response_text += token_text
+                                        self.metrics.token_count += 1
                             # Anthropic Claude Messages API format
-                            if chunk_json.get("type") == "content_block_delta":
+                            elif chunk_json.get("type") == "content_block_delta":
                                 token_text = chunk_json.get("delta", {}).get("text", "")
                                 response_text += token_text
                                 self.metrics.token_count += 1
+                            # Extract token counts from metadata (Nova format)
+                            elif "metadata" in chunk_json:
+                                usage = chunk_json["metadata"].get("usage", {})
+                                # Store token counts for final response
+                                self._input_tokens = usage.get("inputTokens", 0)
+                                self._output_tokens = usage.get("outputTokens", 0)
                             # Legacy format fallback
                             elif "completion" in chunk_json:
                                 token_text = chunk_json["completion"]
@@ -103,6 +123,14 @@ class StreamingResponse:
                                 self.metrics.token_count += 1
                             elif "text" in chunk_json:
                                 token_text = chunk_json["text"]
+                                response_text += token_text
+                                self.metrics.token_count += 1
+                            elif "output" in chunk_json:
+                                token_text = chunk_json["output"]
+                                response_text += token_text
+                                self.metrics.token_count += 1
+                            elif "content" in chunk_json:
+                                token_text = chunk_json["content"]
                                 response_text += token_text
                                 self.metrics.token_count += 1
                                 
@@ -247,8 +275,8 @@ class StreamingResponse:
         
         # Extract token counts from final event (if available)
         # Note: Token counts are in the final metadata event, not in chunks
-        input_tokens = 0
-        output_tokens = 0
+        input_tokens = getattr(self, '_input_tokens', 0)
+        output_tokens = getattr(self, '_output_tokens', 0)
         
         # Return structured response
         return {
@@ -269,6 +297,8 @@ class StreamingResponse:
             Tuple of (token_text, current_metrics) for each token
         """
         self._start_time = time.time()
+        # Reset metrics for this streaming session
+        self.metrics = StreamingMetrics()
         
         try:
             for event in event_stream:
@@ -295,16 +325,30 @@ class StreamingResponse:
                         chunk_bytes = chunk["bytes"]
                         chunk_text = chunk_bytes.decode("utf-8")
                         
-                        # Parse JSON to extract text (Anthropic Claude format)
+                        # Parse JSON to extract text (supports both Nova and Claude formats)
                         try:
                             chunk_json = json.loads(chunk_text)
                             
+                            # Amazon Nova format: contentBlockDelta.delta.text
+                            if "contentBlockDelta" in chunk_json:
+                                delta = chunk_json["contentBlockDelta"].get("delta", {})
+                                if "text" in delta:
+                                    token_text = delta["text"]
+                                    if token_text:
+                                        self.metrics.token_count += 1
+                                        yield token_text, self.metrics
                             # Anthropic Claude Messages API format
-                            if chunk_json.get("type") == "content_block_delta":
+                            elif chunk_json.get("type") == "content_block_delta":
                                 token_text = chunk_json.get("delta", {}).get("text", "")
                                 if token_text:
                                     self.metrics.token_count += 1
                                     yield token_text, self.metrics
+                            # Extract token counts from metadata (Nova format)
+                            elif "metadata" in chunk_json:
+                                usage = chunk_json["metadata"].get("usage", {})
+                                # Store token counts for final response
+                                self._input_tokens = usage.get("inputTokens", 0)
+                                self._output_tokens = usage.get("outputTokens", 0)
                             # Legacy format fallback
                             elif "completion" in chunk_json:
                                 token_text = chunk_json["completion"]
@@ -312,6 +356,14 @@ class StreamingResponse:
                                 yield token_text, self.metrics
                             elif "text" in chunk_json:
                                 token_text = chunk_json["text"]
+                                self.metrics.token_count += 1
+                                yield token_text, self.metrics
+                            elif "output" in chunk_json:
+                                token_text = chunk_json["output"]
+                                self.metrics.token_count += 1
+                                yield token_text, self.metrics
+                            elif "content" in chunk_json:
+                                token_text = chunk_json["content"]
                                 self.metrics.token_count += 1
                                 yield token_text, self.metrics
                                 

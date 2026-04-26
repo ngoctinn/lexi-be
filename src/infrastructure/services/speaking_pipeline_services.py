@@ -82,7 +82,7 @@ def _build_llm_system_prompt(session: Session) -> list[dict]:
         ai_role=session.ai_role_id,
         level=level,
         selected_goal=session.selected_goal,
-        ai_gender=_enum_value(session.ai_gender),
+        ai_character=session.ai_character,
     )
     
     # Return as list of system content blocks (Nova format)
@@ -466,7 +466,7 @@ class PollySpeechSynthesisService(SpeechSynthesisService):
         self._client = client if client is not None else _polly_client
         self._s3_client = s3_client if s3_client is not None else _s3_client
 
-    def synthesize(self, text: str, ai_gender: str, object_key: str | None = None) -> str:
+    def synthesize(self, text: str, ai_character: str, object_key: str | None = None) -> str:
         cleaned_text = text.strip()
         if not cleaned_text:
             return ""
@@ -479,7 +479,7 @@ class PollySpeechSynthesisService(SpeechSynthesisService):
             if not bucket_name:
                 logger.warning("SPEAKING_AUDIO_BUCKET_NAME is not configured")
                 return ""
-            voice_id = self._resolve_voice(ai_gender)
+            voice_id = self._resolve_voice(ai_character)
             response = client.synthesize_speech(
                 Text=cleaned_text,
                 OutputFormat="mp3",
@@ -507,11 +507,24 @@ class PollySpeechSynthesisService(SpeechSynthesisService):
             logger.exception("Polly synthesis failed")
             return ""
 
-    def _resolve_voice(self, ai_gender: str) -> str:
-        normalized = str(ai_gender).strip().lower()
-        if normalized == "male":
-            return "Matthew"
-        return "Joanna"
+    def _resolve_voice(self, ai_character: str) -> str:
+        """Resolve character name to Polly voice ID.
+        
+        Args:
+            ai_character: Character name (Sarah, Marco, Emma, James)
+            
+        Returns:
+            Polly voice ID
+        """
+        from domain.value_objects.character import get_character
+        
+        try:
+            character = get_character(ai_character)
+            return character.polly_voice
+        except ValueError:
+            # Fallback to Joanna if character not found
+            logger.warning(f"Character '{ai_character}' not found, using Joanna")
+            return "Joanna"
 
     def _default_object_key(self, text: str, voice_id: str) -> str:
         digest = hashlib.sha1(f"{voice_id}:{text}".encode("utf-8")).hexdigest()

@@ -6,10 +6,11 @@ from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key
+from ulid import ULID
 
 from application.repositories.session_repository import SessionRepository
 from domain.entities.session import Session
-from domain.value_objects.enums import Gender, ProficiencyLevel
+from domain.value_objects.enums import ProficiencyLevel
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class DynamoSessionRepo(SessionRepository):
                 "scenario_id": str(session.scenario_id),
                 "learner_role_id": session.learner_role_id,
                 "ai_role_id": session.ai_role_id,
-                "ai_gender": session.ai_gender.value if hasattr(session.ai_gender, "value") else session.ai_gender,
+                "ai_character": session.ai_character,
                 "level": session.level.value if hasattr(session.level, "value") else session.level,
                 "selected_goal": session.selected_goal,
                 "prompt_snapshot": session.prompt_snapshot,
@@ -101,16 +102,31 @@ class DynamoSessionRepo(SessionRepository):
         return None
 
     def list_by_user(self, user_id: str, limit: int = 10) -> List[Session]:
+        # Query GSI1 to get session IDs
         response = self._table.query(
             IndexName="GSI1-UserEntity-Time",
             KeyConditionExpression=Key("GSI1PK").eq(f"USER#{user_id}#SESSION"),
             ScanIndexForward=False,
             Limit=limit,
         )
+        
         sessions: list[Session] = []
         for item in response.get("Items", []):
             try:
-                sessions.append(self._to_entity(item))
+                # Extract session_id from PK (format: SESSION#<id>)
+                pk = item.get("PK", "")
+                if pk.startswith("SESSION#"):
+                    session_id = pk.replace("SESSION#", "")
+                    # Get full session from main table
+                    full_response = self._table.get_item(
+                        Key={
+                            "PK": pk,
+                            "SK": "METADATA",
+                        }
+                    )
+                    full_item = full_response.get("Item")
+                    if full_item:
+                        sessions.append(self._to_entity(full_item))
             except Exception as exc:
                 # Log and skip malformed DB records instead of failing the whole request
                 logger.warning("list_by_user skipping malformed item: %s", exc)
@@ -137,13 +153,23 @@ class DynamoSessionRepo(SessionRepository):
         if not isinstance(total_cost_usd, Decimal):
             total_cost_usd = Decimal(str(total_cost_usd))
         
+        # Convert string IDs to ULID
+        session_id_str = item.get("session_id", "")
+        scenario_id_str = item.get("scenario_id", "")
+        
+        # Try to parse session_id as ULID
+        try:
+            session_id = ULID.from_str(session_id_str) if session_id_str else ULID()
+        except (ValueError, TypeError):
+            session_id = ULID()
+        
         return Session(
-            session_id=item.get("session_id", ""),
-            scenario_id=item.get("scenario_id", ""),
+            session_id=session_id,
+            scenario_id=scenario_id_str,  # scenario_id is a string (e.g., "restaurant-ordering")
             user_id=item.get("user_id", ""),
             learner_role_id=item.get("learner_role_id", ""),
             ai_role_id=item.get("ai_role_id", ""),
-            ai_gender=Gender(item.get("ai_gender", Gender.FEMALE.value)),
+            ai_character=item.get("ai_character", "Sarah"),
             level=ProficiencyLevel(item.get("level", ProficiencyLevel.B1.value)),
             selected_goal=item.get("selected_goal", ""),
             prompt_snapshot=item.get("prompt_snapshot", ""),

@@ -36,7 +36,8 @@ from domain.entities.session import Session
 from domain.entities.turn import Turn
 from domain.services.greeting_generator import GreetingGenerator
 from domain.services.prompt_builder import build_session_prompt
-from domain.value_objects.enums import Gender, ProficiencyLevel, Speaker
+from domain.value_objects.enums import ProficiencyLevel, Speaker
+from domain.value_objects.character import get_character
 from shared.result import Result
 from shared.utils.ulid_util import new_ulid
 
@@ -173,7 +174,7 @@ def _session_to_response(
         scenario_id=str(session.scenario_id),
         learner_role_id=session.learner_role_id,
         ai_role_id=session.ai_role_id,
-        ai_gender=_enum_value(session.ai_gender),
+        ai_character=session.ai_character,
         level=_enum_value(session.level),
         prompt_snapshot=session.prompt_snapshot,
         selected_goal=session.selected_goal,
@@ -264,6 +265,13 @@ class CreateSpeakingSessionUseCase:
 
             session_id = new_ulid()
             now = _now_iso()
+            
+            # Validate character
+            try:
+                character = get_character(request.ai_character)
+            except ValueError:
+                return Result.failure(f"Nhân vật '{request.ai_character}' không hợp lệ. Chọn từ: Sarah, Marco, Emma, James")
+            
             prompt_snapshot = build_session_prompt(
                 scenario_title=scenario.scenario_title,
                 context=scenario.context,
@@ -271,7 +279,7 @@ class CreateSpeakingSessionUseCase:
                 ai_role=ai_role_id,
                 level=request.level,
                 selected_goal=selected_goal,
-                ai_gender=request.ai_gender,
+                ai_character=request.ai_character,
             )
 
             session = Session(
@@ -281,7 +289,7 @@ class CreateSpeakingSessionUseCase:
                 user_id=request.user_id,
                 learner_role_id=learner_role_id,
                 ai_role_id=ai_role_id,
-                ai_gender=Gender(request.ai_gender),
+                ai_character=request.ai_character,
                 level=ProficiencyLevel(request.level),
                 selected_goal=selected_goal,
                 prompt_snapshot=prompt_snapshot,
@@ -302,7 +310,7 @@ class CreateSpeakingSessionUseCase:
                     learner_role=learner_role_id,
                     ai_role=ai_role_id,
                     selected_goal=selected_goal,
-                    ai_gender=request.ai_gender,
+                    ai_character=request.ai_character,
                     session_id=str(session_id),
                 )
                 
@@ -312,7 +320,7 @@ class CreateSpeakingSessionUseCase:
                     clean_greeting_text = self._clean_text_for_tts(greeting_result.combined_text)
                     audio_url = self._speech_synthesis_service.synthesize(
                         text=clean_greeting_text,
-                        ai_gender=request.ai_gender,
+                        ai_character=request.ai_character,
                         object_key=f"speaking/audio/{session_id}/0.mp3",
                     )
                 except Exception as tts_error:
@@ -520,7 +528,7 @@ class SubmitSpeakingTurnUseCase:
                 clean_ai_text = self._clean_text_for_tts(ai_text)
                 ai_audio_url = self._speech_synthesis_service.synthesize(
                     clean_ai_text,
-                    _enum_value(session.ai_gender),
+                    session.ai_character,
                     object_key=f"speaking/audio/{session.session_id}/{turn_index + 1}.mp3",
                 )
             except Exception:
@@ -556,6 +564,19 @@ class SubmitSpeakingTurnUseCase:
             
             # Phase 5: Update session metrics (aggregation)
             self._update_session_metrics(session, ai_turn)
+            
+            # Check if session should auto-complete (20 turns limit)
+            MAX_TURNS_PER_SESSION = 20
+            if session.total_turns >= MAX_TURNS_PER_SESSION:
+                session.status = "COMPLETED"
+                logger.info(
+                    "Session auto-completed due to turn limit",
+                    extra={
+                        "session_id": str(session.session_id),
+                        "total_turns": session.total_turns,
+                        "max_turns": MAX_TURNS_PER_SESSION,
+                    }
+                )
             
             self._session_repo.save(session)
 

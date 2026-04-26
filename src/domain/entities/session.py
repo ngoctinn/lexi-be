@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Optional
 from ulid import ULID
-from domain.value_objects.enums import Gender, ProficiencyLevel
+from domain.value_objects.enums import ProficiencyLevel
 
 @dataclass
 class Session:
@@ -11,12 +11,12 @@ class Session:
     session_id: ULID # ID duy nhất của phiên học
 
     # Cấu hình phiên
-    scenario_id: ULID           # ID kịch bản đang học
+    scenario_id: str            # ID kịch bản đang học (e.g., "restaurant-ordering")
     scenario_title: str = ""    # Tiêu đề kịch bản (để dùng trong prompt)
     user_id: str = ""                # ID người dùng tham gia
     learner_role_id: str = ""        # Vai người học đã chọn trong session
     ai_role_id: str = ""             # Vai AI đã nhận trong session
-    ai_gender: Gender = Gender.FEMALE # Giới tính của giọng nói AI
+    ai_character: str = "Sarah"      # Nhân vật AI (Sarah, Marco, Emma, James)
     level: ProficiencyLevel = ProficiencyLevel.B1 # Trình độ ngoại ngữ của session
     selected_goal: str = ""          # Mục tiêu học tập được chọn cho session này
     # Snapshot: final built prompt used to run the session (serialize as plain string)

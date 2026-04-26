@@ -45,7 +45,7 @@ class TestConversationOrchestrator:
             user_id="user123",
             learner_role_id="role1",
             ai_role_id="role2",
-            ai_gender=Gender.FEMALE,
+            ai_character="Sarah",
             level=ProficiencyLevel.A1,
         )
     

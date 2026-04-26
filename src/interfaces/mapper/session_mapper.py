@@ -24,7 +24,7 @@ class SessionMapper:
             scenario_id=body.get("scenario_id", ""),
             learner_role_id=body.get("learner_role_id") or None,
             ai_role_id=body.get("ai_role_id") or None,
-            ai_gender=body.get("ai_gender", "female"),
+            ai_character=body.get("ai_character", "Sarah"),
             level=body.get("level", "B1"),
             selected_goal=body.get("selected_goal", ""),
             prompt_snapshot=body.get("prompt_snapshot", ""),

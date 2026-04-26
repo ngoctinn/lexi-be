@@ -562,11 +562,13 @@ Translate an English word to Vietnamese with dictionary enrichment (phonetic, me
   "scenario_id": "restaurant-ordering",
   "learner_role_id": "customer",
   "ai_role_id": "waiter",
-  "ai_gender": "female",
+  "ai_character": "Sarah",
   "level": "B1",
   "selected_goal": "order food"
 }
 ```
+
+**Available Characters**: `Sarah`, `Marco`, `Emma`, `James`
 
 **Response** (201 Created):
 ```json
@@ -577,6 +579,7 @@ Translate an English word to Vietnamese with dictionary enrichment (phonetic, me
     "session_id": "01KQ1R5T9B44RWK3WJZNDJ64ZD",
     "user_id": "794ab5cc-f0e1-708a-7902-6a087c2bb60c",
     "scenario_id": "restaurant-ordering",
+    "ai_character": "Sarah",
     "status": "ACTIVE",
     "created_at": "2026-04-26T07:25:13.798100+00:00",
     "turn_count": 0,

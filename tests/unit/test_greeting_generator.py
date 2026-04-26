@@ -102,7 +102,7 @@ class TestGreetingGenerator:
             learner_role="Customer",
             ai_role="Waiter",
             selected_goal="ordering food",
-            ai_gender="male",
+            ai_character="Marco",
         )
         
         assert isinstance(result, GreetingResult)
@@ -127,7 +127,7 @@ class TestGreetingGenerator:
             learner_role="Customer",
             ai_role="Waiter",
             selected_goal="ordering food",
-            ai_gender="female",
+            ai_character="Sarah",
         )
         
         assert result.greeting_text == "Hi there! How's it going?"
@@ -150,7 +150,7 @@ class TestGreetingGenerator:
             learner_role="Guest",
             ai_role="Receptionist",
             selected_goal="",
-            ai_gender="female",
+            ai_character="Sarah",
         )
         
         assert result.greeting_text == "Hello! How are you doing?"
@@ -181,7 +181,7 @@ class TestGreetingGenerator:
                 learner_role="Role1",
                 ai_role="Role2",
                 selected_goal="goal1",
-                ai_gender="male",
+                ai_character="Marco",
             )
             assert result.greeting_text == expected_greeting
 

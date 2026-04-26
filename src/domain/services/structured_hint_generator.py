@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from botocore.exceptions import ClientError
+from domain.services.prompt_validator import validate_structured_hint_response, log_validation_errors
 
 logger = logging.getLogger(__name__)
 
@@ -98,10 +99,14 @@ class StructuredHintGenerator:
         
         try:
             # Build prompt with context
+            prompt_start = time.time()
             prompt = self._build_prompt(session, last_ai_turn, turn_history)
+            prompt_time = (time.time() - prompt_start) * 1000
             
             # Call Bedrock with retry logic (Fix #4)
+            bedrock_start = time.time()
             hint_data, input_tokens, output_tokens = self._call_bedrock_with_retry(prompt)
+            bedrock_time = (time.time() - bedrock_start) * 1000
             
             # Validate response
             if not validate_structured_hint(hint_data):
@@ -110,8 +115,8 @@ class StructuredHintGenerator:
             # Calculate metrics
             latency_ms = (time.time() - start_time) * 1000
             
-            # Estimate cost (Amazon Nova Micro pricing)
-            cost_usd = (input_tokens / 1000 * 0.000035) + (output_tokens / 1000 * 0.00014)
+            # Estimate cost (Amazon Nova Lite pricing)
+            cost_usd = (input_tokens / 1000 * 0.00006) + (output_tokens / 1000 * 0.00024)
             
             # Log performance metrics
             logger.info(
@@ -120,6 +125,8 @@ class StructuredHintGenerator:
                     "session_id": session_id,
                     "turn_index": turn_index,
                     "latency_ms": round(latency_ms, 2),
+                    "prompt_time_ms": round(prompt_time, 2),
+                    "bedrock_time_ms": round(bedrock_time, 2),
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
                     "cost_usd": round(cost_usd, 6),
@@ -194,63 +201,56 @@ class StructuredHintGenerator:
 
         current_goal = session.selected_goal if hasattr(session, 'selected_goal') and session.selected_goal else "general conversation"
         level_str = session.level.value if hasattr(session.level, "value") else str(session.level)
+        ai_character = session.ai_character if hasattr(session, 'ai_character') else "Sarah"
 
-        prompt = f"""Bạn là giáo viên tiếng Anh tạo gợi ý tự nhiên để giúp học viên Việt Nam không bị mất phương hướng.
+        prompt = f"""You are an English teacher creating natural, conversational hints for Vietnamese learners.
 
-Chủ đề: {session.scenario_title or 'Conversation'}
-Mục tiêu: {current_goal}
-Trình độ: {level_str}
-AI vừa nói: "{last_ai_content}"
+CONTEXT:
+- Scenario: {session.scenario_title or 'Conversation'}
+- Goal: {current_goal}
+- Level: {level_str}
+- AI Character: {ai_character}
+- AI just said: "{last_ai_content}"
 
-NHIỆM VỤ: Tạo gợi ý tự nhiên (kiểu chain-of-hints) để:
-1. Giúp học viên hiểu AI đang hỏi/nói gì
-2. Hướng dẫn suy nghĩ về chủ đề (không cho đáp án)
-3. Gợi ý hướng trả lời + ví dụ mẫu (để học viên có ý tưởng)
-4. Thêm tip nhỏ hoặc icon để gợi ý tự nhiên
+CRITICAL RULES:
+1. EXPLANATION in Vietnamese (learner understands context)
+2. EXAMPLES ALWAYS in English (learner learns correct English)
+3. NEVER translate English examples to Vietnamese
+4. Use markdown with bullet points and bold text
+5. Keep it natural and conversational
 
-Gợi ý nên:
-- Bắt đầu bằng "Chào bạn," để tự nhiên
-- Dẫn dắt ngữ cảnh (AI đang hỏi gì)
-- Đưa ra 2-3 ví dụ mẫu cụ thể (bullet, in đậm)
-- Kết thúc bằng tip với icon 💡 + **bold** cấu trúc/từ vựng chính
-- Ngắn gọn (3-5 câu)
-- Tự nhiên, không giáo điều
+TASK: Create a natural hint:
+1. Start with "{ai_character} wants to know..." or "{ai_character} is asking..."
+2. Explain context in Vietnamese (2-3 sentences)
+3. Provide 2-3 example sentences in English (bullet points, bold)
+4. End with 💡 tip in Vietnamese explaining grammar/vocabulary
+5. Total: 3-5 sentences + examples
 
-Trả về JSON (SONG NGỮ):
-
+RETURN ONLY JSON (no other text):
 {{
   "level": "{level_str}",
   "type": "hint",
-  "markdown_vi": "Gợi ý tự nhiên bằng tiếng Việt (3-4 câu, có ví dụ mẫu)",
-  "markdown_en": "Natural hint in English (3-4 sentences, with examples)"
+  "markdown_vi": "Vietnamese explanation with English examples",
+  "markdown_en": "English explanation with English examples"
 }}
 
-Ví dụ:
-AI hỏi: "What do you usually do in the morning?"
+CORRECT EXAMPLE:
+AI said: "What do you usually do in the morning?"
+Character: Sarah
 {{
-  "markdown_vi": "Chào bạn, AI đang hỏi về thói quen sáng của bạn. Hãy kể về những hoạt động từ lúc thức dậy đến khi đi làm/học.\\n- **'I wake up at 6 AM, have breakfast, take a shower, and then go to work'**\\n- **'I usually wake up late, drink coffee, and rush to school'**\\n- **'I wake up, exercise, shower, and have breakfast before work'**\\n\\n💡 Bạn có thể dùng **thì hiện tại đơn** (I wake up, I have) để nói về thói quen hàng ngày.",
-  "markdown_en": "Hi there, AI is asking about your morning routine. Tell about what you do from waking up to going to work/school.\\n- **'I wake up at 6 AM, have breakfast, take a shower, and then go to work'**\\n- **'I usually wake up late, drink coffee, and rush to school'**\\n- **'I wake up, exercise, shower, and have breakfast before work'**\\n\\n💡 You can use **simple present tense** (I wake up, I have) to talk about daily habits."
+  "markdown_vi": "Sarah muốn biết thói quen sáng của bạn. Hãy kể về những hoạt động từ lúc thức dậy đến khi đi làm/học.
+- **I wake up at 6 AM, have breakfast, take a shower, and then go to work**
+- **I usually wake up late, drink coffee, and rush to school**
+
+💡 Dùng **simple present tense** (I wake up, I have, I go) để nói về thói quen hàng ngày.",
+  "markdown_en": "Sarah is asking about your morning routine. Tell what you do from waking up to going to work/school.
+- **I wake up at 6 AM, have breakfast, take a shower, and then go to work**
+- **I usually wake up late, drink coffee, and rush to school**
+
+💡 Use **simple present tense** (I wake up, I have, I go) for daily habits."
 }}
 
-Ví dụ khác:
-AI hỏi: "Tell me about your favorite hobby"
-{{
-  "markdown_vi": "Chào bạn, AI muốn biết sở thích của bạn. Chọn một hoạt động bạn thích và kể về nó.\\n- **'My favorite hobby is reading. I read novels every evening'**\\n- **'I love playing basketball because it keeps me healthy and I enjoy playing with my friends'**\\n- **'I enjoy cooking because I can create new dishes and share them with family'**\\n\\n💡 Bạn có thể nói **tại sao** bạn thích nó (vì sao, lợi ích gì) để câu trả lời hoàn chỉnh hơn.",
-  "markdown_en": "Hi there, AI wants to know about your favorite hobby. Pick an activity you enjoy and tell about it.\\n- **'My favorite hobby is reading. I read novels every evening'**\\n- **'I love playing basketball because it keeps me healthy and I enjoy playing with my friends'**\\n- **'I enjoy cooking because I can create new dishes and share them with family'**\\n\\n💡 You can explain **why** you like it (benefits, reasons) to make your answer more complete."
-}}
-
-Ví dụ thứ ba:
-AI hỏi: "Where did you go last weekend?"
-{{
-  "markdown_vi": "Chào bạn, AI muốn biết bạn đi đâu cuối tuần trước. Kể về một nơi bạn đã đi.\\n- **'I went to the beach with my family'**\\n- **'I stayed home and watched movies'**\\n- **'I visited my grandparents in the countryside'**\\n\\n💡 Bạn có thể dùng **thì quá khứ đơn** (went, stayed, visited) vì nó đã xảy ra rồi.",
-  "markdown_en": "Hi there, AI wants to know where you went last weekend. Tell about a place you visited.\\n- **'I went to the beach with my family'**\\n- **'I stayed home and watched movies'**\\n- **'I visited my grandparents in the countryside'**\\n\\n💡 You can use **past simple tense** (went, stayed, visited) because it already happened."
-}}
-
-QUAN TRỌNG: Trả về JSON với newline thực sự (\\n), không phải escaped string. Ví dụ:
-- ĐÚNG: "Chào bạn,\\n- **'example'**\\n\\n💡 Tip"
-- SAI: "Chào bạn,\\\\n- **'example'**\\\\n\\\\n💡 Tip"
-
-Chỉ trả về JSON, không có text khác."""
+REMEMBER: Vietnamese explanation + English examples = effective learning."""
 
         return prompt
 
@@ -268,6 +268,7 @@ Chỉ trả về JSON, không có text khác."""
             Exception: If all retries fail or permanent error occurs
         """
         import time
+        import random
         
         for attempt in range(max_retries + 1):
             try:
@@ -278,14 +279,17 @@ Chỉ trả về JSON, không có text khác."""
                 # Retry on transient errors
                 if error_code in ["ThrottlingException", "ServiceUnavailableException", "InternalServerException"]:
                     if attempt < max_retries:
-                        backoff = 2 ** attempt  # Exponential backoff: 1s, 2s
+                        # Exponential backoff with jitter: (2^attempt) + random(0-1)
+                        base_backoff = 2 ** attempt
+                        jitter = random.uniform(0, 1)
+                        backoff = base_backoff + jitter
                         logger.warning(
-                            f"Bedrock call failed with {error_code}, retrying in {backoff}s (attempt {attempt + 1}/{max_retries + 1})",
+                            f"Bedrock call failed with {error_code}, retrying in {backoff:.2f}s (attempt {attempt + 1}/{max_retries + 1})",
                             extra={
                                 "error_code": error_code,
                                 "attempt": attempt + 1,
                                 "max_retries": max_retries + 1,
-                                "backoff_seconds": backoff,
+                                "backoff_seconds": round(backoff, 2),
                             }
                         )
                         time.sleep(backoff)
@@ -313,7 +317,7 @@ Chỉ trả về JSON, không có text khác."""
             # Amazon Nova format with streaming
             # Reference: https://docs.aws.amazon.com/nova/latest/userguide/complete-request-schema.html
             response = self._bedrock.invoke_model_with_response_stream(
-                modelId="apac.amazon.nova-micro-v1:0",
+                modelId="apac.amazon.nova-lite-v1:0",
                 body=json.dumps({
                     "messages": [
                         {
@@ -322,18 +326,25 @@ Chỉ trả về JSON, không có text khác."""
                         }
                     ],
                     "inferenceConfig": {
-                        "maxTokens": 1000,
+                        "maxTokens": 500,  # Reduced from 1000 (hints don't need that much)
                         "temperature": 0.7,
                     },
                 }),
             )
             
-            # Collect streamed response
+            # Collect streamed response with timeout
             content_text = ""
             input_tokens = 0
             output_tokens = 0
+            chunk_count = 0
+            max_chunks = 100  # Safety limit to prevent infinite loops
             
             for event in response["body"]:
+                chunk_count += 1
+                if chunk_count > max_chunks:
+                    logger.warning(f"Bedrock response exceeded {max_chunks} chunks, truncating")
+                    break
+                    
                 if "chunk" in event:
                     chunk = json.loads(event["chunk"]["bytes"].decode())
                     
@@ -350,7 +361,38 @@ Chỉ trả về JSON, không có text khác."""
                         output_tokens = usage.get("outputTokens", output_tokens)
             
             # Parse JSON from collected content
-            hint_data = json.loads(content_text.strip())
+            # Fix: Handle literal newlines in JSON strings by escaping them
+            content_text = content_text.strip()
+            # Replace unescaped newlines in the JSON string with escaped newlines
+            # This handles cases where Bedrock returns actual newlines instead of \n
+            import re
+            # Find all string values and escape their newlines
+            def escape_newlines_in_json(text):
+                """Escape literal newlines in JSON string values."""
+                try:
+                    # Try parsing first - if it works, no need to fix
+                    return json.loads(text)
+                except json.JSONDecodeError as e:
+                    if "Invalid control character" in str(e):
+                        # Replace literal newlines with escaped newlines
+                        # This is a bit hacky but necessary for Bedrock responses
+                        text = text.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                        return json.loads(text)
+                    raise
+            
+            hint_data = escape_newlines_in_json(content_text)
+            
+            # Validate response structure and content
+            is_valid, validation_errors = validate_structured_hint_response(hint_data)
+            if not is_valid:
+                log_validation_errors(validation_errors, "structured_hint response")
+                logger.warning(
+                    "Hint response validation failed but continuing with response",
+                    extra={
+                        "error_count": len(validation_errors),
+                        "model_id": "apac.amazon.nova-lite-v1:0",
+                    }
+                )
             
             return hint_data, input_tokens, output_tokens
             
@@ -359,7 +401,7 @@ Chỉ trả về JSON, không có text khác."""
                 "Failed to parse JSON from Bedrock response",
                 extra={
                     "error": str(e),
-                    "model_id": "apac.amazon.nova-micro-v1:0",
+                    "model_id": "apac.amazon.nova-lite-v1:0",
                 }
             )
             raise
@@ -375,7 +417,7 @@ Chỉ trả về JSON, không có text khác."""
                         extra={
                             "error_code": error_code,
                             "error_message": error_message,
-                            "model_id": "apac.amazon.nova-micro-v1:0",
+                            "model_id": "apac.amazon.nova-lite-v1:0",
                         }
                     )
                 else:
@@ -384,7 +426,7 @@ Chỉ trả về JSON, không có text khác."""
                         extra={
                             "error_code": error_code,
                             "error_message": error_message,
-                            "model_id": "apac.amazon.nova-micro-v1:0",
+                            "model_id": "apac.amazon.nova-lite-v1:0",
                         }
                     )
             else:
@@ -393,7 +435,7 @@ Chỉ trả về JSON, không có text khác."""
                     extra={
                         "error_code": error_code,
                         "error_message": error_message,
-                        "model_id": "apac.amazon.nova-micro-v1:0",
+                        "model_id": "apac.amazon.nova-lite-v1:0",
                     }
                 )
             raise

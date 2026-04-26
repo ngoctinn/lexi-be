@@ -73,7 +73,7 @@ class FakeConversationService:
 
 
 class FakeSpeechService:
-    def synthesize(self, text: str, ai_gender: str, object_key: str | None = None) -> str:
+    def synthesize(self, text: str, ai_character: str, object_key: str | None = None) -> str:
         return "https://audio.example.com/reply.mp3"
 
 
@@ -118,7 +118,7 @@ def test_connect_accepts_valid_token_and_persists_connection_id():
         user_id="user-1",
         learner_role_id="customer",
         ai_role_id="barista",
-        ai_gender=Gender.FEMALE,
+        ai_character="Sarah",
         level=ProficiencyLevel.B1,
         selected_goal="order drink",
         prompt_snapshot="Prompt",
@@ -138,7 +138,7 @@ def test_start_session_emits_session_ready_payload():
         user_id="user-1",
         learner_role_id="customer",
         ai_role_id="barista",
-        ai_gender=Gender.FEMALE,
+        ai_character="Sarah",
         level=ProficiencyLevel.B1,
         selected_goal="order drink",
         prompt_snapshot="Prompt",
@@ -160,7 +160,7 @@ def test_send_message_emits_turn_saved_and_ai_text():
         user_id="user-1",
         learner_role_id="customer",
         ai_role_id="barista",
-        ai_gender=Gender.FEMALE,
+        ai_character="Sarah",
         level=ProficiencyLevel.B1,
         selected_goal="order drink",
         prompt_snapshot="Prompt",
@@ -188,7 +188,7 @@ def test_end_session_emits_scoring_complete():
         user_id="user-1",
         learner_role_id="customer",
         ai_role_id="barista",
-        ai_gender=Gender.FEMALE,
+        ai_character="Sarah",
         level=ProficiencyLevel.B1,
         selected_goal="order drink",
         prompt_snapshot="Prompt",

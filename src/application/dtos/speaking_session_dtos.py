@@ -40,7 +40,7 @@ class SpeakingSessionResponse(BaseDTO):
     scenario_id: str
     learner_role_id: str = ""
     ai_role_id: str = ""
-    ai_gender: str
+    ai_character: str = "Sarah"
     level: str
     prompt_snapshot: str
     selected_goal: str = ""
@@ -66,7 +66,7 @@ class CreateSpeakingSessionCommand(BaseDTO):
     scenario_id: str
     learner_role_id: Optional[str] = None
     ai_role_id: Optional[str] = None
-    ai_gender: str
+    ai_character: str = "Sarah"
     level: str
     selected_goal: str = ""
     prompt_snapshot: str

@@ -22,8 +22,9 @@ from domain.entities.scoring import Scoring
 from domain.entities.scenario import Scenario
 from domain.entities.session import Session
 from domain.entities.turn import Turn
-from domain.value_objects.enums import Gender, ProficiencyLevel, Speaker
+from domain.value_objects.enums import ProficiencyLevel, Speaker
 from shared.utils.ulid_util import new_ulid
+from unittest.mock import ANY
 
 
 class FakeSessionRepository:
@@ -131,8 +132,8 @@ class FakeSpeechService:
         self.audio_url = audio_url
         self.calls: list[tuple[str, str, str | None]] = []
 
-    def synthesize(self, text: str, ai_gender: str, object_key: str | None = None) -> str:
-        self.calls.append((text, ai_gender, object_key))
+    def synthesize(self, text: str, ai_character: str, object_key: str | None = None) -> str:
+        self.calls.append((text, ai_character, object_key))
         return self.audio_url
 
 
@@ -172,7 +173,7 @@ def test_create_speaking_session_persists_assignment_and_prompt_snapshot():
             scenario_id="scenario-1",
             learner_role_id="Khách hàng",
             ai_role_id="Barista",
-            ai_gender="female",
+            ai_character="Sarah",
             level="B1",
             selected_goal="Chọn đồ uống",
             prompt_snapshot="client should be ignored",
@@ -197,7 +198,8 @@ def test_create_speaking_session_persists_assignment_and_prompt_snapshot():
         learner_role="Khách hàng",
         ai_role="Barista",
         selected_goal="Chọn đồ uống",
-        ai_gender="female"
+        ai_character="Sarah",
+        session_id=ANY
     )
     
     # Verify greeting turn was created
@@ -218,7 +220,7 @@ def test_submit_turn_saves_user_and_ai_turns_and_updates_session_counts():
         user_id="user-1",
         learner_role_id="customer",
         ai_role_id="barista",
-        ai_gender=Gender.FEMALE,
+        ai_character="Sarah",
         level=ProficiencyLevel.B1,
         selected_goal="order drink",
         prompt_snapshot="Scenario: cafe",
@@ -287,7 +289,7 @@ def test_create_speaking_session_handles_greeting_generation_failure():
             scenario_id="scenario-1",
             learner_role_id="Customer",
             ai_role_id="Waiter",
-            ai_gender="male",
+            ai_character="Marco",
             level="A1",
             selected_goal="Order food",
             prompt_snapshot="ignored",
@@ -348,7 +350,7 @@ def test_create_speaking_session_handles_speech_synthesis_failure():
             scenario_id="scenario-1",
             learner_role_id="Customer",
             ai_role_id="Waiter",
-            ai_gender="male",
+            ai_character="Marco",
             level="A1",
             selected_goal="Order food",
             prompt_snapshot="ignored",
@@ -368,7 +370,7 @@ def test_create_speaking_session_handles_speech_synthesis_failure():
         user_id="user-1",
         learner_role_id="customer",
         ai_role_id="barista",
-        ai_gender=Gender.FEMALE,
+        ai_character="Sarah",
         level=ProficiencyLevel.B1,
         selected_goal="order drink",
         prompt_snapshot="Scenario: cafe",

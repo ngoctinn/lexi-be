@@ -95,7 +95,7 @@ class ConversationOrchestrator:
             ai_role=session.ai_role_id,
             level=session.level,
             selected_goal=session.selected_goal,
-            ai_gender=session.ai_gender,
+            ai_character=session.ai_character,
         )
         
         system_prompt = base_prompt

@@ -36,5 +36,5 @@ class ConversationGenerationService(ABC):
 
 class SpeechSynthesisService(ABC):
     @abstractmethod
-    def synthesize(self, text: str, ai_gender: str, object_key: str | None = None) -> str:
+    def synthesize(self, text: str, ai_character: str, object_key: str | None = None) -> str:
         ...

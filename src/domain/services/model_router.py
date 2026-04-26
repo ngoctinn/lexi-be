@@ -1,15 +1,13 @@
 """
-Model Router for Scenario B: Nova Micro Primary + Fallback Strategy
+Model Router for Scenario B: Nova Lite Primary + Pro Fallback Strategy
 
 Routing matrix:
-- A1-A2 → Micro (no fallback)
-- B1 → Micro (5% fallback to Lite)
-- B2 → Micro (10% fallback to Lite)
-- C1 → Micro (30% fallback to Pro)
-- C2 → Micro (40% fallback to Pro)
+- A1-A2 → Lite (no fallback)
+- B1-B2 → Lite (no fallback)
+- C1 → Lite (70%) + Pro fallback (30%)
+- C2 → Lite (60%) + Pro fallback (40%)
 
 Model IDs (using inference profiles for APAC regions):
-- Micro: apac.amazon.nova-micro-v1:0
 - Lite: apac.amazon.nova-lite-v1:0
 - Pro: apac.amazon.nova-pro-v1:0
 
@@ -36,49 +34,48 @@ class ModelRouter:
 
     # Model IDs - Use inference profiles for cross-region support
     # Reference: https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-use.html
-    MICRO = "apac.amazon.nova-micro-v1:0"
     LITE = "apac.amazon.nova-lite-v1:0"
     PRO = "apac.amazon.nova-pro-v1:0"
 
     # Routing matrix: level → ModelConfig
     _ROUTING_MATRIX = {
         ProficiencyLevel.A1.value: ModelConfig(
-            primary_model=MICRO,
+            primary_model=LITE,
             fallback_model=None,
             fallback_rate=0.0,
             max_tokens=40,
             temperature=0.6,
         ),
         ProficiencyLevel.A2.value: ModelConfig(
-            primary_model=MICRO,
+            primary_model=LITE,
             fallback_model=None,
             fallback_rate=0.0,
             max_tokens=60,
             temperature=0.65,
         ),
         ProficiencyLevel.B1.value: ModelConfig(
-            primary_model=MICRO,
-            fallback_model=LITE,
-            fallback_rate=0.05,
+            primary_model=LITE,
+            fallback_model=None,
+            fallback_rate=0.0,
             max_tokens=100,
             temperature=0.7,
         ),
         ProficiencyLevel.B2.value: ModelConfig(
-            primary_model=MICRO,
-            fallback_model=LITE,
-            fallback_rate=0.10,
+            primary_model=LITE,
+            fallback_model=None,
+            fallback_rate=0.0,
             max_tokens=150,
             temperature=0.75,
         ),
         ProficiencyLevel.C1.value: ModelConfig(
-            primary_model=MICRO,
+            primary_model=LITE,
             fallback_model=PRO,
             fallback_rate=0.30,
             max_tokens=200,
             temperature=0.80,
         ),
         ProficiencyLevel.C2.value: ModelConfig(
-            primary_model=MICRO,
+            primary_model=LITE,
             fallback_model=PRO,
             fallback_rate=0.40,
             max_tokens=250,

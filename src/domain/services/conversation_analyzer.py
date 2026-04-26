@@ -11,6 +11,7 @@ import logging
 import time
 from dataclasses import dataclass
 from botocore.exceptions import ClientError
+from domain.services.prompt_validator import validate_conversation_analyzer_response, log_validation_errors
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ class ConversationAnalyzer:
 
     def __init__(self, bedrock_client=None):
         self.bedrock_client = bedrock_client
-        self._model_id = "apac.amazon.nova-micro-v1:0"
+        self._model_id = "apac.amazon.nova-lite-v1:0"
 
     def analyze_turn(
         self,
@@ -88,6 +89,18 @@ class ConversationAnalyzer:
                             output_tokens = usage.get("outputTokens", output_tokens)
 
                 data = json.loads(analysis_text)
+
+                # Validate response structure and content
+                is_valid, validation_errors = validate_conversation_analyzer_response(data)
+                if not is_valid:
+                    log_validation_errors(validation_errors, "conversation_analyzer response")
+                    logger.warning(
+                        "Response validation failed but continuing with response",
+                        extra={
+                            "error_count": len(validation_errors),
+                            "learner_message": learner_message[:100],
+                        }
+                    )
 
                 # Extract bilingual content from LLM
                 mistakes_vi = data.get("mistakes_vi", [])
@@ -180,9 +193,14 @@ Ngữ cảnh: {scenario_context}
 Trình độ: {level}
 Hướng dẫn: {level_guidance.get(level, level_guidance["B1"])}
 
-Nhiệm vụ: Phân tích lỗi và gợi ý cải thiện BẰNG TIẾNG VIỆT.
-- Mỗi lỗi: chỉ ra từ/cấu trúc sai, giải thích tại sao sai
-- Mỗi gợi ý: đưa ra cách diễn đạt đúng, giải thích tại sao đúng hơn
+NHIỆM VỤ: Phân tích lỗi và gợi ý cải thiện
+- **GIẢI THÍCH bằng tiếng Việt** (để học viên hiểu)
+- **VÍ DỤ/CÂU SỬA LUÔN bằng tiếng Anh** (để học đúng)
+- **TUYỆT ĐỐI KHÔNG dịch câu tiếng Anh sang tiếng Việt**
+
+QUY TẮC VÀNG:
+- Mỗi lỗi: chỉ ra từ/cấu trúc sai (tiếng Anh), giải thích tại sao sai (tiếng Việt)
+- Mỗi gợi ý: đưa ra cách diễn đạt đúng (tiếng Anh), giải thích tại sao đúng hơn (tiếng Việt)
 - Tối đa 2-3 lỗi, 2-3 gợi ý
 - Trả về ĐÚNG JSON, không có markdown bao ngoài"""
 
@@ -200,52 +218,62 @@ NHIỆM VỤ: Phản hồi theo phong cách NÓI CHUYỆN TỰ NHIÊN (như ngư
 
 Trả về JSON (SONG NGỮ - tiếng Việt + tiếng Anh):
 
-QUY TẮC FORMAT:
+⚠️ QUY TẮC VÀNG - TUYỆT ĐỐI TUÂN THỦ:
+- **GIẢI THÍCH bằng tiếng Việt** (để học viên hiểu)
+- **VÍ DỤ/CÂU SỬA LUÔN bằng tiếng Anh** (để học đúng)
+- **TUYỆT ĐỐI KHÔNG dịch câu tiếng Anh sang tiếng Việt**
 - KHÔNG thêm icon 💡 hoặc ⚠️ vào text (hệ thống tự động thêm)
 - KHÔNG dùng label "Lỗi:" hay "Mistake:" - nói tự nhiên như người với người
 - Giữ NGUYÊN câu tiếng Anh và in đậm **text** trong phần tiếng Việt
-- Dùng ~~text~~ để gạch ngang phần sai
+- Dùng ~~text~~ để gạch ngang phần sai (tiếng Anh)
 - Dẫn dắt như đang giải thích cho bạn bè
 
 FORMAT CHO LỖI (mistakes) - Phong cách tự nhiên:
-"Bạn nhầm lẫn chút ở ~~[phần sai]~~, nên sửa thành **[phần đúng]**\n\nVì [giải thích thân thiện, xuống dòng để dễ đọc]"
+"Bạn nhầm lẫn chút ở ~~[phần sai - TIẾNG ANH]~~, nên sửa thành **[phần đúng - TIẾNG ANH]**\n\nVì [giải thích thân thiện bằng TIẾNG VIỆT, xuống dòng để dễ đọc]"
 hoặc
-"Ở đây bạn dùng ~~[sai]~~ nhưng nên dùng **[đúng]**\n\nVì [giải thích]"
+"Ở đây bạn dùng ~~[sai - TIẾNG ANH]~~ nhưng nên dùng **[đúng - TIẾNG ANH]**\n\nVì [giải thích bằng TIẾNG VIỆT]"
 
 FORMAT CHO GỢI Ý (improvements) - Phong cách khuyến khích:
-"Bạn có thể nói **[Câu hay hơn]**\n\nĐể [lý do] nghe tự nhiên hơn"
+"Bạn có thể nói **[Câu hay hơn - TIẾNG ANH]**\n\nĐể [lý do bằng TIẾNG VIỆT] nghe tự nhiên hơn"
 hoặc
-"Thử nói **[Câu hay hơn]**\n\nSẽ [lý do] và nghe pro hơn nha"
+"Thử nói **[Câu hay hơn - TIẾNG ANH]**\n\nSẽ [lý do bằng TIẾNG VIỆT] và nghe pro hơn nha"
 
 Nếu CÓ LỖI:
 {{
-  "mistakes_vi": ["Bạn nhầm lẫn chút ở ~~[sai]~~, nên sửa thành **[đúng]**\\n\\nVì [giải thích thân thiện]"],
-  "mistakes_en": ["You mixed up ~~[wrong]~~ here, should be **[correct]**\\n\\nBecause [friendly explanation]"],
-  "improvements_vi": ["Bạn có thể nói **[Câu hay hơn]**\\n\\nĐể [lý do] nghe tự nhiên hơn"],
-  "improvements_en": ["You could say **[Better sentence]**\\n\\nTo [reason] sound more natural"]
+  "mistakes_vi": ["Bạn nhầm lẫn chút ở ~~[sai - TIẾNG ANH]~~, nên sửa thành **[đúng - TIẾNG ANH]**\\n\\nVì [giải thích thân thiện bằng TIẾNG VIỆT]"],
+  "mistakes_en": ["You mixed up ~~[wrong - ENGLISH]~~ here, should be **[correct - ENGLISH]**\\n\\nBecause [friendly explanation in ENGLISH]"],
+  "improvements_vi": ["Bạn có thể nói **[Câu hay hơn - TIẾNG ANH]**\\n\\nĐể [lý do bằng TIẾNG VIỆT] nghe tự nhiên hơn"],
+  "improvements_en": ["You could say **[Better sentence - ENGLISH]**\\n\\nTo [reason in ENGLISH] sound more natural"]
 }}
 
-VÍ DỤ CỤ THỂ (phong cách nói chuyện tự nhiên):
+VÍ DỤ CỤ THỂ (ĐÚNG - phong cách nói chuyện tự nhiên):
 {{
-  "mistakes_vi": ["Bạn nhầm lẫn chút ở ~~go to school~~, nên sửa thành **went to school**\\n\\nVì khi có 'yesterday' (hôm qua) thì động từ phải ở dạng quá khứ nha. 'Go' là hiện tại, 'went' là quá khứ"],
-  "mistakes_en": ["You mixed up ~~go to school~~ here, should be **went to school**\\n\\nBecause when you have 'yesterday', the verb needs to be in past tense. 'Go' is present, 'went' is past"],
-  "improvements_vi": ["Bạn có thể nói **I went to school yesterday**\\n\\nĐể sắp xếp đúng trật tự từ. Trạng từ thời gian như 'yesterday' thường đứng cuối câu, nghe tự nhiên hơn"],
-  "improvements_en": ["You could say **I went to school yesterday**\\n\\nTo follow correct word order. Time adverbs like 'yesterday' usually go at the end, sounds more natural"]
+  "mistakes_vi": ["Bạn nhầm lẫn ở ~~go to school~~, nên sửa thành **went to school**\\n\\nVì khi có 'yesterday' thì động từ phải ở dạng quá khứ. **Past simple tense** được dùng cho sự kiện đã xảy ra."],
+  "mistakes_en": ["You mixed up ~~go to school~~ here, should be **went to school**\\n\\nBecause when you have 'yesterday', the verb needs to be in past tense. **Past simple tense** is used for completed actions."],
+  "improvements_vi": ["Bạn có thể nói **I went to school yesterday**\\n\\nĐể sắp xếp đúng trật tự từ. Trạng từ thời gian như 'yesterday' thường đứng ở cuối câu: **subject + verb + object + time**."],
+  "improvements_en": ["You could say **I went to school yesterday**\\n\\nTo follow correct word order. Time adverbs like 'yesterday' usually go at the end: **subject + verb + object + time**."]
 }}
 
-VÍ DỤ KHÁC (không có lỗi, chỉ có gợi ý):
+VÍ DỤ KHÁC (ĐÚNG - không có lỗi, chỉ có gợi ý):
 {{
-  "improvements_vi": ["Thử nói **I really enjoy drinking coffee in the morning**\\n\\nSẽ phong phú hơn. 'Really enjoy' thể hiện cảm xúc mạnh hơn 'like', và thêm 'in the morning' cho cụ thể hơn"],
-  "improvements_en": ["Try saying **I really enjoy drinking coffee in the morning**\\n\\nTo make it richer. 'Really enjoy' shows stronger feeling than 'like', and adding 'in the morning' gives more detail"]
+  "improvements_vi": ["Thử nói **I really enjoy drinking coffee in the morning**\\n\\nSẽ phong phú hơn. **Really enjoy** thể hiện cảm xúc mạnh hơn **like**, và thêm **in the morning** cho cụ thể hơn."],
+  "improvements_en": ["Try saying **I really enjoy drinking coffee in the morning**\\n\\nTo make it richer. **Really enjoy** shows stronger feeling than **like**, and adding **in the morning** gives more detail."]
 }}
 
-VÍ DỤ KHÁC (phong cách thân thiện):
+VÍ DỤ KHÁC (ĐÚNG - phong cách thân thiện):
 {{
-  "mistakes_vi": ["Ở đây bạn dùng ~~I go~~ nhưng nên dùng **I went**\\n\\nVì đang kể chuyện đã xảy ra rồi (quá khứ). Khi kể chuyện hôm qua, tuần trước thì dùng quá khứ nha"],
-  "mistakes_en": ["Here you used ~~I go~~ but should use **I went**\\n\\nBecause you're talking about something that already happened (past). When telling stories about yesterday or last week, use past tense"],
-  "improvements_vi": ["Bạn có thể thêm chi tiết như **I went to school yesterday and met my friends**\\n\\nĐể câu chuyện sinh động hơn. Thêm 'and met my friends' làm câu hay hơn"],
-  "improvements_en": ["You could add details like **I went to school yesterday and met my friends**\\n\\nTo make the story more vivid. Adding 'and met my friends' makes it better"]
+  "mistakes_vi": ["Ở đây bạn dùng ~~I go~~ nhưng nên dùng **I went**\\n\\nVì đang kể chuyện đã xảy ra rồi. Khi kể chuyện hôm qua, tuần trước thì dùng **past simple**: **went, stayed, visited**."],
+  "mistakes_en": ["Here you used ~~I go~~ but should use **I went**\\n\\nBecause you're talking about something that already happened. When telling stories about yesterday or last week, use **past simple**: **went, stayed, visited**."],
+  "improvements_vi": ["Bạn có thể thêm chi tiết như **I went to school yesterday and met my friends**\\n\\nĐể câu chuyện sinh động hơn. Dùng **and** để nối hai hành động: **action 1 + and + action 2**."],
+  "improvements_en": ["You could add details like **I went to school yesterday and met my friends**\\n\\nTo make the story more vivid. Use **and** to connect two actions: **action 1 + and + action 2**."]
 }}
+
+⛔ VÍ DỤ SAI (KHÔNG ĐƯỢC LÀM NHƯ THẾ):
+{{
+  "mistakes_vi": ["Bạn nhầm lẫn ở ~~đi học~~ (go to school), nên sửa thành **đã đi học~~ (went to school)\\n\\nVì..."],
+  "improvements_vi": ["Thử nói **Tôi thực sự thích uống cà phê vào buổi sáng**\\n\\nSẽ phong phú hơn..."]
+}}
+❌ SAI VÌ: Dịch câu tiếng Anh sang tiếng Việt - điều này PHẠM LUẬT học tiếng Anh!
 
 Chỉ trả về JSON, không có text khác."""
 
