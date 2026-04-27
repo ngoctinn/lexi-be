@@ -164,10 +164,11 @@ class GreetingGenerator:
         Raises:
             ValueError: If level is invalid
         """
-        if level not in self._GREETING_TEMPLATES:
+        valid_levels = {"A1", "A2", "B1", "B2", "C1", "C2"}
+        if level not in valid_levels:
             raise ValueError(f"Invalid proficiency level: {level}")
         
-        return self._GREETING_TEMPLATES[level]
+        return self._FALLBACK_GREETINGS.get(level, "Hi! I'm {character}.")
 
     def _generate_first_question(
         self,
@@ -177,7 +178,7 @@ class GreetingGenerator:
         ai_role: str,
         selected_goal: str,
     ) -> tuple[str, int, int]:
-        """Generate first question using Bedrock with fallback (Fix #5).
+        """Generate first question using Bedrock with fallback.
         
         Args:
             level: Proficiency level (A1-C2)
@@ -188,11 +189,7 @@ class GreetingGenerator:
             
         Returns:
             Tuple of (first_question, input_tokens, output_tokens)
-            
-        Raises:
-            Exception: If Bedrock call fails and fallback also fails
         """
-        # Build prompt for Bedrock
         goal_text = selected_goal if selected_goal else "general conversation"
         
         prompt = f"""You are an English conversation partner in a role-play scenario.
@@ -212,46 +209,30 @@ Generate a natural first question to start the conversation. The question should
 Generate ONLY the question, no other text. Keep it to one sentence."""
 
         try:
-            # Call Bedrock with Amazon Nova Lite (streaming)
-            response = self._bedrock.invoke_model_with_response_stream(
+            # Call Bedrock with converse API (non-streaming)
+            response = self._bedrock.converse(
                 modelId="apac.amazon.nova-lite-v1:0",
-                body=json.dumps({
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": prompt,
-                        }
-                    ],
-                    "max_tokens": 100,
+                messages=[{"role": "user", "content": [{"text": prompt}]}],
+                inferenceConfig={
+                    "maxTokens": 100,
                     "temperature": 0.7,
-                }),
+                },
             )
             
-            # Collect streamed response
+            # Extract response
             first_question = ""
-            input_tokens = 0
-            output_tokens = 0
+            for content_block in response.get("output", {}).get("message", {}).get("content", []):
+                if "text" in content_block:
+                    first_question += content_block["text"]
             
-            for event in response["body"]:
-                if "chunk" in event:
-                    chunk = json.loads(event["chunk"]["bytes"].decode())
-                    
-                    # Extract content delta
-                    if "contentBlockDelta" in chunk:
-                        delta = chunk["contentBlockDelta"].get("delta", {})
-                        if "text" in delta:
-                            first_question += delta["text"]
-                    
-                    # Extract token usage from metadata
-                    if "metadata" in chunk:
-                        usage = chunk["metadata"].get("usage", {})
-                        input_tokens = usage.get("inputTokens", input_tokens)
-                        output_tokens = usage.get("outputTokens", output_tokens)
+            # Extract token usage
+            input_tokens = response.get("usage", {}).get("inputTokens", 0)
+            output_tokens = response.get("usage", {}).get("outputTokens", 0)
             
             return first_question.strip(), input_tokens, output_tokens
             
-        except (json.JSONDecodeError, ClientError, Exception) as e:
-            # Use fallback first question (Fix #5)
+        except Exception as e:
+            # Use fallback first question
             logger.warning(
                 "First question generation failed, using fallback",
                 extra={
@@ -288,7 +269,7 @@ Generate ONLY the question, no other text. Keep it to one sentence."""
         """
         goal_text = selected_goal if selected_goal else "general conversation"
         
-        prompt = f"""You are an English conversation partner in a role-play scenario.
+        system_prompt = f"""You are an English conversation partner in a role-play scenario.
 
 Scenario: {scenario_title}
 Your character name: {ai_character}
@@ -297,9 +278,7 @@ Learner's role: {learner_role}
 Learning goal: {goal_text}
 Proficiency level: {level}
 
-Generate a natural greeting where you introduce yourself and ask the first question. Format:
-1. First line: Greeting + introduce yourself by name (e.g., "Hi! I'm Sarah, a waiter here.")
-2. Second line: First question to start the conversation
+Generate a natural greeting where you introduce yourself and ask the first question.
 
 Requirements:
 - Be appropriate for proficiency level {level}
@@ -311,42 +290,29 @@ Output format (2 lines only):
 [GREETING]: <greeting with character introduction>
 [QUESTION]: <first question>"""
 
+        user_prompt = "Generate the greeting and first question now."
+
         try:
-            # Call Bedrock with Amazon Nova Lite (streaming)
-            response = self._bedrock.invoke_model_with_response_stream(
+            # Call Bedrock with Amazon Nova Lite using converse (non-streaming)
+            response = self._bedrock.converse(
                 modelId="apac.amazon.nova-lite-v1:0",
-                body=json.dumps({
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": prompt,
-                        }
-                    ],
-                    "max_tokens": 150,
+                system=[{"text": system_prompt}],
+                messages=[{"role": "user", "content": [{"text": user_prompt}]}],
+                inferenceConfig={
+                    "maxTokens": 150,
                     "temperature": 0.7,
-                }),
+                },
             )
             
-            # Collect streamed response
+            # Extract response
             full_response = ""
-            input_tokens = 0
-            output_tokens = 0
+            for content_block in response.get("output", {}).get("message", {}).get("content", []):
+                if "text" in content_block:
+                    full_response += content_block["text"]
             
-            for event in response["body"]:
-                if "chunk" in event:
-                    chunk = json.loads(event["chunk"]["bytes"].decode())
-                    
-                    # Extract content delta
-                    if "contentBlockDelta" in chunk:
-                        delta = chunk["contentBlockDelta"].get("delta", {})
-                        if "text" in delta:
-                            full_response += delta["text"]
-                    
-                    # Extract token usage from metadata
-                    if "metadata" in chunk:
-                        usage = chunk["metadata"].get("usage", {})
-                        input_tokens = usage.get("inputTokens", input_tokens)
-                        output_tokens = usage.get("outputTokens", output_tokens)
+            # Extract token usage
+            input_tokens = response.get("usage", {}).get("inputTokens", 0)
+            output_tokens = response.get("usage", {}).get("outputTokens", 0)
             
             # Parse response
             greeting_text = ""

@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import re
 import os
 import time
+import json
 import urllib.request
 from typing import List
-
-from shared.http_utils import dumps
 
 import boto3
 from botocore.exceptions import ClientError
@@ -246,142 +244,64 @@ class BedrockConversationGenerationService(ConversationGenerationService):
         turn_history: List[Turn],
     ) -> str:
         """
-        Generate reply using Bedrock with optimized prompt caching.
-        
-        AWS Best Practices Applied:
-        1. Streaming API for better TTFT
-        2. Cache-optimized prompt (static prefix + dynamic suffix)
-        3. Exponential backoff retry (configured at module init)
-        
-        References:
-        - Streaming: https://docs.aws.amazon.com/boto3/latest/reference/services/bedrock-runtime/client/invoke_model_with_response_stream.html
-        - Caching: https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html
+        Generate reply using Bedrock Converse API (AWS best practice).
+
+        The Converse API provides a unified interface with standardized response
+        format - no manual JSON parsing needed.
+
+        Reference: https://docs.aws.amazon.com/nova/latest/userguide/using-converse-api.html
         """
-        system_content = _build_llm_system_prompt(session)  # Returns list with cache checkpoint
+        system_prompt = _build_llm_system_prompt(session)  # [{"text": "..."}]
         messages = _build_messages_for_llm(turn_history + [user_turn])
 
-        # Thêm language hint nếu user không nói tiếng Anh
+        # Append language hint if user is not writing in English
         if analysis.dominant_language != "en":
-            messages[-1]["content"] += (
+            messages[-1]["content"][-1]["text"] += (
                 f"\n[Note: The learner wrote in {analysis.dominant_language}. "
                 "Gently remind them to use English and provide a simple English prompt.]"
             )
 
-        # AWS Nova format (not Anthropic)
-        # Reference: https://docs.aws.amazon.com/nova/latest/userguide/complete-request-schema.html
-        body = dumps({
-            "system": system_content,  # List with cache checkpoint
-            "messages": messages,
-            "inferenceConfig": {
-                "maxTokens": 150,
-                "temperature": 0.7,
-            }
-        })
-
         try:
-            # AWS Best Practice: Use streaming API for better TTFT
-            # Reference: https://docs.aws.amazon.com/boto3/latest/reference/services/bedrock-runtime/client/invoke_model_with_response_stream.html
-            response = self._bedrock.invoke_model_with_response_stream(
+            # Converse API: unified interface, standardized response, no JSON parsing
+            # Reference: https://docs.aws.amazon.com/nova/latest/userguide/using-converse-api.html
+            response = self._bedrock.converse(
                 modelId=_BEDROCK_MODEL_ID,
-                body=body,
+                messages=messages,
+                system=system_prompt,
+                inferenceConfig={
+                    "maxTokens": 150,
+                    "temperature": 0.7,
+                },
             )
-            
-            # Process event stream
-            event_stream = response["body"]
-            text = ""
-            
-            for event in event_stream:
-                # Handle chunk event (contains response text)
-                if "chunk" in event:
-                    chunk_bytes = event["chunk"]["bytes"]
-                    chunk_json = json.loads(chunk_bytes.decode("utf-8"))
-                    
-                    # Extract text from chunk (Nova format)
-                    # Reference: https://docs.aws.amazon.com/nova/latest/userguide/complete-request-schema.html
-                    if "contentBlockDelta" in chunk_json:
-                        delta = chunk_json["contentBlockDelta"].get("delta", {})
-                        if "text" in delta:
-                            text += delta["text"]
-                    # Fallback for other formats
-                    elif "delta" in chunk_json and "text" in chunk_json["delta"]:
-                        text += chunk_json["delta"]["text"]
-                    elif "content" in chunk_json and len(chunk_json["content"]) > 0:
-                        text += chunk_json["content"][0].get("text", "")
-                
-                # Handle error events (per AWS docs)
-                elif "internalServerException" in event:
-                    error = event["internalServerException"]
-                    logger.error(f"Bedrock internal error: {error.get('message', 'Unknown')}")
-                    break
-                
-                elif "modelStreamErrorException" in event:
-                    error = event["modelStreamErrorException"]
-                    logger.error(f"Bedrock stream error: {error.get('message', 'Unknown')}")
-                    break
-                
-                elif "throttlingException" in event:
-                    error = event["throttlingException"]
-                    logger.warning(f"Bedrock throttled: {error.get('message', 'Unknown')}")
-                    break
-                
-                elif "modelTimeoutException" in event:
-                    error = event["modelTimeoutException"]
-                    logger.warning(f"Bedrock timeout: {error.get('message', 'Unknown')}")
-                    break
-                
-                elif "validationException" in event:
-                    error = event["validationException"]
-                    logger.error(f"Bedrock validation error: {error.get('message', 'Unknown')}")
-                    break
-                
-                elif "serviceUnavailableException" in event:
-                    error = event["serviceUnavailableException"]
-                    logger.warning(f"Bedrock unavailable: {error.get('message', 'Unknown')}")
-                    break
-            
-            if text:
-                return text.strip()
-            else:
-                # Fallback if no text received
-                logger.warning("No text received from Bedrock stream")
-                return "I see. Could you tell me more about that?"
-            
+
+            text = response["output"]["message"]["content"][0]["text"]
+            return text.strip()
+
         except ClientError as e:
-            # AWS API error - distinguish between error types
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
-            
             if error_code == "ThrottlingException":
-                # 429: Quota exceeded - boto3 already retried with exponential backoff
                 logger.warning(
                     f"Bedrock throttled (429): session={session.session_id}, "
                     f"turn={user_turn.turn_index}, level={_enum_value(session.level)}"
                 )
             elif error_code == "ServiceUnavailableException":
-                # 503: Service temporarily unavailable - boto3 already retried
                 logger.warning(
                     f"Bedrock unavailable (503): session={session.session_id}, "
                     f"turn={user_turn.turn_index}"
                 )
             else:
-                # Other AWS errors (ValidationException, etc.)
                 logger.error(
                     f"Bedrock API error ({error_code}): session={session.session_id}, "
                     f"turn={user_turn.turn_index}, message={str(e)}"
                 )
-            
-            # Fallback response (graceful degradation)
             return "I see. Could you tell me more about that?"
-            
+
         except Exception as e:
-            # Non-AWS errors (JSON parsing, network, etc.)
-            error_type = type(e).__name__
             logger.error(
-                f"Bedrock generation error ({error_type}): session={session.session_id}, "
+                f"Bedrock generation error ({type(e).__name__}): session={session.session_id}, "
                 f"turn={user_turn.turn_index}, message={str(e)}",
-                exc_info=True
+                exc_info=True,
             )
-            
-            # Fallback response
             return "I see. Could you tell me more about that?"
 
 

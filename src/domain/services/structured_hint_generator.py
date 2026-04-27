@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from botocore.exceptions import ClientError
-from domain.services.prompt_validator import validate_structured_hint_response, log_validation_errors
 
 logger = logging.getLogger(__name__)
 
@@ -104,9 +103,9 @@ class StructuredHintGenerator:
             user_prompt = self._build_user_prompt(session, last_ai_turn, turn_history)
             prompt_time = (time.time() - prompt_start) * 1000
             
-            # Call Bedrock with retry logic (Fix #4)
+            # Call Bedrock (AWS SDK handles retry with exponential backoff + jitter)
             bedrock_start = time.time()
-            hint_data, input_tokens, output_tokens = self._call_bedrock_with_retry(system_prompt, user_prompt)
+            hint_data, input_tokens, output_tokens = self._call_bedrock(system_prompt, user_prompt)
             bedrock_time = (time.time() - bedrock_start) * 1000
             
             # Validate response
@@ -183,25 +182,21 @@ class StructuredHintGenerator:
             raise
 
     def _build_system_prompt(self, session: Any) -> str:
-        """Build system prompt (behavioral parameters).
-        
-        AWS best practice: System role establishes overall behavioral parameters.
-        Reference: https://docs.aws.amazon.com/nova/latest/userguide/prompting-text-understanding.html
+        """Build system prompt for hint generation.
+
+        Reference: https://docs.aws.amazon.com/nova/latest/userguide/prompting-system-role.html
         """
-        return """You are an English teacher creating natural, conversational hints for Vietnamese learners.
+        return """You are a friendly English teacher helping Vietnamese learners practice conversation.
 
-Your role:
-- Explain context in Vietnamese (so learner understands)
-- Provide examples in English (so learner learns correctly)
-- NEVER translate English examples to Vietnamese
-- Use markdown formatting: bullet points for examples, bold for key phrases
-- Keep natural and conversational tone
+When the AI says something, create a helpful hint so the learner knows how to respond naturally in English.
 
-Output format: Return ONLY valid JSON with these fields:
-- level: CEFR level (A1, A2, B1, B2, C1, C2)
+Give 2-3 natural English example sentences they can use or adapt, plus one short grammar tip in Vietnamese. Keep it concise and encouraging.
+
+Output format: Return ONLY valid JSON with these exact fields:
+- level: CEFR level string
 - type: "hint"
-- markdown_vi: Vietnamese explanation with English examples
-- markdown_en: English explanation with English examples"""
+- markdown_vi: hint in Vietnamese with English examples (markdown)
+- markdown_en: hint in English with English examples (markdown)"""
 
     def _build_user_prompt(
         self,
@@ -209,9 +204,8 @@ Output format: Return ONLY valid JSON with these fields:
         last_ai_turn: Optional[Any],
         turn_history: list[Any],
     ) -> str:
-        """Build user prompt (context + task + few-shot examples).
-        
-        AWS best practice: Few-shot prompting with diverse examples improves accuracy.
+        """Build user prompt with context and few-shot examples.
+
         Reference: https://docs.aws.amazon.com/nova/latest/userguide/prompting-examples.html
         """
         last_ai_content = last_ai_turn.content if last_ai_turn else "Let's start the conversation!"
@@ -222,103 +216,64 @@ Output format: Return ONLY valid JSON with these fields:
         level_str = session.level.value if hasattr(session.level, "value") else str(session.level)
         ai_character = session.ai_character if hasattr(session, 'ai_character') else "Sarah"
 
-        # Few-shot examples (diverse: basic question, follow-up, complex scenario)
+        # 3 diverse few-shot examples (A1, B1, C1) — AWS best practice
         examples = [
             {
-                "input": 'AI: "What do you usually do in the morning?" | Level: A1',
+                "context": 'Level: A1 | AI said: "What do you usually do in the morning?"',
                 "output": """{
   "level": "A1",
   "type": "hint",
-  "markdown_vi": "Sarah muốn biết thói quen sáng của bạn. Hãy kể về những hoạt động từ lúc thức dậy đến khi đi làm/học.\\n\\n- I wake up at 6 AM, have breakfast, take a shower, and then go to work\\n- I usually wake up late, drink coffee, and rush to school\\n\\n💡 Dùng simple present tense (I wake up, I have, I go) để nói về thói quen hàng ngày.",
-  "markdown_en": "Sarah is asking about your morning routine. Tell what you do from waking up to going to work/school.\\n\\n- I wake up at 6 AM, have breakfast, take a shower, and then go to work\\n- I usually wake up late, drink coffee, and rush to school\\n\\n💡 Use simple present tense (I wake up, I have, I go) for daily habits."
+  "markdown_vi": "Sarah hỏi bạn thường làm gì vào buổi sáng. Hãy kể các hoạt động từ lúc thức dậy đến khi đi làm/học.\\n\\n- **I wake up** at 6 AM, have breakfast, and go to work\\n- **I usually** drink coffee and check my phone in the morning\\n\\n💡 Dùng **simple present** (wake up, have, go) cho thói quen hàng ngày.",
+  "markdown_en": "Sarah is asking about your morning routine. Tell her what you do each morning.\\n\\n- **I wake up** at 6 AM, have breakfast, and go to work\\n- **I usually** drink coffee and check my phone in the morning\\n\\n💡 Use **simple present** (wake up, have, go) for daily habits."
 }"""
             },
             {
-                "input": 'AI: "What did you do last weekend?" | Level: B1',
+                "context": 'Level: B1 | AI said: "What did you do last weekend?"',
                 "output": """{
   "level": "B1",
   "type": "hint",
-  "markdown_vi": "Sarah muốn biết bạn đã làm gì vào cuối tuần vừa rồi. Kể lại các hoạt động đã xảy ra.\\n\\n- I went to the beach with my friends and we had a great time\\n- I stayed home, watched movies, and relaxed\\n\\n💡 Dùng past simple (went, stayed, watched) để kể chuyện đã xảy ra. Dùng 'and' để nối các hành động.",
-  "markdown_en": "Sarah is asking what you did last weekend. Tell her about activities that happened.\\n\\n- I went to the beach with my friends and we had a great time\\n- I stayed home, watched movies, and relaxed\\n\\n💡 Use past simple (went, stayed, watched) for completed actions. Use 'and' to connect actions."
+  "markdown_vi": "Sarah muốn biết bạn đã làm gì cuối tuần vừa rồi. Kể lại 2-3 hoạt động cụ thể.\\n\\n- I **went to** the beach with my friends and we had a great time\\n- I **stayed home**, watched movies, and **caught up on** some reading\\n\\n💡 Dùng **past simple** (went, stayed, watched) cho các hành động đã hoàn thành. Thêm chi tiết để câu chuyện thú vị hơn.",
+  "markdown_en": "Sarah wants to know what you did last weekend. Share 2-3 specific activities.\\n\\n- I **went to** the beach with my friends and we had a great time\\n- I **stayed home**, watched movies, and **caught up on** some reading\\n\\n💡 Use **past simple** (went, stayed, watched) for completed actions. Add details to make it interesting."
+}"""
+            },
+            {
+                "context": 'Level: C1 | AI said: "How would you describe your ideal workplace?"',
+                "output": """{
+  "level": "C1",
+  "type": "hint",
+  "markdown_vi": "Sarah hỏi về môi trường làm việc lý tưởng của bạn. Mô tả văn hóa, cơ hội phát triển, và sự cân bằng công việc-cuộc sống.\\n\\n- My ideal workplace **would foster** innovation while **maintaining** a collaborative atmosphere\\n- I **envision** an environment that **prioritizes** work-life balance and continuous learning\\n\\n💡 Dùng **conditional** (would foster, would prioritize) và từ vựng nâng cao (foster, collaborative, envision) để thể hiện trình độ C1.",
+  "markdown_en": "Sarah wants to know about your ideal workplace. Describe culture, growth opportunities, and work-life balance.\\n\\n- My ideal workplace **would foster** innovation while **maintaining** a collaborative atmosphere\\n- I **envision** an environment that **prioritizes** work-life balance and continuous learning\\n\\n💡 Use **conditional** (would foster, would prioritize) and sophisticated vocabulary (foster, collaborative, envision) for C1 level."
 }"""
             }
         ]
 
-        prompt = f"""CONTEXT:
-- Scenario: {session.scenario_title or 'Conversation'}
+        return f"""CONTEXT:
+- Scenario: {getattr(session, 'scenario_title', 'Conversation')}
 - Goal: {current_goal}
 - Level: {level_str}
 - AI Character: {ai_character}
 - AI just said: "{last_ai_content}"
 
-TASK: Create a natural hint for this learner.
-
-EXAMPLES (few-shot):
-Example 1: {examples[0]['input']}
+EXAMPLES:
+Input: {examples[0]['context']}
 Output: {examples[0]['output']}
 
-Example 2: {examples[1]['input']}
+Input: {examples[1]['context']}
 Output: {examples[1]['output']}
 
-NOW, create a hint for:
-AI: "{last_ai_content}" | Level: {level_str}
+Input: {examples[2]['context']}
+Output: {examples[2]['output']}
 
-Return ONLY the JSON object (no preamble, no markdown wrapper)."""
-
-        return prompt
-
-    def _call_bedrock_with_retry(self, system_prompt: str, user_prompt: str, max_retries: int = 2) -> tuple[dict, int, int]:
-        """Call Bedrock with retry logic for transient errors (Fix #4).
-        
-        Args:
-            system_prompt: System role prompt (behavioral parameters)
-            user_prompt: User role prompt (context + task + examples)
-            max_retries: Maximum number of retries (default: 2)
-            
-        Returns:
-            Tuple of (parsed_json_dict, input_tokens, output_tokens)
-            
-        Raises:
-            Exception: If all retries fail or permanent error occurs
-        """
-        import time
-        import random
-        
-        for attempt in range(max_retries + 1):
-            try:
-                return self._call_bedrock(system_prompt, user_prompt)
-            except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                
-                # Retry on transient errors
-                if error_code in ["ThrottlingException", "ServiceUnavailableException", "InternalServerException"]:
-                    if attempt < max_retries:
-                        # Exponential backoff with jitter: (2^attempt) + random(0-1)
-                        base_backoff = 2 ** attempt
-                        jitter = random.uniform(0, 1)
-                        backoff = base_backoff + jitter
-                        logger.warning(
-                            f"Bedrock call failed with {error_code}, retrying in {backoff:.2f}s (attempt {attempt + 1}/{max_retries + 1})",
-                            extra={
-                                "error_code": error_code,
-                                "attempt": attempt + 1,
-                                "max_retries": max_retries + 1,
-                                "backoff_seconds": round(backoff, 2),
-                            }
-                        )
-                        time.sleep(backoff)
-                        continue
-                
-                # Don't retry on permanent errors
-                raise
-            except Exception as e:
-                # Don't retry on non-ClientError exceptions
-                raise
+NOW create a hint for:
+Input: Level: {level_str} | AI said: "{last_ai_content}"
+Output:"""
 
     def _call_bedrock(self, system_prompt: str, user_prompt: str) -> tuple[dict, int, int]:
         """Call Bedrock with streaming and parse JSON response.
         
         Uses Nova's structured output with tool config for guaranteed JSON compliance.
+        AWS SDK automatically retries with exponential backoff + jitter (max 3 attempts).
+        
         Reference: https://docs.aws.amazon.com/nova/latest/userguide/concept-chapter-servicename.html
         
         Args:
@@ -329,7 +284,7 @@ Return ONLY the JSON object (no preamble, no markdown wrapper)."""
             Tuple of (parsed_json_dict, input_tokens, output_tokens)
             
         Raises:
-            Exception: If Bedrock call fails or JSON parsing fails
+            Exception: If Bedrock call fails after all retries or JSON parsing fails
         """
         try:
             # Define JSON schema for structured output (Nova best practice)
@@ -374,12 +329,10 @@ Return ONLY the JSON object (no preamble, no markdown wrapper)."""
                 }
             }
             
-            # Amazon Nova format with streaming + structured output
+            # Amazon Nova format with NON-streaming + structured output
+            # Fix: converse_stream with toolConfig has issues, use converse instead
             # Reference: https://docs.aws.amazon.com/nova/latest/userguide/concept-chapter-servicename.html
-            # AWS best practices:
-            # - temperature=0 for structured output (greedy decoding)
-            # - performanceConfig.latency="optimized" for 20-30% latency reduction
-            response = self._bedrock.converse_stream(
+            response = self._bedrock.converse(
                 modelId="apac.amazon.nova-lite-v1:0",
                 system=[{"text": system_prompt}],
                 messages=[
@@ -393,61 +346,31 @@ Return ONLY the JSON object (no preamble, no markdown wrapper)."""
                     "maxTokens": 500,
                     "temperature": 0,
                 },
-                performanceConfig={
-                    "latency": "optimized"  # AWS best practice: 20-30% latency reduction
-                },
             )
             
-            # Collect streamed response with timeout
-            content_text = ""
-            input_tokens = 0
-            output_tokens = 0
-            chunk_count = 0
-            max_chunks = 100  # Safety limit to prevent infinite loops
-            tool_use_data = None
+            # Extract tool use from response
+            input_tokens = response.get("usage", {}).get("inputTokens", 0)
+            output_tokens = response.get("usage", {}).get("outputTokens", 0)
             
-            for event in response["stream"]:
-                chunk_count += 1
-                if chunk_count > max_chunks:
-                    logger.warning(f"Bedrock response exceeded {max_chunks} chunks, truncating")
+            # Find tool use in output
+            tool_use_data = None
+            for content_block in response.get("output", {}).get("message", {}).get("content", []):
+                if "toolUse" in content_block:
+                    tool_use_data = content_block["toolUse"]
                     break
-                
-                # Handle tool use (structured output)
-                if "contentBlockStart" in event:
-                    start = event["contentBlockStart"]
-                    if "toolUse" in start.get("start", {}):
-                        tool_use_data = start["start"]["toolUse"]
-                
-                if "contentBlockDelta" in event:
-                    delta = event["contentBlockDelta"].get("delta", {})
-                    if "toolUse" in delta:
-                        # Accumulate tool input
-                        if tool_use_data is None:
-                            tool_use_data = {}
-                        if "input" not in tool_use_data:
-                            tool_use_data["input"] = ""
-                        tool_use_data["input"] += delta["toolUse"].get("input", "")
-                
-                # Extract token usage from metadata
-                if "metadata" in event:
-                    usage = event["metadata"].get("usage", {})
-                    input_tokens = usage.get("inputTokens", input_tokens)
-                    output_tokens = usage.get("outputTokens", output_tokens)
             
             # Parse tool use input as JSON
             if tool_use_data and "input" in tool_use_data:
-                hint_data = json.loads(tool_use_data["input"])
+                hint_data = tool_use_data["input"]
             else:
                 raise ValueError("No tool use data received from Bedrock")
             
             # Validate response structure and content
-            is_valid, validation_errors = validate_structured_hint_response(hint_data)
+            is_valid = validate_structured_hint(hint_data)
             if not is_valid:
-                log_validation_errors(validation_errors, "structured_hint response")
                 logger.warning(
                     "Hint response validation failed but continuing with response",
                     extra={
-                        "error_count": len(validation_errors),
                         "model_id": "apac.amazon.nova-lite-v1:0",
                     }
                 )

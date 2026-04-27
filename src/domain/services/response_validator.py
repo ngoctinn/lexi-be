@@ -1,10 +1,9 @@
 """
-Response Validator for Scenario B: Quality validation for Micro model responses
+Response Validator - lightweight quality gate for AI conversation responses.
 
-Validation rules per level:
-- A1-A2: Simple responses (1-2 sentences, has question)
-- B1-B2: Moderate responses (2-4 sentences, has question, vocabulary diversity)
-- C1-C2: Complex responses (3-5 sentences, has question, vocabulary diversity)
+Philosophy: Validate only what matters for UX. Don't over-constrain the model.
+A short, natural response with no question is still valid — the model may be
+acknowledging before asking. Reject only truly broken responses (empty, too long).
 """
 
 import re
@@ -15,132 +14,60 @@ from domain.value_objects.enums import ProficiencyLevel
 
 @dataclass
 class ValidationResult:
-    """Result of response validation."""
     is_valid: bool
-    reason: Optional[str] = None  # Reason for failure if not valid
+    reason: Optional[str] = None
 
 
 class ResponseValidator:
-    """Validates AI responses for quality based on proficiency level."""
+    """
+    Lightweight validator — only rejects clearly broken responses.
 
-    # Validation rules per level
-    _VALIDATION_RULES = {
-        ProficiencyLevel.A1.value: {
-            "min_sentences": 1,
-            "max_sentences": 2,
-            "require_question": True,
-            "min_unique_words": 5,
-        },
-        ProficiencyLevel.A2.value: {
-            "min_sentences": 1,
-            "max_sentences": 3,
-            "require_question": True,
-            "min_unique_words": 8,
-        },
-        ProficiencyLevel.B1.value: {
-            "min_sentences": 2,
-            "max_sentences": 4,
-            "require_question": True,
-            "min_unique_words": 12,
-        },
-        ProficiencyLevel.B2.value: {
-            "min_sentences": 2,
-            "max_sentences": 5,
-            "require_question": True,
-            "min_unique_words": 15,
-        },
-        ProficiencyLevel.C1.value: {
-            "min_sentences": 3,
-            "max_sentences": 6,
-            "require_question": True,
-            "min_unique_words": 20,
-        },
-        ProficiencyLevel.C2.value: {
-            "min_sentences": 3,
-            "max_sentences": 7,
-            "require_question": True,
-            "min_unique_words": 25,
-        },
+    Rules (intentionally permissive):
+    - Empty response → reject
+    - Extremely long response (> hard cap) → reject
+    - Otherwise → accept
+
+    Rationale: The model is prompted to be natural and short. Over-constraining
+    with sentence counts and vocabulary diversity causes false rejections and
+    forces fallback to generic responses, which is worse UX.
+    """
+
+    # Hard token cap per level (generous — model is already prompted to be short)
+    _MAX_CHARS = {
+        ProficiencyLevel.A1.value: 300,
+        ProficiencyLevel.A2.value: 400,
+        ProficiencyLevel.B1.value: 600,
+        ProficiencyLevel.B2.value: 800,
+        ProficiencyLevel.C1.value: 1000,
+        ProficiencyLevel.C2.value: 1200,
     }
 
     @classmethod
     def validate(cls, response: str, level: str) -> ValidationResult:
         """
-        Validate response against rules for a proficiency level.
-        
+        Validate AI response. Only rejects empty or excessively long responses.
+
         Args:
             response: AI response text
-            level: Proficiency level
-            
+            level: Proficiency level string (A1-C2)
+
         Returns:
-            ValidationResult with is_valid and reason
+            ValidationResult
         """
         if not response or not response.strip():
             return ValidationResult(is_valid=False, reason="Response is empty")
 
-        rules = cls._VALIDATION_RULES.get(level)
-        if not rules:
-            return ValidationResult(is_valid=False, reason=f"Unknown proficiency level: {level}")
+        # Strip delivery cues like [warmly] before length check
+        clean = re.sub(r"^\[[a-zA-Z\s]+\]\s*", "", response.strip())
 
-        # Check sentence count
-        sentences = cls._count_sentences(response)
-        if sentences < rules["min_sentences"]:
-            return ValidationResult(
-                is_valid=False,
-                reason=f"Too few sentences: {sentences} (min: {rules['min_sentences']})",
-            )
-        if sentences > rules["max_sentences"]:
-            return ValidationResult(
-                is_valid=False,
-                reason=f"Too many sentences: {sentences} (max: {rules['max_sentences']})",
-            )
+        if not clean:
+            return ValidationResult(is_valid=False, reason="Response is empty after stripping cues")
 
-        # Check for question
-        if rules["require_question"] and not cls._has_question(response):
+        max_chars = cls._MAX_CHARS.get(level, 800)
+        if len(clean) > max_chars:
             return ValidationResult(
                 is_valid=False,
-                reason="Response must contain a question",
-            )
-
-        # Check vocabulary diversity
-        unique_words = cls._count_unique_words(response)
-        if unique_words < rules["min_unique_words"]:
-            return ValidationResult(
-                is_valid=False,
-                reason=f"Low vocabulary diversity: {unique_words} unique words (min: {rules['min_unique_words']})",
+                reason=f"Response too long: {len(clean)} chars (max {max_chars})",
             )
 
         return ValidationResult(is_valid=True)
-
-    @classmethod
-    def _count_sentences(cls, text: str) -> int:
-        """Count sentences in text (split by . ! ?)."""
-        sentences = re.split(r"[.!?]+", text.strip())
-        # Filter out empty strings
-        sentences = [s.strip() for s in sentences if s.strip()]
-        return len(sentences)
-
-    @classmethod
-    def _has_question(cls, text: str) -> bool:
-        """Check if text contains a question (ends with ?)."""
-        return "?" in text
-
-    @classmethod
-    def _count_unique_words(cls, text: str) -> int:
-        """Count unique words in text (case-insensitive, excluding common words)."""
-        # Extract words (alphanumeric + apostrophe)
-        words = re.findall(r"\b[a-z']+\b", text.lower())
-        
-        # Common English words to exclude (stop words)
-        stop_words = {
-            "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
-            "has", "he", "in", "is", "it", "of", "on", "or", "that", "the",
-            "to", "was", "will", "with", "you", "i", "me", "my", "we", "us",
-            "this", "these", "those", "what", "which", "who", "when",
-            "where", "why", "how", "can", "could", "would", "should", "do",
-            "does", "did", "have", "had", "having", "been", "being", "am",
-        }
-        
-        # Filter out stop words and count unique (include words of any length)
-        meaningful_words = {w for w in words if w not in stop_words}
-        return len(meaningful_words)

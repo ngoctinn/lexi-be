@@ -468,6 +468,7 @@ Resources:
                 - transcribe:GetTranscriptionJob
                 - transcribe:DeleteTranscriptionJob
                 - transcribe:StartStreamTranscription
+                - transcribe:StartStreamTranscriptionWebSocket
                 - xray:PutTraceSegments
                 - xray:PutTelemetryRecords
                 - cloudwatch:PutMetricData

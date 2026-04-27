@@ -27,9 +27,9 @@ class CreateFlashCardUseCase:
         Thực thi trình tự tạo thẻ ghi nhớ.
         """
         # 1. Kiểm tra trùng lặp (Idempotency check)
-        existing_card = self._repo.get_by_user_and_word(command.user_id, command.vocab)
+        existing_card = self._repo.get_by_user_and_word(command.user_id, command.word)
         if existing_card:
-            return Result.failure(f"Từ vựng '{command.vocab}' đã có trong kho thẻ của bạn.")
+            return Result.failure(f"Từ vựng '{command.word}' đã có trong kho thẻ của bạn.")
 
         # 2. Tạo thực thể Domain mới
         try:

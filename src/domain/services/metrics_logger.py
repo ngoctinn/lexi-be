@@ -190,7 +190,7 @@ class MetricsLogger:
             model_used: Model ID used
             model_source: "primary" or "fallback"
             fallback_reason: Reason for fallback (if any)
-            proficiency_level: Learner proficiency level (A1-C2)
+            proficiency_level: Learner proficiency level (A1-C2) as string
             scenario_title: Scenario title
             session_id: Session ID
             turn_index: Turn index in session
@@ -208,6 +208,17 @@ class MetricsLogger:
         Returns:
             ConversationMetrics object
         """
+        # Ensure proficiency_level is string (convert enum if needed)
+        if hasattr(proficiency_level, "value"):
+            proficiency_level = proficiency_level.value
+        proficiency_level = str(proficiency_level)
+        
+        # Ensure session_id is string (convert ULID if needed)
+        session_id = str(session_id)
+        
+        # Ensure scenario_title is string
+        scenario_title = str(scenario_title)
+        
         # Calculate cost
         cost = self._calculate_cost(
             model_used,
@@ -253,15 +264,19 @@ class MetricsLogger:
             return
         
         # Log to local logger
+        ttft_str = f"{metrics.ttft_ms:.0f}ms" if metrics.ttft_ms is not None else "N/A"
+        latency_str = f"{metrics.total_latency_ms:.0f}ms" if metrics.total_latency_ms is not None else "N/A"
+        cost_str = f"${metrics.cost_usd:.4f}" if metrics.cost_usd is not None else "N/A"
+        
         logger.info(
             f"Conversation metrics: "
             f"level={metrics.proficiency_level} "
             f"model={metrics.model_used} "
             f"source={metrics.model_source} "
-            f"ttft={metrics.ttft_ms:.0f}ms "
-            f"latency={metrics.total_latency_ms:.0f}ms "
+            f"ttft={ttft_str} "
+            f"latency={latency_str} "
             f"tokens={metrics.output_tokens} "
-            f"cost=${metrics.cost_usd:.4f}"
+            f"cost={cost_str}"
         )
         
         # Log fallback reason if applicable

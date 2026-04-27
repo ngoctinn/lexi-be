@@ -42,11 +42,30 @@ class DynamoTurnRepo(TurnRepository):
             }
         )
 
-    def list_by_session(self, session_id: str) -> List[Turn]:
-        response = self._table.query(
-            KeyConditionExpression=Key("PK").eq(f"SESSION#{session_id}") & Key("SK").begins_with("TURN#"),
-            ScanIndexForward=True,
-        )
+    def list_by_session(self, session_id: str, limit: int = None) -> List[Turn]:
+        """Query turns for a session with optional limit.
+        
+        AWS best practice: Use Limit parameter to reduce DynamoDB read capacity
+        and improve latency for large sessions.
+        Reference: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Query.Pagination.html
+        
+        Args:
+            session_id: Session ID
+            limit: Maximum number of turns to return (None = no limit)
+            
+        Returns:
+            List of Turn entities, sorted by turn_index
+        """
+        query_kwargs = {
+            "KeyConditionExpression": Key("PK").eq(f"SESSION#{session_id}") & Key("SK").begins_with("TURN#"),
+            "ScanIndexForward": True,
+        }
+        
+        # Add limit if specified (AWS best practice for pagination)
+        if limit is not None and limit > 0:
+            query_kwargs["Limit"] = limit
+        
+        response = self._table.query(**query_kwargs)
         turns = [self._to_entity(item) for item in response.get("Items", [])]
         return sorted(turns, key=lambda item: item.turn_index)
 

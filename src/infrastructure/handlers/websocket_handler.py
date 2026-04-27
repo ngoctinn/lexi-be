@@ -28,11 +28,14 @@ from infrastructure.services.speaking_pipeline_services import (
     BedrockConversationGenerationService,
     ComprehendTranscriptAnalysisService,
     PollySpeechSynthesisService,
-    TranscribeSTTService,
 )
-from infrastructure.services.streaming_stt_service_sync import StreamingSTTServiceSync
+from infrastructure.services.transcribe_presigned_url import TranscribePresignedUrlGenerator
 from domain.services.speaking_performance_scorer import SpeakingPerformanceScorer
 from infrastructure.services.bedrock_scorer_adapter import BedrockScorerAdapter
+from domain.services.conversation_orchestrator import ConversationOrchestrator
+from domain.services.model_router import ModelRouter
+from domain.services.response_validator import ResponseValidator
+from domain.services.metrics_logger import MetricsLogger
 from shared.utils.ulid_util import new_ulid
 from shared.http_utils import dumps
 
@@ -206,8 +209,7 @@ def _put_cloudwatch_metric(metric_name: str, value: float, unit: str = "None") -
 class WebSocketSessionController:
     session_repo: DynamoSessionRepo
     turn_repo: DynamoTurnRepo
-    stt_service: TranscribeSTTService
-    streaming_stt_service: StreamingSTTServiceSync
+    transcribe_url_generator: TranscribePresignedUrlGenerator
     submit_turn_use_case: SubmitSpeakingTurnUseCase
     complete_use_case: CompleteSpeakingSessionUseCase
     build_upload_payload: Callable[[str], tuple[str, str]]
@@ -292,71 +294,6 @@ class WebSocketSessionController:
             return _response(500, {"message": "Lỗi gửi thông tin session."})
         return _response(200, {"message": "Session ready"})
 
-    def audio_uploaded(self, session_id: str, connection_id: str, body: dict[str, Any]) -> dict[str, Any]:
-        session = self._get_session(session_id)
-        if not session:
-            return _response(404, {"message": "Session không tồn tại."})
-
-        self._sync_connection(session, connection_id)
-
-        s3_key = body.get("s3_key", "")
-        bucket = os.environ.get("SPEAKING_AUDIO_BUCKET_NAME", "")
-
-        if not s3_key or not bucket:
-            try:
-                self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": 0.0})
-            except Exception as exc:
-                print(f"[ws] Failed to send STT_LOW_CONFIDENCE: {exc}")
-            return _response(400, {"message": "Thiếu s3_key hoặc bucket."})
-
-        # Gọi Transcribe để chuyển audio → text
-        text, confidence = self.stt_service.transcribe(bucket, s3_key)
-
-        if not text or confidence < 0.5:
-            try:
-                self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": float(confidence)})
-            except Exception as exc:
-                print(f"[ws] Failed to send STT_LOW_CONFIDENCE: {exc}")
-            return _response(200, {"message": "STT low confidence"})
-
-        # Gửi kết quả STT về client
-        try:
-            self.send_message({"event": "STT_RESULT", "text": text, "confidence": float(confidence)})
-        except Exception as exc:
-            print(f"[ws] Failed to send STT_RESULT: {exc}")
-
-        # Tiếp tục pipeline với text đã transcribe
-        result = self.submit_turn_use_case.execute(
-            SubmitSpeakingTurnCommand(
-                user_id=session.user_id,
-                session_id=session_id,
-                text=text,
-                is_hint_used=False,
-                audio_url=f"s3://{bucket}/{s3_key}",
-            )
-        )
-        if not result.is_success or result.value is None:
-            try:
-                self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
-            except Exception as exc:
-                print(f"[ws] Failed to send error message: {exc}")
-            return _response(422, {"message": result.error or "Lỗi xử lý lượt nói."})
-
-        response = result.value
-        try:
-            self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
-            self._send_ai_response(response.ai_turn.content)
-            if response.ai_turn.audio_url:
-                self.send_message({
-                    "event": "AI_AUDIO_URL",
-                    "url": response.ai_turn.audio_url,
-                    "text": response.ai_turn.content,
-                })
-        except Exception as exc:
-            print(f"[ws] Failed to send response messages: {exc}")
-
-        return _response(200, {"message": "Audio processed"})
-
     def use_hint(self, session_id: str, connection_id: str) -> dict[str, Any]:
         session = self._get_session(session_id)
         if not session:
@@ -368,9 +305,9 @@ class WebSocketSessionController:
         # Use StructuredHintGenerator for ALL levels (A1-C2)
         try:
             logger.info(f"Generating hint for session: {session_id}")
-            turns = self.turn_repo.list_by_session(session_id)
-            # Limit to last 10 turns for context (avoid fetching entire history)
-            turns = turns[-10:] if len(turns) > 10 else turns
+            # AWS best practice: Limit to last 10 turns for context (avoid fetching entire history)
+            # Reference: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Query.Pagination.html
+            turns = self.turn_repo.list_by_session(session_id, limit=10)
             logger.info(f"Using {len(turns)} turns (limited to 10) for session {session_id}")
             
             # Extract last AI message (what learner needs to respond to)
@@ -400,8 +337,6 @@ class WebSocketSessionController:
                     self.send_message({
                         "event": "HINT_TEXT",
                         "hint": hint.to_dict(),
-                        "isStreaming": False,
-                        "isDone": True
                     })
                 except Exception as exc:
                     print(f"[ws] Failed to send structured hint: {exc}")
@@ -420,8 +355,6 @@ class WebSocketSessionController:
                     self.send_message({
                         "event": "HINT_TEXT",
                         "hint": fallback_hint,
-                        "isStreaming": False,
-                        "isDone": True
                     })
                 except Exception as exc:
                     print(f"[ws] Failed to send fallback hint: {exc}")
@@ -444,8 +377,6 @@ class WebSocketSessionController:
                 self.send_message({
                     "event": "HINT_TEXT",
                     "hint": fallback_hint,
-                    "isStreaming": False,
-                    "isDone": True
                 })
             except Exception as exc:
                 print(f"[ws] Failed to send error hint: {exc}")
@@ -474,7 +405,9 @@ class WebSocketSessionController:
                 return _response(400, {"message": "turn_index phải >= 0"})
             
             # Get turns for this session (sorted by turn_index)
-            turns = self.turn_repo.list_by_session(session_id)
+            # AWS best practice: Limit to last 20 turns for context (avoid fetching entire history)
+            # Reference: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Query.Pagination.html
+            turns = self.turn_repo.list_by_session(session_id, limit=20)
             sorted_turns = sorted(turns, key=lambda t: t.turn_index)
             
             # Check turn_index exists
@@ -643,8 +576,18 @@ class WebSocketSessionController:
             print(f"[ws] Failed to send SCORING_COMPLETE: {exc}")
         return _response(200, {"message": "Session completed"})
 
-    def start_streaming(self, session_id: str, connection_id: str) -> dict[str, Any]:
-        """Initialize streaming transcription session."""
+    def get_transcribe_url(self, session_id: str, connection_id: str) -> dict[str, Any]:
+        """
+        Generate presigned WebSocket URL for client-side Transcribe streaming.
+        
+        This is the AWS recommended approach for browser clients:
+        - Browser connects directly to Transcribe WebSocket
+        - Lower latency (no Lambda hop)
+        - No Lambda timeout issues
+        - No deprecated SDK dependency
+        
+        Reference: https://docs.aws.amazon.com/transcribe/latest/dg/streaming-setting-up.html#streaming-websocket
+        """
         session = self._get_session(session_id)
         if not session:
             return _response(404, {"message": "Session không tồn tại."})
@@ -652,205 +595,61 @@ class WebSocketSessionController:
         self._sync_connection(session, connection_id)
 
         try:
-            # Initialize Transcribe stream
-            stream_id = self.streaming_stt_service.start_stream(
-                stream_id=session_id,
+            # Generate presigned URL for Transcribe WebSocket
+            # Use PCM encoding (AWS recommended for best compatibility)
+            url_data = self.transcribe_url_generator.generate(
                 language_code="en-US",
+                media_encoding="pcm",  # AWS Transcribe recommended encoding
                 sample_rate=16000,
-                media_encoding="opus",
+                expires_in=300,  # 5 minutes (AWS max)
             )
 
-            # Store stream_id in session
-            session.transcribe_stream_id = stream_id
-            session.last_audio_timestamp = 0.0
-            self.session_repo.save(session)
-
+            # Send URL to client via WebSocket
             try:
-                self.send_message({"event": "STREAMING_READY", "session_id": session_id})
+                self.send_message({
+                    "event": "TRANSCRIBE_URL",
+                    "url": url_data["url"],
+                    "expires_in": url_data["expires_in"],
+                    "language_code": url_data["language_code"],
+                    "media_encoding": url_data["media_encoding"],
+                    "sample_rate": url_data["sample_rate"],
+                })
             except Exception as exc:
-                print(f"[ws] Failed to send STREAMING_READY: {exc}")
-            return _response(200, {"message": "Streaming ready"})
+                logger.error(f"Failed to send TRANSCRIBE_URL: {exc}")
+                return _response(500, {"message": "Lỗi gửi URL."})
 
-        except Exception as exc:
-            logger.exception("Failed to start streaming", extra={"session_id": session_id})
-            try:
-                self.send_message({"event": "STT_ERROR", "message": "Không thể khởi động streaming."})
-            except Exception as send_exc:
-                print(f"[ws] Failed to send STT_ERROR: {send_exc}")
-            return _response(500, {"message": str(exc)})
-
-    def audio_chunk(self, session_id: str, connection_id: str, body: dict[str, Any]) -> dict[str, Any]:
-        """Forward audio chunk to Transcribe stream."""
-        session = self._get_session(session_id)
-        if not session:
-            return _response(404, {"message": "Session không tồn tại."})
-
-        if not session.transcribe_stream_id:
-            return _response(400, {"message": "No active stream"})
-
-        self._sync_connection(session, connection_id)
-
-        try:
-            audio_data = body.get("data")
-            if not audio_data:
-                return _response(400, {"message": "Missing audio data"})
-
-            # Convert array to bytes
-            audio_bytes = bytes(audio_data)
-
-            # Forward to Transcribe
-            self.streaming_stt_service.send_audio_chunk(
-                stream_id=session.transcribe_stream_id,
-                audio_bytes=audio_bytes,
-            )
-
-            # Update timestamp for timeout tracking
-            import time
-            session.last_audio_timestamp = time.time()
-            self.session_repo.save(session)
-
-            # Check for transcripts (non-blocking)
-            transcripts = self.streaming_stt_service.get_transcripts(session.transcribe_stream_id)
-            for transcript in transcripts:
-                try:
-                    if transcript.is_partial:
-                        self.send_message(
-                            {
-                                "event": "PARTIAL_TRANSCRIPT",
-                                "text": transcript.text,
-                                "confidence": float(transcript.confidence),
-                            }
-                        )
-                    else:
-                        self.send_message(
-                            {
-                                "event": "FINAL_TRANSCRIPT",
-                                "text": transcript.text,
-                                "confidence": float(transcript.confidence),
-                            }
-                        )
-                except Exception as exc:
-                    print(f"[ws] Failed to send transcript: {exc}")
-
-            return _response(200, {"message": "Chunk processed"})
-
-        except Exception as exc:
-            logger.exception("Failed to process audio chunk", extra={"session_id": session_id})
-            try:
-                self.send_message({"event": "STT_ERROR", "message": "Lỗi xử lý audio chunk."})
-            except Exception as send_exc:
-                print(f"[ws] Failed to send STT_ERROR: {send_exc}")
-            return _response(500, {"message": str(exc)})
-
-    def end_streaming(self, session_id: str, connection_id: str) -> dict[str, Any]:
-        """Close Transcribe stream and trigger LLM pipeline."""
-        session = self._get_session(session_id)
-        if not session:
-            return _response(404, {"message": "Session không tồn tại."})
-
-        if not session.transcribe_stream_id:
-            return _response(400, {"message": "No active stream"})
-
-        self._sync_connection(session, connection_id)
-
-        try:
-            # Close stream and get final transcript
-            final_transcript = self.streaming_stt_service.close_stream(session.transcribe_stream_id)
-            session.transcribe_stream_id = None
-            session.last_audio_timestamp = 0.0
-            self.session_repo.save(session)
-
-            if not final_transcript or final_transcript.confidence < 0.5:
-                confidence = float(final_transcript.confidence) if final_transcript else 0.0
-                try:
-                    self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": confidence})
-                except Exception as exc:
-                    print(f"[ws] Failed to send STT_LOW_CONFIDENCE: {exc}")
-                return _response(200, {"message": "Low confidence"})
-
-            # Send final transcript
-            try:
-                self.send_message(
-                    {
-                        "event": "FINAL_TRANSCRIPT",
-                        "text": final_transcript.text,
-                        "confidence": float(final_transcript.confidence),
-                    }
-                )
-            except Exception as exc:
-                print(f"[ws] Failed to send final transcript: {exc}")
-
-            # Log and track metrics
             logger.info(
-                "Streaming transcription completed",
+                "Generated Transcribe presigned URL",
                 extra={
                     "session_id": session_id,
-                    "confidence": final_transcript.confidence,
-                    "transcript_length": len(final_transcript.text),
+                    "expires_in": url_data["expires_in"],
                 },
             )
-            _put_cloudwatch_metric("TranscriptConfidence", final_transcript.confidence)
-            _put_cloudwatch_metric("TranscriptLength", len(final_transcript.text), "Count")
 
-            # Continue with existing LLM pipeline
-            result = self.submit_turn_use_case.execute(
-                SubmitSpeakingTurnCommand(
-                    user_id=session.user_id,
-                    session_id=session_id,
-                    text=final_transcript.text,
-                    is_hint_used=False,
-                    audio_url=None,  # No S3 URL for streaming
-                )
-            )
-
-            if not result.is_success or result.value is None:
-                try:
-                    self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
-                except Exception as exc:
-                    print(f"[ws] Failed to send error message: {exc}")
-                return _response(422, {"message": result.error or "Lỗi xử lý lượt nói."})
-
-            response = result.value
-            try:
-                self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
-                self._send_ai_response(response.ai_turn.content)
-                if response.ai_turn.audio_url:
-                    self.send_message(
-                        {
-                            "event": "AI_AUDIO_URL",
-                            "url": response.ai_turn.audio_url,
-                            "text": response.ai_turn.content,
-                        }
-                    )
-            except Exception as exc:
-                print(f"[ws] Failed to send response messages: {exc}")
-
-            return _response(200, {"message": "Streaming ended"})
+            return _response(200, {"message": "URL generated"})
 
         except Exception as exc:
-            logger.exception("Failed to end streaming", extra={"session_id": session_id})
-            _put_cloudwatch_metric("StreamErrors", 1, "Count")
+            logger.exception("Failed to generate Transcribe URL", extra={"session_id": session_id})
             try:
-                self.send_message({"event": "STT_ERROR", "message": "Lỗi kết thúc streaming."})
+                self.send_message({"event": "STT_ERROR", "message": "Không thể tạo Transcribe URL."})
             except Exception as send_exc:
-                print(f"[ws] Failed to send STT_ERROR: {send_exc}")
+                logger.error(f"Failed to send STT_ERROR: {send_exc}")
             return _response(500, {"message": str(exc)})
 
     def submit_transcript(self, session_id: str, connection_id: str, body: dict[str, Any]) -> dict[str, Any]:
         """Process final transcript from client-side streaming."""
         session = self._get_session(session_id)
         if not session:
+            logger.warning(f"Session not found: {session_id}")
             return _response(404, {"message": "Session không tồn tại."})
 
         text = str(body.get("text") or "").strip()
         confidence = float(body.get("confidence") or 0.0)
 
-        if not text or confidence < 0.5:
-            try:
-                self.send_message({"event": "STT_LOW_CONFIDENCE", "confidence": confidence})
-            except Exception as exc:
-                print(f"[ws] Failed to send STT_LOW_CONFIDENCE: {exc}")
-            return _response(200, {"message": "Low confidence"})
+        # Accept all transcripts regardless of confidence
+        # Low confidence is better than no transcript
+        if not text:
+            text = ""
 
         self._sync_connection(session, connection_id)
 
@@ -899,6 +698,7 @@ class WebSocketSessionController:
                         }
                     )
             except Exception as exc:
+                logger.exception(f"Failed to send response messages: {exc}")
                 print(f"[ws] Failed to send response messages: {exc}")
 
             return _response(200, {"message": "Transcript processed"})
@@ -976,20 +776,29 @@ def get_websocket_controller() -> WebSocketSessionController:
     session_repo = DynamoSessionRepo()
     turn_repo = DynamoTurnRepo()
     scoring_repo = DynamoScoringRepo()
+    
+    # AWS Best Practice: Enable ConversationOrchestrator for Phase 5 metrics
+    # This enables latency, cost tracking, and quality validation
+    conversation_orchestrator = ConversationOrchestrator(
+        model_router=ModelRouter(),
+        response_validator=ResponseValidator(),
+        metrics_logger=MetricsLogger(),
+    )
+    
     submit_turn_use_case = SubmitSpeakingTurnUseCase(
         session_repo,
         turn_repo,
         ComprehendTranscriptAnalysisService(),
         BedrockConversationGenerationService(),
         PollySpeechSynthesisService(),
+        conversation_orchestrator=conversation_orchestrator,  # ✅ ENABLED
     )
     complete_use_case = CompleteSpeakingSessionUseCase(session_repo, turn_repo, scoring_repo, BedrockScorerAdapter())
 
     return WebSocketSessionController(
         session_repo=session_repo,
         turn_repo=turn_repo,
-        stt_service=TranscribeSTTService(),
-        streaming_stt_service=StreamingSTTServiceSync(),
+        transcribe_url_generator=TranscribePresignedUrlGenerator(),
         submit_turn_use_case=submit_turn_use_case,
         complete_use_case=complete_use_case,
         build_upload_payload=_build_upload_payload,
@@ -1071,14 +880,8 @@ def handler(event, context):
         # Route actions
         if action == "START_SESSION":
             return controller.start_session(str(session_id), connection_id)
-        if action == "AUDIO_UPLOADED":
-            return controller.audio_uploaded(str(session_id), connection_id, body)
-        if action == "START_STREAMING":
-            return controller.start_streaming(str(session_id), connection_id)
-        if action == "AUDIO_CHUNK":
-            return controller.audio_chunk(str(session_id), connection_id, body)
-        if action == "END_STREAMING":
-            return controller.end_streaming(str(session_id), connection_id)
+        if action == "GET_TRANSCRIBE_URL":
+            return controller.get_transcribe_url(str(session_id), connection_id)
         if action == "SUBMIT_TRANSCRIPT":
             return controller.submit_transcript(str(session_id), connection_id, body)
         if action == "USE_HINT":

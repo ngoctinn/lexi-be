@@ -531,7 +531,18 @@ class SubmitSpeakingTurnUseCase:
                     session.ai_character,
                     object_key=f"speaking/audio/{session.session_id}/{turn_index + 1}.mp3",
                 )
-            except Exception:
+            except Exception as tts_error:
+                logger.error(
+                    "TTS synthesis failed for AI response",
+                    extra={
+                        "session_id": str(session.session_id),
+                        "turn_index": turn_index + 1,
+                        "ai_character": session.ai_character,
+                        "text_length": len(clean_ai_text) if 'clean_ai_text' in locals() else len(ai_text),
+                        "error": str(tts_error),
+                        "error_type": type(tts_error).__name__,
+                    }
+                )
                 ai_audio_url = ""
 
             ai_turn = Turn(
@@ -652,11 +663,11 @@ class SubmitSpeakingTurnUseCase:
                 return (
                     orch_response.ai_text,
                     orch_response.delivery_cue,
-                    orch_response.ttft_ms,
-                    orch_response.latency_ms,
+                    Decimal(str(orch_response.ttft_ms)) if orch_response.ttft_ms is not None else None,
+                    Decimal(str(orch_response.latency_ms)) if orch_response.latency_ms is not None else None,
                     orch_response.input_tokens,
                     orch_response.output_tokens,
-                    orch_response.cost_usd,
+                    Decimal(str(orch_response.cost_usd)),
                 )
             except Exception as e:
                 logger.exception(f"ConversationOrchestrator failed: {str(e)}, using fallback service")

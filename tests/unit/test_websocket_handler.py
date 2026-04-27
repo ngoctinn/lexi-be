@@ -96,7 +96,7 @@ def build_controller(session: Session):
         session_repo=session_repo,
         turn_repo=turn_repo,
         stt_service=None,  # Not used in these tests
-        streaming_stt_service=None,  # Not used in these tests
+        transcribe_url_generator=None,  # Not used in these tests
         submit_turn_use_case=submit_use_case,
         complete_use_case=complete_use_case,
         build_upload_payload=lambda session_id: ("https://upload.example.com", f"sessions/{session_id}/audio.webm"),
