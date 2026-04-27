@@ -64,7 +64,7 @@ def handler(event, context):
         result = controller.update_profile(user_id, body_str)
         
         if result.is_success:
-            return presenter.present_success(result.success)
+            return presenter.present_success(result.value)
         else:
             return presenter.present_bad_request(result.error.message)
     except Exception as exc:

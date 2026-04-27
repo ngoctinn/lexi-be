@@ -12,6 +12,16 @@ class DecimalEncoder(json.JSONEncoder):
         if isinstance(obj, Decimal):
             # Giữ nguyên int nếu không có phần thập phân
             return int(obj) if obj % 1 == 0 else float(obj)
+        # Handle Pydantic v2 models
+        if hasattr(obj, 'model_dump'):
+            return obj.model_dump()
+        # Handle Pydantic v1 models
+        if hasattr(obj, 'dict'):
+            return obj.dict()
+        # Handle dataclasses
+        if hasattr(obj, '__dataclass_fields__'):
+            from dataclasses import asdict
+            return asdict(obj)
         return super().default(obj)
 
 

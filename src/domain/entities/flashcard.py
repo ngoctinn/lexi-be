@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from src.domain.services.srs_engine import SRSEngine
+from domain.services.srs_engine import SRSEngine
 
 @dataclass
 class FlashCard:

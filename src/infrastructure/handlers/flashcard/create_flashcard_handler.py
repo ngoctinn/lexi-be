@@ -68,7 +68,7 @@ def handler(event, context):
         result = controller.create(event, user_id)
         
         if result.is_success:
-            return presenter.present_created(result.success)
+            return presenter.present_created(result.value)
         else:
             error = result.error
             return presenter._format_response(400, {

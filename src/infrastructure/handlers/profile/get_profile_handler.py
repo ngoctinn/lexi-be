@@ -67,13 +67,9 @@ def handler(event, context):
         result = controller.get_profile(user_id)
         
         if result.is_success:
-            return presenter.present_success(result.success)
+            return presenter.present_success(result.value)
         else:
-            error = result.error
-            return presenter._format_response(400, {
-                "error": error.message,
-                "code": error.code or "ERROR"
-            })
+            return presenter.present_not_found(result.error)
     except Exception as e:
         logger.exception("Error getting profile", extra={"context": {"user_id": user_id, "error": str(e)}})
-        raise
+        return presenter.present_bad_request(f"Internal server error: {str(e)}")

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
+from decimal import Decimal
 import os
 import logging
 
@@ -39,7 +40,7 @@ class DynamoFlashCardRepository(FlashCardRepository):
             "review_count": card.review_count,
             "interval_days": card.interval_days,
             "difficulty": card.difficulty,
-            "ease_factor": card.ease_factor,
+            "ease_factor": Decimal(str(card.ease_factor)),
             "repetition_count": card.repetition_count,
             "last_reviewed_at": card.last_reviewed_at.isoformat() if card.last_reviewed_at else None,
             "next_review_at": card.next_review_at.isoformat(),
@@ -208,6 +209,11 @@ class DynamoFlashCardRepository(FlashCardRepository):
             last_reviewed = datetime.fromisoformat(item["last_reviewed_at"])
 
         next_review = datetime.fromisoformat(item["next_review_at"])
+        
+        # Convert Decimal to float for ease_factor
+        ease_factor = item.get("ease_factor", 2.5)
+        if isinstance(ease_factor, Decimal):
+            ease_factor = float(ease_factor)
 
         return FlashCard(
             flashcard_id=item.get("flashcard_id", ""),
@@ -220,7 +226,7 @@ class DynamoFlashCardRepository(FlashCardRepository):
             review_count=item.get("review_count", 0),
             interval_days=item.get("interval_days", 1),
             difficulty=item.get("difficulty", 0),
-            ease_factor=item.get("ease_factor", 2.5),
+            ease_factor=ease_factor,
             repetition_count=item.get("repetition_count", 0),
             last_reviewed_at=last_reviewed,
             next_review_at=next_review,
