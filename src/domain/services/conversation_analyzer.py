@@ -25,6 +25,7 @@ class TurnAnalysis:
     strengths: list[str]
     mistakes: list[str]
     improvements: list[str]
+    suggestions: list[str]  # Better/longer alternative sentences
     overall_assessment: str
 
 
@@ -54,7 +55,7 @@ class ConversationAnalyzer:
                 {
                     "toolSpec": {
                         "name": "TurnAnalysis",
-                        "description": "Analyze learner's English turn with bilingual feedback",
+                        "description": "Analyze learner's English turn with bilingual feedback and suggestions",
                         "inputSchema": {
                             "json": {
                                 "type": "object",
@@ -78,9 +79,19 @@ class ConversationAnalyzer:
                                         "type": "array",
                                         "items": {"type": "string"},
                                         "description": "Improvements in English (explanation) with English examples"
+                                    },
+                                    "suggestions_vi": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "Better/longer alternative sentences in Vietnamese with English examples (shown when no mistakes)"
+                                    },
+                                    "suggestions_en": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "Better/longer alternative sentences in English (shown when no mistakes)"
                                     }
                                 },
-                                "required": []  # All fields optional (no mistakes = empty arrays)
+                                "required": []  # All fields optional
                             }
                         }
                     }
@@ -146,10 +157,12 @@ class ConversationAnalyzer:
             mistakes_en = data.get("mistakes_en", [])
             improvements_vi = data.get("improvements_vi", [])
             improvements_en = data.get("improvements_en", [])
+            suggestions_vi = data.get("suggestions_vi", [])
+            suggestions_en = data.get("suggestions_en", [])
 
             # Format markdown with proper styling
-            markdown_vi = self._format_markdown_vi(mistakes_vi, improvements_vi)
-            markdown_en = self._format_markdown_en(mistakes_en, improvements_en)
+            markdown_vi = self._format_markdown_vi(mistakes_vi, improvements_vi, suggestions_vi)
+            markdown_en = self._format_markdown_en(mistakes_en, improvements_en, suggestions_en)
             
             # Log metrics
             cost_usd = (input_tokens / 1000 * 0.00006) + (output_tokens / 1000 * 0.00024)
@@ -163,6 +176,7 @@ class ConversationAnalyzer:
                     "validation_passed": is_valid,
                     "mistakes_count": len(mistakes_vi),
                     "improvements_count": len(improvements_vi),
+                    "suggestions_count": len(suggestions_vi),
                 }
             )
 
@@ -172,6 +186,7 @@ class ConversationAnalyzer:
                 strengths=[],
                 mistakes=mistakes_vi,
                 improvements=improvements_vi,
+                suggestions=suggestions_vi,
                 overall_assessment="",
             )
 
@@ -235,7 +250,7 @@ Context: {scenario_context}
 Level: {level}
 Guidance: {level_guidance.get(level, level_guidance["B1"])}
 
-TASK: Analyze errors and suggest improvements
+TASK: Analyze errors, suggest improvements, and provide advanced suggestions
 - EXPLAIN in Vietnamese (so learner understands)
 - EXAMPLES/CORRECTIONS ALWAYS in English (so learner learns correctly)
 - NEVER translate English sentences to Vietnamese
@@ -245,7 +260,9 @@ FORMATTING RULES (CRITICAL):
   Example: "Bạn nhầm lẫn ở ~~go~~ (hiện tại), nên sửa thành **went** (quá khứ)"
 - Improvements: Use **better phrase** for suggestions
   Example: "Thay vì 'good', dùng **excellent** sẽ hay hơn"
-- Maximum 2-3 mistakes, 2-3 improvements
+- Suggestions (when NO mistakes): Provide 2-3 longer/more complex alternative sentences
+  Example: "Bạn có thể nói: **I went to the beach with my friends and we had a wonderful time together.**"
+- Maximum 2-3 mistakes, 2-3 improvements, 2-3 suggestions
 - Return ONLY valid JSON, no markdown wrapper"""
 
     def _build_user_prompt(self, learner_message: str, ai_response: str, level: str) -> str:
@@ -258,7 +275,7 @@ FORMATTING RULES (CRITICAL):
         
         Reference: https://docs.aws.amazon.com/nova/latest/userguide/prompting-examples.html
         """
-        # Few-shot examples (diverse: cover 6 CEFR levels + different error types)
+        # Few-shot examples (diverse: cover 6 CEFR levels + different error types + suggestions)
         examples = [
             {
                 "input": 'Learner: "I go to school yesterday" | Level: A1',
@@ -266,7 +283,9 @@ FORMATTING RULES (CRITICAL):
   "mistakes_vi": ["Bạn nhầm lẫn ở ~~go~~ (hiện tại), nên sửa thành **went** (quá khứ)\\n\\nVì khi có 'yesterday' thì động từ phải ở dạng quá khứ. Dùng **past simple** cho sự kiện đã xảy ra."],
   "mistakes_en": ["You mixed up ~~go~~ (present), should be **went** (past)\\n\\nBecause when you have 'yesterday', the verb needs past tense. Use **past simple** for completed actions."],
   "improvements_vi": [],
-  "improvements_en": []
+  "improvements_en": [],
+  "suggestions_vi": [],
+  "suggestions_en": []
 }"""
             },
             {
@@ -275,7 +294,9 @@ FORMATTING RULES (CRITICAL):
   "mistakes_vi": ["Bạn nhầm lẫn ở ~~drink~~, nên sửa thành **drinking**\\n\\nVì sau 'like' cần dùng gerund (V-ing): **like + V-ing**. Ví dụ: like drinking, like playing."],
   "mistakes_en": ["You mixed up ~~drink~~, should be **drinking**\\n\\nBecause after 'like' you need gerund (V-ing): **like + V-ing**. Examples: like drinking, like playing."],
   "improvements_vi": [],
-  "improvements_en": []
+  "improvements_en": [],
+  "suggestions_vi": [],
+  "suggestions_en": []
 }"""
             },
             {
@@ -284,7 +305,9 @@ FORMATTING RULES (CRITICAL):
   "mistakes_vi": ["Bạn nhầm lẫn ở ~~have went~~, nên sửa thành **went**\\n\\nVì có 'last year' (thời điểm cụ thể trong quá khứ) thì dùng **past simple**, không dùng present perfect."],
   "mistakes_en": ["You mixed up ~~have went~~, should be **went**\\n\\nBecause 'last year' (specific past time) requires **past simple**, not present perfect."],
   "improvements_vi": ["Thay vì chỉ nói 'went to Paris', bạn có thể thêm chi tiết: **I visited Paris last year and explored the Eiffel Tower**"],
-  "improvements_en": ["Instead of just 'went to Paris', you can add details: **I visited Paris last year and explored the Eiffel Tower**"]
+  "improvements_en": ["Instead of just 'went to Paris', you can add details: **I visited Paris last year and explored the Eiffel Tower**"],
+  "suggestions_vi": [],
+  "suggestions_en": []
 }"""
             },
             {
@@ -293,7 +316,9 @@ FORMATTING RULES (CRITICAL):
   "mistakes_vi": ["Bạn nhầm lẫn ở ~~If I would have~~, nên sửa thành **If I had**\\n\\nVì đây là câu điều kiện loại 2 (unreal present): **If + past simple, would + V**. Không dùng 'would' trong mệnh đề if."],
   "mistakes_en": ["You mixed up ~~If I would have~~, should be **If I had**\\n\\nBecause this is second conditional (unreal present): **If + past simple, would + V**. Don't use 'would' in the if-clause."],
   "improvements_vi": [],
-  "improvements_en": []
+  "improvements_en": [],
+  "suggestions_vi": [],
+  "suggestions_en": []
 }"""
             },
             {
@@ -302,7 +327,20 @@ FORMATTING RULES (CRITICAL):
   "mistakes_vi": [],
   "mistakes_en": [],
   "improvements_vi": ["Thay vì ~~more strict~~, dùng **stricter** (comparative form)\\n\\nVì 'strict' là tính từ ngắn, dùng **-er** thay vì 'more'. Hoặc dùng **more stringent** (sophisticated vocabulary) cho C1."],
-  "improvements_en": ["Instead of ~~more strict~~, use **stricter** (comparative form)\\n\\nBecause 'strict' is a short adjective, use **-er** instead of 'more'. Or use **more stringent** (sophisticated vocabulary) for C1."]
+  "improvements_en": ["Instead of ~~more strict~~, use **stricter** (comparative form)\\n\\nBecause 'strict' is a short adjective, use **-er** instead of 'more'. Or use **more stringent** (sophisticated vocabulary) for C1."],
+  "suggestions_vi": [],
+  "suggestions_en": []
+}"""
+            },
+            {
+                "input": 'Learner: "I like coffee" | Level: A1 (NO MISTAKES)',
+                "output": """{
+  "mistakes_vi": [],
+  "mistakes_en": [],
+  "improvements_vi": [],
+  "improvements_en": [],
+  "suggestions_vi": ["Bạn có thể nói dài hơn: **I like drinking coffee in the morning because it helps me wake up**", "Hoặc: **I really enjoy a hot cup of coffee, especially when I'm studying**"],
+  "suggestions_en": ["You could say more: **I like drinking coffee in the morning because it helps me wake up**", "Or: **I really enjoy a hot cup of coffee, especially when I'm studying**"]
 }"""
             }
         ]
@@ -327,14 +365,22 @@ Output: {examples[3]['output']}
 Example 5 (C1 - Style improvement): {examples[4]['input']}
 Output: {examples[4]['output']}
 
+Example 6 (A1 - NO MISTAKES - Show suggestions): {examples[5]['input']}
+Output: {examples[5]['output']}
+
 NOW, analyze this learner message:
 Learner: "{learner_message}" | Level: {level}
+
+IMPORTANT: If there are NO mistakes, provide 2-3 suggestions for longer/more complex sentences instead.
 
 Return ONLY the JSON object (no preamble, no markdown wrapper)."""
 
         return prompt
 
-    def _format_markdown_vi(self, mistakes: list[str], improvements: list[str]) -> str:
+    def _format_markdown_vi(self, mistakes: list[str], improvements: list[str], suggestions: list[str] = None) -> str:
+        if suggestions is None:
+            suggestions = []
+            
         sections = []
 
         if mistakes:
@@ -344,10 +390,30 @@ Return ONLY the JSON object (no preamble, no markdown wrapper)."""
         if improvements:
             for improvement in improvements:
                 sections.append(f"💡 {improvement}\n")
+        
+        # Khi không có lỗi: khích lệ trước, sau đó gợi ý
+        if not mistakes and not improvements:
+            sections.append("### ✅ Tuyệt vời!\n")
+            sections.append("Câu của bạn hoàn toàn chính xác! Bạn đang tiến bộ rất tốt.\n\n")
+            
+            if suggestions:
+                sections.append("### 🌟 Gợi ý nâng cao:\n")
+                sections.append("Để nâng cao kỹ năng, bạn có thể thử những cách nói dài hơn hoặc phức tạp hơn:\n\n")
+                for suggestion in suggestions:
+                    sections.append(f"✨ {suggestion}\n")
+            else:
+                sections.append("Hãy thử nói những câu dài hơn hoặc phức tạp hơn để tiếp tục cải thiện!\n")
+        elif suggestions:
+            sections.append("### 🌟 Gợi ý nâng cao:\n")
+            for suggestion in suggestions:
+                sections.append(f"✨ {suggestion}\n")
 
-        return "".join(sections) if sections else "Không có phân tích nào."
+        return "".join(sections) if sections else "✅ Tuyệt vời! Câu của bạn hoàn toàn chính xác."
 
-    def _format_markdown_en(self, mistakes: list[str], improvements: list[str]) -> str:
+    def _format_markdown_en(self, mistakes: list[str], improvements: list[str], suggestions: list[str] = None) -> str:
+        if suggestions is None:
+            suggestions = []
+            
         sections = []
 
         if mistakes:
@@ -357,8 +423,25 @@ Return ONLY the JSON object (no preamble, no markdown wrapper)."""
         if improvements:
             for improvement in improvements:
                 sections.append(f"💡 {improvement}\n")
+        
+        # Khi không có lỗi: khích lệ trước, sau đó gợi ý
+        if not mistakes and not improvements:
+            sections.append("### ✅ Excellent!\n")
+            sections.append("Your sentence is completely correct! You're making great progress.\n\n")
+            
+            if suggestions:
+                sections.append("### 🌟 Advanced Suggestions:\n")
+                sections.append("To improve further, try speaking with longer or more complex sentences:\n\n")
+                for suggestion in suggestions:
+                    sections.append(f"✨ {suggestion}\n")
+            else:
+                sections.append("Try speaking with longer or more complex sentences to continue improving!\n")
+        elif suggestions:
+            sections.append("### 🌟 Advanced Suggestions:\n")
+            for suggestion in suggestions:
+                sections.append(f"✨ {suggestion}\n")
 
-        return "".join(sections) if sections else "No analysis available."
+        return "".join(sections) if sections else "✅ Excellent! Your sentence is completely correct."
 
     def _fallback_analysis(self) -> TurnAnalysis:
         fallback_vi = "💡 Hệ thống phân tích đang gặp sự cố tạm thời. Vui lòng thử lại sau vài giây."

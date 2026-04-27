@@ -11,3 +11,4 @@ python-ulid>=1.0.0
 aws-lambda-powertools>=2.43.1
 amazon-transcribe>=0.6.2
 simplemma==1.1.2
+hypothesis>=6.0.0

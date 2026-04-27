@@ -58,3 +58,26 @@ class FlashCardRepository(ABC):
     def update(self, card: FlashCard) -> None:
         """Cập nhật thẻ đã tồn tại (bao gồm GSI2SK)."""
         ...
+
+    @abstractmethod
+    def update_content(
+        self,
+        user_id: str,
+        flashcard_id: str,
+        translation_vi: Optional[str] = None,
+        phonetic: Optional[str] = None,
+        audio_url: Optional[str] = None,
+        example_sentence: Optional[str] = None
+    ) -> FlashCard:
+        """
+        Update only content fields while preserving SRS data.
+        
+        Supports updating: translation_vi, phonetic, audio_url, example_sentence
+        Preserves: ease_factor, repetition_count, interval_days, next_review_at
+        """
+        ...
+
+    @abstractmethod
+    def delete(self, user_id: str, flashcard_id: str) -> bool:
+        """Delete a flashcard. Returns True if successful."""
+        ...

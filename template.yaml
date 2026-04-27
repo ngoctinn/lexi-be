@@ -382,6 +382,121 @@ Resources:
         - DynamoDBReadPolicy:
             TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
 
+  UpdateFlashcardFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.flashcard.update_flashcard_handler.handler
+      Runtime: python3.12
+      MemorySize: 256
+      Timeout: 15
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LOG_LEVEL: INFO
+      Events:
+        UpdateFlashcard:
+          Type: Api
+          Properties:
+            Path: /flashcards/{flashcard_id}
+            Method: PATCH
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
+  DeleteFlashcardFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.flashcard.delete_flashcard_handler.handler
+      Runtime: python3.12
+      MemorySize: 256
+      Timeout: 15
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LOG_LEVEL: INFO
+      Events:
+        DeleteFlashcard:
+          Type: Api
+          Properties:
+            Path: /flashcards/{flashcard_id}
+            Method: DELETE
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
+  ExportFlashcardsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.flashcard.export_flashcards_handler.handler
+      Runtime: python3.12
+      MemorySize: 256
+      Timeout: 15
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LOG_LEVEL: INFO
+      Events:
+        ExportFlashcards:
+          Type: Api
+          Properties:
+            Path: /flashcards/export
+            Method: GET
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
+  ImportFlashcardsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.flashcard.import_flashcards_handler.handler
+      Runtime: python3.12
+      MemorySize: 256
+      Timeout: 15
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LOG_LEVEL: INFO
+      Events:
+        ImportFlashcards:
+          Type: Api
+          Properties:
+            Path: /flashcards/import
+            Method: POST
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
+  GetStatisticsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: infrastructure.handlers.flashcard.get_statistics_handler.handler
+      Runtime: python3.12
+      MemorySize: 256
+      Timeout: 15
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LOG_LEVEL: INFO
+      Events:
+        GetStatistics:
+          Type: Api
+          Properties:
+            Path: /flashcards/statistics
+            Method: GET
+            RestApiId: !Ref LexiApi
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+
   ListScenariosFunction:
     Type: AWS::Serverless::Function
     Properties:

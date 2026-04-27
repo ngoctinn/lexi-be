@@ -723,7 +723,7 @@ class CompleteSpeakingSessionUseCase:
                 scoring_data = self._performance_scorer.score_session(
                     user_turns=user_turns,
                     level=_enum_value(session.level),
-                    scenario_title=str(session.scenario_id),
+                    scenario_title=session.scenario_title,  # ✅ Use scenario_title, not scenario_id
                 )
                 scoring = Scoring(
                     scoring_id=new_ulid(),

@@ -65,6 +65,7 @@ class BedrockScorerAdapter:
             Scoring dict or None if failed
         """
         if not user_turns:
+            logger.warning("score() called with empty user_turns")
             return None
 
         turn_texts = [turn.content for turn in user_turns]
@@ -100,6 +101,15 @@ Respond in JSON format only:
         system_content = [{"text": prompt}]
 
         try:
+            logger.info(
+                "Calling Bedrock for scoring",
+                extra={
+                    "level": level,
+                    "scenario": scenario_title,
+                    "turn_count": len(user_turns),
+                }
+            )
+            
             # Use non-streaming API (simpler and more reliable)
             response = self.bedrock_client.invoke_model(
                 modelId="apac.amazon.nova-micro-v1:0",
@@ -123,12 +133,38 @@ Respond in JSON format only:
             # Parse response
             response_body = json.loads(response["body"].read())
             
+            logger.debug(
+                "Bedrock response received",
+                extra={
+                    "response_keys": list(response_body.keys()),
+                }
+            )
+            
             # Extract text from Nova format
             content = ""
             if "content" in response_body:
                 for block in response_body["content"]:
                     if "text" in block:
                         content += block["text"]
+            
+            if not content.strip():
+                logger.error(
+                    "Bedrock response has no text content",
+                    extra={
+                        "response_body": response_body,
+                        "level": level,
+                        "scenario": scenario_title,
+                    }
+                )
+                return None
+            
+            logger.debug(
+                "Extracted content from Bedrock",
+                extra={
+                    "content_length": len(content),
+                    "content_preview": content[:200],
+                }
+            )
             
             scoring_data = json.loads(content.strip())
 
@@ -143,38 +179,78 @@ Respond in JSON format only:
                 score = scoring_data.get(key, 0)
                 scoring_data[key] = max(0, min(100, int(score)))
 
-            logger.info(f"Bedrock scoring successful: level={level}, scenario={scenario_title}")
+            logger.info(
+                "Bedrock scoring successful",
+                extra={
+                    "level": level,
+                    "scenario": scenario_title,
+                    "overall_score": scoring_data.get("overall_score"),
+                }
+            )
             return scoring_data
 
         except ClientError as e:
             # AWS API error - distinguish between error types
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
+            error_message = e.response.get("Error", {}).get("Message", str(e))
             
             if error_code == "ThrottlingException":
                 # 429: Quota exceeded - boto3 already retried
                 logger.warning(
-                    f"Bedrock scoring throttled (429): level={level}, scenario={scenario_title}"
+                    "Bedrock scoring throttled (429)",
+                    extra={
+                        "level": level,
+                        "scenario": scenario_title,
+                        "error_message": error_message,
+                    }
                 )
             elif error_code == "ServiceUnavailableException":
                 # 503: Service temporarily unavailable - boto3 already retried
                 logger.warning(
-                    f"Bedrock scoring unavailable (503): level={level}, scenario={scenario_title}"
+                    "Bedrock scoring unavailable (503)",
+                    extra={
+                        "level": level,
+                        "scenario": scenario_title,
+                        "error_message": error_message,
+                    }
                 )
             else:
                 # Other AWS errors
                 logger.error(
-                    f"Bedrock scoring API error ({error_code}): level={level}, "
-                    f"scenario={scenario_title}, message={str(e)}"
+                    "Bedrock scoring API error",
+                    extra={
+                        "error_code": error_code,
+                        "level": level,
+                        "scenario": scenario_title,
+                        "error_message": error_message,
+                    }
                 )
             
             return None
 
+        except json.JSONDecodeError as e:
+            logger.error(
+                "Failed to parse Bedrock JSON response",
+                extra={
+                    "level": level,
+                    "scenario": scenario_title,
+                    "error": str(e),
+                    "content_preview": content[:200] if 'content' in locals() else "N/A",
+                }
+            )
+            return None
+
         except Exception as e:
-            # Non-AWS errors (JSON parsing, network, etc.)
+            # Non-AWS errors (network, etc.)
             error_type = type(e).__name__
             logger.error(
-                f"Bedrock scoring error ({error_type}): level={level}, "
-                f"scenario={scenario_title}, message={str(e)}",
+                "Bedrock scoring error",
+                extra={
+                    "error_type": error_type,
+                    "level": level,
+                    "scenario": scenario_title,
+                    "error": str(e),
+                },
                 exc_info=True
             )
             

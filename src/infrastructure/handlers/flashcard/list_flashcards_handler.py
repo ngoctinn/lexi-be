@@ -4,7 +4,7 @@ import base64
 import logging
 
 from application.repositories.flash_card_repository import FlashCardRepository
-from application.use_cases.flashcard_use_cases import ListUserFlashcardsUseCase
+from application.use_cases.flashcard_use_cases import ListUserFlashcardsUseCase, SearchFlashcardsUseCase
 from infrastructure.persistence.dynamo_flashcard_repo import DynamoFlashCardRepository
 
 logger = logging.getLogger()
@@ -13,12 +13,19 @@ logger.setLevel(logging.INFO)
 # Module-level singleton (AWS best practice)
 # Initialized once per Lambda container, reused across invocations
 _list_flashcards_uc = None
+_search_flashcards_uc = None
 
 
 def build_list_flashcards_uc():
     """Build list flashcards use case with dependencies."""
     flashcard_repo: FlashCardRepository = DynamoFlashCardRepository()
     return ListUserFlashcardsUseCase(flashcard_repo)
+
+
+def build_search_flashcards_uc():
+    """Build search flashcards use case with dependencies."""
+    flashcard_repo: FlashCardRepository = DynamoFlashCardRepository()
+    return SearchFlashcardsUseCase(flashcard_repo)
 
 
 def _get_or_build_list_flashcards_uc():
@@ -38,6 +45,20 @@ def _get_or_build_list_flashcards_uc():
     return _list_flashcards_uc
 
 
+def _get_or_build_search_flashcards_uc():
+    """
+    Lazy initialization of search flashcards use case (singleton pattern).
+    
+    Returns:
+        SearchFlashcardsUseCase: Reusable use case instance
+    """
+    global _search_flashcards_uc
+    if _search_flashcards_uc is None:
+        logger.info("Building search flashcards use case (first invocation in this container)")
+        _search_flashcards_uc = build_search_flashcards_uc()
+    return _search_flashcards_uc
+
+
 def _unauthorized_response():
     return {
         "statusCode": 401,
@@ -47,7 +68,7 @@ def _unauthorized_response():
 
 
 def handler(event, context):
-    """Lambda handler for GET /flashcards."""
+    """Lambda handler for GET /flashcards (with search support)."""
     try:
         user_id = event.get("requestContext", {}).get("authorizer", {}).get("claims", {}).get("sub")
         if not user_id:
@@ -57,6 +78,73 @@ def handler(event, context):
 
     query_params = event.get("queryStringParameters") or {}
     
+    # Check if this is a search request
+    has_search_params = any(key in query_params for key in [
+        "word_prefix", "min_interval", "max_interval", "maturity_level"
+    ])
+    
+    if has_search_params:
+        return _handle_search(user_id, query_params)
+    else:
+        return _handle_list(user_id, query_params)
+
+
+def _handle_search(user_id: str, query_params: dict) -> dict:
+    """Handle search request."""
+    try:
+        word_prefix = query_params.get("word_prefix")
+        min_interval = int(query_params.get("min_interval", 0)) if query_params.get("min_interval") else None
+        max_interval = int(query_params.get("max_interval", 365)) if query_params.get("max_interval") else None
+        maturity_level = query_params.get("maturity_level")
+        cursor = query_params.get("cursor")
+        limit = int(query_params.get("limit", "50"))
+        limit = min(max(1, limit), 100)
+    except ValueError:
+        return {
+            "statusCode": 400,
+            "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
+            "body": dumps({"error": "Invalid query parameters"}),
+        }
+    
+    logger.info(f"Searching flashcards for user_id: {user_id}, word_prefix: {word_prefix}")
+    
+    try:
+        uc = _get_or_build_search_flashcards_uc()
+        cards, next_cursor, total_count = uc.execute(
+            user_id,
+            word_prefix=word_prefix,
+            min_interval=min_interval,
+            max_interval=max_interval,
+            maturity_level=maturity_level,
+            cursor=cursor,
+            limit=limit
+        )
+        
+        return {
+            "statusCode": 200,
+            "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
+            "body": dumps({
+                "success": True,
+                "data": {
+                    "flashcards": cards,
+                    "next_cursor": next_cursor,
+                    "total_count": total_count,
+                    "count": len(cards),
+                }
+            }),
+        }
+    
+    except Exception as e:
+        logger.error(f"Error searching flashcards: {str(e)}")
+        return {
+            "statusCode": 500,
+            "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
+            "body": dumps({"error": "Internal server error"}),
+        }
+
+
+def _handle_list(user_id: str, query_params: dict) -> dict:
+    """Handle list request (original behavior)."""
     try:
         limit = int(query_params.get("limit", "20"))
         limit = min(max(1, limit), 100)

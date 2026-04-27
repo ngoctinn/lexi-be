@@ -42,6 +42,10 @@ Resources:
           AttributeType: S
         - AttributeName: GSI2SK
           AttributeType: S
+        - AttributeName: GSI3PK
+          AttributeType: S
+        - AttributeName: GSI3SK
+          AttributeType: S
         - AttributeName: EntityType
           AttributeType: S
         - AttributeName: created_at
@@ -102,6 +106,23 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
+
+        # GSI3-WordLookup: Hỗ trợ truy vấn flashcard theo user_id và word (case-insensitive)
+        # Dùng cho duplicate word detection và efficient word lookup
+        - IndexName: GSI3-WordLookup
+          KeySchema:
+            - AttributeName: GSI3PK
+              KeyType: HASH
+            - AttributeName: GSI3SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes:
+              - flashcard_id
+              - word
+              - translation_vi
+              - ease_factor
+              - repetition_count
 
 Outputs:
   LexiAppTableArn:

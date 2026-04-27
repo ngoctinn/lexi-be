@@ -96,7 +96,7 @@ class OptimizedPromptBuilder:
 
 Keep responses short and natural — {level_guidance}
 
-Start each response with a tone cue: [warmly], [encouragingly], [thoughtfully], [gently], [enthusiastically], [playfully], [supportively], [calmly], [excitedly] — pick what fits the moment. Then use natural speech markers like "Well,", "Oh!", "Hmm," or "Actually," where they feel right.
+REQUIRED: Start EVERY response with EXACTLY ONE tone cue from this list: [warmly], [encouragingly], [thoughtfully], [gently], [enthusiastically], [playfully], [supportively], [calmly], [excitedly]. You MUST choose from this list only. Then use natural speech markers like "Well,", "Oh!", "Hmm," or "Actually," where they feel right.
 
 Help the learner work toward: {goal_text}
 

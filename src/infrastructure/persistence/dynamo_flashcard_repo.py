@@ -1,12 +1,15 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 import os
+import logging
 
 import boto3
 from boto3.dynamodb.conditions import Key
 
 from application.repositories.flash_card_repository import FlashCardRepository
 from domain.entities.flashcard import FlashCard
+
+logger = logging.getLogger(__name__)
 
 
 class DynamoFlashCardRepository(FlashCardRepository):
@@ -23,6 +26,8 @@ class DynamoFlashCardRepository(FlashCardRepository):
             "SK": f"CARD#{card.flashcard_id}",
             "GSI2PK": card.user_id,
             "GSI2SK": card.next_review_at.isoformat(),
+            "GSI3PK": card.user_id,
+            "GSI3SK": card.word.lower(),
             "EntityType": "FLASHCARD",
             "flashcard_id": card.flashcard_id,
             "user_id": card.user_id,
@@ -34,6 +39,8 @@ class DynamoFlashCardRepository(FlashCardRepository):
             "review_count": card.review_count,
             "interval_days": card.interval_days,
             "difficulty": card.difficulty,
+            "ease_factor": card.ease_factor,
+            "repetition_count": card.repetition_count,
             "last_reviewed_at": card.last_reviewed_at.isoformat() if card.last_reviewed_at else None,
             "next_review_at": card.next_review_at.isoformat(),
             "created_at": now,
@@ -68,9 +75,10 @@ class DynamoFlashCardRepository(FlashCardRepository):
 
     def get_by_user_and_word(self, user_id: str, word: str) -> Optional[FlashCard]:
         """Kiểm tra xem người dùng đã có thẻ cho từ này chưa."""
-        # Scan DynamoDB để tìm flashcard với user_id + word
-        response = self._table.scan(
-            FilterExpression=Key("user_id").eq(user_id) & Key("word").eq(word.lower())
+        # Use GSI3 for efficient word lookup instead of SCAN
+        response = self._table.query(
+            IndexName="GSI3-WordLookup",
+            KeyConditionExpression=Key("GSI3PK").eq(user_id) & Key("GSI3SK").eq(word.lower())
         )
         items = response.get("Items", [])
         return self._to_entity(items[0]) if items else None
@@ -127,6 +135,72 @@ class DynamoFlashCardRepository(FlashCardRepository):
             },
         )
 
+    def update_content(
+        self,
+        user_id: str,
+        flashcard_id: str,
+        translation_vi: Optional[str] = None,
+        phonetic: Optional[str] = None,
+        audio_url: Optional[str] = None,
+        example_sentence: Optional[str] = None
+    ) -> FlashCard:
+        """Update only content fields while preserving SRS data."""
+        # Build update expression dynamically
+        update_parts = []
+        expr_values = {}
+        
+        if translation_vi is not None:
+            update_parts.append("translation_vi = :tv")
+            expr_values[":tv"] = translation_vi
+        
+        if phonetic is not None:
+            update_parts.append("phonetic = :ph")
+            expr_values[":ph"] = phonetic
+        
+        if audio_url is not None:
+            update_parts.append("audio_url = :au")
+            expr_values[":au"] = audio_url
+        
+        if example_sentence is not None:
+            update_parts.append("example_sentence = :es")
+            expr_values[":es"] = example_sentence
+        
+        # Always update timestamp
+        update_parts.append("updated_at = :ua")
+        expr_values[":ua"] = datetime.now(timezone.utc).isoformat()
+        
+        if not update_parts:
+            # No updates provided, just return current card
+            return self.get_by_user_and_id(user_id, flashcard_id)
+        
+        update_expression = "SET " + ", ".join(update_parts)
+        
+        self._table.update_item(
+            Key={
+                "PK": f"FLASHCARD#{user_id}",
+                "SK": f"CARD#{flashcard_id}"
+            },
+            UpdateExpression=update_expression,
+            ExpressionAttributeValues=expr_values,
+        )
+        
+        # Retrieve and return updated card
+        return self.get_by_user_and_id(user_id, flashcard_id)
+
+    def delete(self, user_id: str, flashcard_id: str) -> bool:
+        """Delete a flashcard. Returns True if successful."""
+        try:
+            self._table.delete_item(
+                Key={
+                    "PK": f"FLASHCARD#{user_id}",
+                    "SK": f"CARD#{flashcard_id}"
+                }
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting flashcard: {str(e)}")
+            return False
+
     def _to_entity(self, item: dict) -> FlashCard:
         """Chuyển đổi DynamoDB item thành FlashCard entity."""
         last_reviewed = None
@@ -146,6 +220,8 @@ class DynamoFlashCardRepository(FlashCardRepository):
             review_count=item.get("review_count", 0),
             interval_days=item.get("interval_days", 1),
             difficulty=item.get("difficulty", 0),
+            ease_factor=item.get("ease_factor", 2.5),
+            repetition_count=item.get("repetition_count", 0),
             last_reviewed_at=last_reviewed,
             next_review_at=next_review,
             source_session_id=item.get("source_session_id"),
