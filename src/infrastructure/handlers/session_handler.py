@@ -169,17 +169,17 @@ def handler(event, context):
         if method == "POST" and resource == "/sessions":
             result = session_controller.create_session(user_id, event.get("body"))
             if result.is_success:
-                return presenter.present_created(result.success)
+                return presenter.present_created(result.value)
             else:
-                return presenter._format_response(400, {"error": result.error.message, "code": result.error.code})
+                return presenter._format_response(400, {"error": result.error})
 
         if method == "GET" and resource == "/sessions":
             limit = int(query_parameters.get("limit", 10) or 10)
             result = session_controller.list_sessions(user_id, limit)
             if result.is_success:
-                return presenter.present_success(result.success)
+                return presenter.present_success(result.value)
             else:
-                return presenter._format_response(400, {"error": result.error.message, "code": result.error.code})
+                return presenter._format_response(400, {"error": result.error})
 
         session_id = path_parameters.get("session_id") or path_parameters.get("id")
         if not session_id:
@@ -189,23 +189,23 @@ def handler(event, context):
         if method == "GET" and resource == "/sessions/{session_id}":
             result = session_controller.get_session(user_id, session_id)
             if result.is_success:
-                return presenter.present_success(result.success)
+                return presenter.present_success(result.value)
             else:
-                return presenter._format_response(400, {"error": result.error.message, "code": result.error.code})
+                return presenter._format_response(400, {"error": result.error})
 
         if method == "POST" and resource == "/sessions/{session_id}/turns":
             result = session_controller.submit_turn(user_id, session_id, event.get("body"))
             if result.is_success:
-                return presenter.present_success(result.success)
+                return presenter.present_success(result.value)
             else:
-                return presenter._format_response(400, {"error": result.error.message, "code": result.error.code})
+                return presenter._format_response(400, {"error": result.error})
 
         if method == "POST" and resource == "/sessions/{session_id}/complete":
             result = session_controller.complete_session(user_id, session_id)
             if result.is_success:
-                return presenter.present_success(result.success)
+                return presenter.present_success(result.value)
             else:
-                return presenter._format_response(400, {"error": result.error.message, "code": result.error.code})
+                return presenter._format_response(400, {"error": result.error})
 
         logger.warning("Route not found", extra={"context": {"method": method, "resource": resource}})
         return presenter.present_not_found("Not Found")

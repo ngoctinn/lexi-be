@@ -20,7 +20,7 @@ from application.use_cases.speaking_session_use_cases import (
 )
 from interfaces.mapper.session_mapper import SessionMapper
 from interfaces.presenters.http_presenter import HttpPresenter
-from interfaces.view_models.base import OperationResult
+from shared.result import Result
 from shared.http_utils import dumps
 
 logger = logging.getLogger(__name__)
@@ -43,12 +43,12 @@ class SessionController:
         self._complete_use_case = complete_use_case
         self._presenter = presenter or HttpPresenter()
 
-    def create_session(self, user_id: str, body_str: str | None) -> OperationResult:
+    def create_session(self, user_id: str, body_str: str | None) -> Result[CreateSpeakingSessionResponse, str]:
         try:
             body = json.loads(body_str or "{}")
         except json.JSONDecodeError:
             logger.warning("Invalid JSON in create_session request")
-            return OperationResult.fail("Invalid JSON format", "BAD_REQUEST")
+            return Result.failure("Invalid JSON format")
 
         try:
             logger.info("Creating speaking session", extra={"context": {"user_id": user_id}})
@@ -56,52 +56,52 @@ class SessionController:
             result = self._create_use_case.execute(command)
             if not result.is_success:
                 logger.warning("Session creation failed", extra={"context": {"user_id": user_id, "error": result.error}})
-                return OperationResult.fail(result.error, "CREATION_FAILED")
+                return Result.failure(result.error)
 
             payload: CreateSpeakingSessionResponse = result.value
             logger.info("Session created successfully", extra={"context": {"user_id": user_id, "session_id": payload.session_id}})
-            return OperationResult.succeed(payload)
+            return Result.success(payload)
         except ValidationError as exc:
             logger.warning("Validation error in create_session", extra={"context": {"user_id": user_id, "errors": str(exc)}})
-            return OperationResult.fail(f"Invalid request data: {str(exc)}", "VALIDATION_ERROR")
+            return Result.failure(f"Invalid request data: {str(exc)}")
         except Exception as exc:
             logger.exception("Error creating session", extra={"context": {"user_id": user_id, "error": str(exc)}})
             raise
 
-    def get_session(self, user_id: str, session_id: str) -> OperationResult:
+    def get_session(self, user_id: str, session_id: str) -> Result[GetSpeakingSessionResponse, str]:
         try:
             logger.info("Getting session", extra={"context": {"user_id": user_id, "session_id": session_id}})
             result = self._get_use_case.execute(user_id, session_id)
             if not result.is_success:
                 logger.warning("Session not found", extra={"context": {"user_id": user_id, "session_id": session_id}})
-                return OperationResult.fail(result.error, "NOT_FOUND")
+                return Result.failure(result.error)
 
             payload: GetSpeakingSessionResponse = result.value
-            return OperationResult.succeed(payload)
+            return Result.success(payload)
         except Exception as exc:
             logger.exception("Error getting session", extra={"context": {"user_id": user_id, "session_id": session_id, "error": str(exc)}})
             raise
 
-    def list_sessions(self, user_id: str, limit: int = 10) -> OperationResult:
+    def list_sessions(self, user_id: str, limit: int = 10) -> Result[ListSpeakingSessionsResponse, str]:
         try:
             logger.info("Listing sessions", extra={"context": {"user_id": user_id, "limit": limit}})
             result = self._list_use_case.execute(user_id, limit)
             if not result.is_success:
                 logger.error("Failed to list sessions", extra={"context": {"user_id": user_id, "error": result.error}})
-                return OperationResult.fail(result.error, "LIST_FAILED")
+                return Result.failure(result.error)
 
             payload: ListSpeakingSessionsResponse = result.value
-            return OperationResult.succeed(payload)
+            return Result.success(payload)
         except Exception as exc:
             logger.exception("Error listing sessions", extra={"context": {"user_id": user_id, "error": str(exc)}})
             raise
 
-    def submit_turn(self, user_id: str, session_id: str, body_str: str | None) -> OperationResult:
+    def submit_turn(self, user_id: str, session_id: str, body_str: str | None) -> Result[SubmitSpeakingTurnResponse, str]:
         try:
             body = json.loads(body_str or "{}")
         except json.JSONDecodeError:
             logger.warning("Invalid JSON in submit_turn request")
-            return OperationResult.fail("Invalid JSON format", "BAD_REQUEST")
+            return Result.failure("Invalid JSON format")
 
         try:
             logger.info("Submitting turn", extra={"context": {"user_id": user_id, "session_id": session_id}})
@@ -109,30 +109,30 @@ class SessionController:
             result = self._submit_turn_use_case.execute(command)
             if not result.is_success:
                 logger.warning("Turn submission failed", extra={"context": {"user_id": user_id, "session_id": session_id, "error": result.error}})
-                return OperationResult.fail(result.error, "SUBMISSION_FAILED")
+                return Result.failure(result.error)
 
             payload: SubmitSpeakingTurnResponse = result.value
             logger.info("Turn submitted successfully", extra={"context": {"user_id": user_id, "session_id": session_id}})
-            return OperationResult.succeed(payload)
+            return Result.success(payload)
         except ValidationError as exc:
             logger.warning("Validation error in submit_turn", extra={"context": {"user_id": user_id, "session_id": session_id, "errors": str(exc)}})
-            return OperationResult.fail(f"Invalid request data: {str(exc)}", "VALIDATION_ERROR")
+            return Result.failure(f"Invalid request data: {str(exc)}")
         except Exception as exc:
             logger.exception("Error submitting turn", extra={"context": {"user_id": user_id, "session_id": session_id, "error": str(exc)}})
             raise
 
-    def complete_session(self, user_id: str, session_id: str) -> OperationResult:
+    def complete_session(self, user_id: str, session_id: str) -> Result[CompleteSpeakingSessionResponse, str]:
         try:
             logger.info("Completing session", extra={"context": {"user_id": user_id, "session_id": session_id}})
             command = SessionMapper.to_complete_command(user_id, session_id)
             result = self._complete_use_case.execute(command)
             if not result.is_success:
                 logger.warning("Session completion failed", extra={"context": {"user_id": user_id, "session_id": session_id, "error": result.error}})
-                return OperationResult.fail(result.error, "COMPLETION_FAILED")
+                return Result.failure(result.error)
 
             payload: CompleteSpeakingSessionResponse = result.value
             logger.info("Session completed successfully", extra={"context": {"user_id": user_id, "session_id": session_id}})
-            return OperationResult.succeed(payload)
+            return Result.success(payload)
         except Exception as exc:
             logger.exception("Error completing session", extra={"context": {"user_id": user_id, "session_id": session_id, "error": str(exc)}})
             raise

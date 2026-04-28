@@ -66,7 +66,7 @@ def handler(event, context):
         if result.is_success:
             return presenter.present_success(result.value)
         else:
-            return presenter.present_bad_request(result.error.message)
+            return presenter.present_bad_request(result.error)
     except Exception as exc:
         logger.exception("Error updating profile", extra={"context": {"user_id": user_id, "error": str(exc)}})
         return presenter._format_response(500, {"success": False, "message": "Internal server error", "error": str(exc)})

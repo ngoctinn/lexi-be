@@ -5,15 +5,13 @@ Base presenter classes for formatting responses.
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
-from interfaces.view_models.base import ErrorViewModel, OperationResult
-
 
 class BasePresenter(ABC):
     """Base presenter for all presenters."""
 
     @abstractmethod
-    def present_error(self, error_msg: str, code: Optional[str] = None) -> ErrorViewModel:
-        """Format error response to ErrorViewModel."""
+    def present_error(self, error_msg: str, code: Optional[str] = None) -> Dict[str, Any]:
+        """Format error response."""
         pass
 
     @abstractmethod

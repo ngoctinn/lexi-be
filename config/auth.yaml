@@ -9,9 +9,11 @@ Parameters:
   TableName:
     Type: String
     Description: Tên bảng DynamoDB để lưu User Profile
+    Default: LexiApp
   TableArn:
     Type: String
     Description: ARN của bảng DynamoDB để cấp quyền cho Lambda
+    Default: arn:aws:dynamodb:ap-southeast-1:826229823693:table/LexiApp
 
 Resources:
   # --- 1. COGNITO USER POOL ---
@@ -42,13 +44,14 @@ Resources:
           Mutable: false
           Required: true
 
-      # Liên kết Lambda Trigger để tự động tạo profile ngay sau khi xác thực email
-      LambdaConfig:
-        PostConfirmation: !GetAtt PostConfirmationLambda.Arn
+      # Lambda Triggers will be added via CLI after deployment to avoid circular dependency
+      # aws cognito-idp update-user-pool --user-pool-id <pool-id> \
+      #   --lambda-config PreSignUp=<arn>,PostConfirmation=<arn> --region ap-southeast-1
 
-  # --- 2. COGNITO APP CLIENT (Cấu hình thêm Hosted UI để test trên Browser) ---
+  # --- 3. COGNITO APP CLIENT ---
   LexiUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
+    DependsOn: GoogleIdentityProvider
     Properties:
       UserPoolId: !Ref LexiUserPool
       ClientName: LexiWebClient
@@ -56,7 +59,6 @@ Resources:
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
         - ALLOW_USER_SRP_AUTH
-      # Cấp quyền cho Client được phép Đọc và Ghi vào các thuộc tính tùy chỉnh
       ReadAttributes:
         - email
         - name
@@ -65,43 +67,97 @@ Resources:
         - email
         - name
         - picture
-      # Thêm cấu hình Hosted UI
+      # Bây giờ có thể add Google vì GoogleIdentityProvider đã tạo trước
       SupportedIdentityProviders:
         - COGNITO
+        - Google
       AllowedOAuthFlows:
-        - implicit # Dùng implicit để token hiện thẳng lên thanh địa chỉ (dễ test)
+        - code
+        - implicit
       AllowedOAuthScopes:
         - email
         - openid
         - profile
       CallbackURLs:
-        - https://example.com
+        - http://localhost:3000/oauth-callback
+        - https://ngoctin.me/oauth-callback
+      LogoutURLs:
+        - http://localhost:3000
+        - https://ngoctin.me
       AllowedOAuthFlowsUserPoolClient: true
 
-  # --- 2.1 COGNITO DOMAIN (Bắt buộc để chạy Hosted UI) ---
+  # --- 4. COGNITO DOMAIN ---
   LexiUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
-      # Tên này phải là duy nhất trên toàn vùng AWS.
-      # Tôi dùng một chuỗi ngẫu nhiên kết hợp để tránh trùng lặp.
       Domain: !Sub "lexi-auth-${AWS::AccountId}"
       UserPoolId: !Ref LexiUserPool
 
-  # --- 3. POST CONFIRMATION LAMBDA ---
+  # --- 5. GOOGLE IDENTITY PROVIDER ---
+  GoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    DependsOn: LexiUserPoolDomain
+    Properties:
+      UserPoolId: !Ref LexiUserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Sub '{{resolve:ssm:/lexi/auth/google/client_id}}'
+        client_secret: !Sub '{{resolve:ssm:/lexi/auth/google/client_secret}}'
+        authorize_scopes: 'email profile openid'
+      AttributeMapping:
+        email: email
+        name: name
+        picture: picture
+
+  # --- 6. PRE SIGN-UP LAMBDA ---
+  # Link federated users (Google) to existing email/password accounts
+  PreSignUpLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../src/
+      Handler: infrastructure.handlers.auth.pre_signup_handler.handler
+      Runtime: python3.12
+      Timeout: 10
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref LexiUserPool
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:ListUsers
+                - cognito-idp:AdminLinkProviderForUser
+              Resource: !GetAtt LexiUserPool.Arn
+    Metadata:
+      BuildMethod: python3.12
+
+  PreSignUpLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt PreSignUpLambda.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt LexiUserPool.Arn
+
+  # --- 7. POST CONFIRMATION LAMBDA ---
+  # Create user profile in DynamoDB after successful sign-up
   PostConfirmationLambda:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: ../src/
       Handler: infrastructure.handlers.auth.post_confirmation_handler.handler
       Runtime: python3.12
+      Timeout: 10
       Environment:
         Variables:
           LEXI_TABLE_NAME: !Ref TableName
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TableName
+    Metadata:
+      BuildMethod: python3.12
 
-  # --- 4. CẤP QUYỀN CHO COGNITO GỌI LAMBDA ---
   PostConfirmationLambdaPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -110,50 +166,50 @@ Resources:
       Principal: cognito-idp.amazonaws.com
       SourceArn: !GetAtt LexiUserPool.Arn
 
-  # --- 5. COGNITO IDENTITY POOL (for client-side AWS SDK access) ---
-  LexiIdentityPool:
-    Type: AWS::Cognito::IdentityPool
-    Properties:
-      IdentityPoolName: LexiIdentityPool
-      AllowUnauthenticatedIdentities: false
-      CognitoIdentityProviders:
-        - ClientId: !Ref LexiUserPoolClient
-          ProviderName: !GetAtt LexiUserPool.ProviderName
+  # --- 7. COGNITO IDENTITY POOL (sẽ add sau khi User Pool + Lambda đã deploy) ---
+  # LexiIdentityPool:
+  #   Type: AWS::Cognito::IdentityPool
+  #   Properties:
+  #     IdentityPoolName: LexiIdentityPool
+  #     AllowUnauthenticatedIdentities: false
+  #     CognitoIdentityProviders:
+  #       - ClientId: !Ref LexiUserPoolClient
+  #         ProviderName: !GetAtt LexiUserPool.ProviderName
 
-  # --- 6. IAM ROLE FOR AUTHENTICATED COGNITO USERS ---
-  CognitoAuthenticatedRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Federated: cognito-identity.amazonaws.com
-            Action: sts:AssumeRoleWithWebIdentity
-            Condition:
-              StringEquals:
-                cognito-identity.amazonaws.com:aud: !Ref LexiIdentityPool
-              ForAnyValue:StringLike:
-                cognito-identity.amazonaws.com:amr: authenticated
-      Policies:
-        - PolicyName: TranscribeStreamingAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - transcribe:StartStreamTranscription
-                  - transcribe:StartStreamTranscriptionWebSocket
-                Resource: '*'
+  # # --- 8. IAM ROLE FOR AUTHENTICATED COGNITO USERS ---
+  # CognitoAuthenticatedRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Federated: cognito-identity.amazonaws.com
+  #           Action: sts:AssumeRoleWithWebIdentity
+  #           Condition:
+  #             StringEquals:
+  #               cognito-identity.amazonaws.com:aud: !Ref LexiIdentityPool
+  #             ForAnyValue:StringLike:
+  #               cognito-identity.amazonaws.com:amr: authenticated
+  #     Policies:
+  #       - PolicyName: TranscribeStreamingAccess
+  #         PolicyDocument:
+  #           Version: '2012-10-17'
+  #           Statement:
+  #             - Effect: Allow
+  #               Action:
+  #                 - transcribe:StartStreamTranscription
+  #                 - transcribe:StartStreamTranscriptionWebSocket
+  #               Resource: '*'
 
-  # --- 7. ATTACH ROLE TO IDENTITY POOL ---
-  IdentityPoolRoleAttachment:
-    Type: AWS::Cognito::IdentityPoolRoleAttachment
-    Properties:
-      IdentityPoolId: !Ref LexiIdentityPool
-      Roles:
-        authenticated: !GetAtt CognitoAuthenticatedRole.Arn
+  # # --- 9. ATTACH ROLE TO IDENTITY POOL ---
+  # IdentityPoolRoleAttachment:
+  #   Type: AWS::Cognito::IdentityPoolRoleAttachment
+  #   Properties:
+  #     IdentityPoolId: !Ref LexiIdentityPool
+  #     Roles:
+  #       authenticated: !GetAtt CognitoAuthenticatedRole.Arn
 
 Outputs:
   UserPoolArn:
@@ -164,14 +220,34 @@ Outputs:
     Description: "ID của User Pool"
     Value: !Ref LexiUserPool
 
+  # UserPoolClientId:
+  #   Description: "Client ID để Frontend tích hợp"
+  #   Value: !Ref LexiUserPoolClient
+
+  # LoginUrl:
+  #   Description: "Link vào trang Login để lấy Token nhanh (cần add Domain trước)"
+  #   Value: !Sub "https://lexi-auth-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com/login?client_id=${LexiUserPoolClient}&response_type=token&scope=email+openid+profile&redirect_uri=https://example.com"
+
   UserPoolClientId:
     Description: "Client ID để Frontend tích hợp"
     Value: !Ref LexiUserPoolClient
 
-  LoginUrl:
-    Description: "Link vào trang Login để lấy Token nhanh"
-    Value: !Sub "https://${LexiUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/login?client_id=${LexiUserPoolClient}&response_type=token&scope=email+openid+profile&redirect_uri=https://example.com"
+  UserPoolDomain:
+    Description: "Domain cho Hosted UI"
+    Value: !Ref LexiUserPoolDomain
 
-  IdentityPoolId:
-    Description: "ID của Identity Pool cho client-side AWS SDK"
-    Value: !Ref LexiIdentityPool
+  LoginUrl:
+    Description: "Link vào trang Login"
+    Value: !Sub "https://${LexiUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/login?client_id=${LexiUserPoolClient}&response_type=code&scope=email+openid+profile&redirect_uri=http://localhost:3000/oauth-callback"
+
+  PreSignUpLambdaArn:
+    Description: "ARN của PreSignUp Lambda để add trigger sau"
+    Value: !GetAtt PreSignUpLambda.Arn
+
+  PostConfirmationLambdaArn:
+    Description: "ARN của PostConfirmation Lambda để add trigger sau"
+    Value: !GetAtt PostConfirmationLambda.Arn
+
+  # IdentityPoolId:
+  #   Description: "ID của Identity Pool cho client-side AWS SDK"
+  #   Value: !Ref LexiIdentityPool

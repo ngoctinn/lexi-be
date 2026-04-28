@@ -13,6 +13,7 @@ class FlashcardViewModel:
     meaning: str
     example: str
     created_at: str
+    next_review_at: str = ""
 
 
 @dataclass(frozen=True)

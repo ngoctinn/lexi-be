@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from application.use_cases.onboarding_use_cases import CompleteOnboardingUseCase
 from interfaces.mapper.onboarding_mapper import OnboardingMapper
-from interfaces.view_models.base import OperationResult
+from shared.result import Result
 from interfaces.view_models.onboarding_vm import OnboardingCompletionViewModel
 
 logger = logging.getLogger(__name__)
@@ -22,13 +22,13 @@ class OnboardingController:
     - Convert raw data to DTOs via Mapper
     - Call corresponding Use Case
     - Convert Response DTO to View Model
-    - Return OperationResult[ViewModel]
+    - Return Result[ViewModel, str]
     """
 
     def __init__(self, complete_onboarding_uc: CompleteOnboardingUseCase):
         self._complete_onboarding_uc = complete_onboarding_uc
 
-    def complete(self, user_id: str, body_str: str | None) -> OperationResult[OnboardingCompletionViewModel]:
+    def complete(self, user_id: str, body_str: str | None) -> Result[OnboardingCompletionViewModel, str]:
         """
         Handle onboarding completion request.
         
@@ -37,13 +37,13 @@ class OnboardingController:
             body_str: JSON body with onboarding data
             
         Returns:
-            OperationResult with OnboardingCompletionViewModel
+            Result with OnboardingCompletionViewModel
         """
         try:
             body = json.loads(body_str or "{}")
         except json.JSONDecodeError:
             logger.warning("Invalid JSON in complete onboarding request")
-            return OperationResult.fail("Invalid JSON format", "BAD_REQUEST")
+            return Result.failure("Invalid JSON format")
         
         try:
             logger.info("Completing onboarding", extra={"context": {"user_id": user_id}})
@@ -56,7 +56,7 @@ class OnboardingController:
             
             if not result.is_success:
                 logger.warning("Onboarding completion failed", extra={"context": {"user_id": user_id, "error": result.error}})
-                return OperationResult.fail(result.error, "COMPLETION_FAILED")
+                return Result.failure(result.error)
             
             # 3. Convert Response DTO to View Model
             response = result.value
@@ -67,11 +67,11 @@ class OnboardingController:
             )
             
             logger.info("Onboarding completed successfully", extra={"context": {"user_id": user_id}})
-            return OperationResult.succeed(view_model)
+            return Result.success(view_model)
             
         except ValidationError as exc:
             logger.warning("Validation error in complete onboarding", extra={"context": {"user_id": user_id, "errors": str(exc)}})
-            return OperationResult.fail(f"Invalid request data: {str(exc)}", "VALIDATION_ERROR")
+            return Result.failure(f"Invalid request data: {str(exc)}")
         except Exception as e:
             logger.exception("Error in onboarding completion", extra={"context": {"user_id": user_id, "error": str(e)}})
             raise

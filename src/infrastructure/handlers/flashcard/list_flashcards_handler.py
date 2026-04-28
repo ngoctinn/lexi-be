@@ -180,7 +180,6 @@ def _handle_list(user_id: str, query_params: dict) -> dict:
                 "example_sentence": card.example_sentence,
                 "review_count": card.review_count,
                 "interval_days": card.interval_days,
-                "difficulty": card.difficulty,
                 "next_review_at": card.next_review_at.isoformat(),
                 "last_reviewed_at": card.last_reviewed_at.isoformat() if card.last_reviewed_at else None,
             }

@@ -16,7 +16,7 @@ lint = true
 
 [default.deploy.parameters]
     capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND"
-    confirm_changeset = false
+    confirm_changeset = true
     resolve_s3 = true
     s3_prefix = "lexi-be"
     image_repositories = []

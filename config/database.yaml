@@ -8,9 +8,9 @@ Description: >
 Resources:
   LexiAppTable:
     Type: AWS::DynamoDB::Table
-    # Giữ lại bảng ngay cả khi xóa Stack (An toàn cho dữ liệu đồ án)
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+    # DeletionPolicy: Delete for dev environment (change to Retain for production)
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       TableName: LexiApp
       BillingMode: PAY_PER_REQUEST

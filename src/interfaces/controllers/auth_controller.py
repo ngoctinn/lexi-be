@@ -4,7 +4,7 @@ from pydantic import ValidationError
 
 from interfaces.mapper.auth_mapper import AuthMapper
 from interfaces.presenters.http_presenter import HttpPresenter
-from interfaces.view_models.base import OperationResult
+from shared.result import Result
 from interfaces.view_models.user_vm import UserProfileViewModel
 from application.use_cases.user_profile_use_cases import CreateUserProfileUseCase
 
@@ -20,13 +20,13 @@ class AuthController:
     - Phối hợp với Mapper để chuyển đổi sang Command DTO.
     - Thực thi Use Case tạo hồ sơ người dùng.
     - Chuyển đổi Response DTO sang View Model.
-    - Trả về OperationResult[ViewModel].
+    - Trả về Result[ViewModel, str].
     """
     def __init__(self, use_case: CreateUserProfileUseCase, presenter: HttpPresenter | None = None):
         self._use_case = use_case
         self._presenter = presenter or HttpPresenter()
 
-    def handle_post_confirmation(self, event: Dict[str, Any]) -> OperationResult[UserProfileViewModel]:
+    def handle_post_confirmation(self, event: Dict[str, Any]) -> Result[UserProfileViewModel, str]:
         """
         Xử lý sự kiện Cognito Post Confirmation sau khi người dùng xác nhận đăng ký.
         """
@@ -39,7 +39,7 @@ class AuthController:
             
             if not result.is_success:
                 logger.warning("Failed to create user", extra={"context": {"error": result.error}})
-                return OperationResult.fail(result.error, "CREATE_FAILED")
+                return Result.failure(result.error)
             
             # 3. Chuyển đổi Response DTO → View Model
             response = result.value
@@ -58,11 +58,11 @@ class AuthController:
             )
             
             logger.info("User created successfully", extra={"context": {"user_id": response.user_id}})
-            return OperationResult.succeed(view_model)
+            return Result.success(view_model)
         
         except ValidationError as e:
             logger.warning("Invalid Cognito data", extra={"context": {"error": str(e)}})
-            return OperationResult.fail(f"Invalid data: {str(e)}", "VALIDATION_ERROR")
+            return Result.failure(f"Invalid data: {str(e)}")
         except Exception as e:
             logger.exception("System error in AuthController", extra={"context": {"error": str(e)}})
             raise

@@ -9,7 +9,7 @@ from application.use_cases.admin_scenario_use_cases import UpdateAdminScenarioUs
 from application.use_cases.admin_user_use_cases import ListAdminUsersUseCase
 from application.use_cases.admin_user_use_cases import UpdateAdminUserUseCase
 from interfaces.presenters.http_presenter import HttpPresenter
-from interfaces.view_models.base import OperationResult
+from shared.result import Result
 from interfaces.view_models.admin_vm import AdminScenarioViewModel, AdminScenarioListViewModel, AdminUserViewModel, AdminUserListViewModel
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class AdminController:
     - Tiếp nhận yêu cầu từ Lambda Handler.
     - Gọi Use Case tương ứng.
     - Chuyển đổi Response DTO sang View Model.
-    - Trả về OperationResult[ViewModel].
+    - Trả về Result[ViewModel, str].
     """
     def __init__(
         self,
@@ -41,13 +41,13 @@ class AdminController:
         self._update_user_uc = update_user_uc
         self._presenter = presenter or HttpPresenter()
 
-    def create_scenario(self, body_str: str | None) -> OperationResult[AdminScenarioViewModel]:
+    def create_scenario(self, body_str: str | None) -> Result[AdminScenarioViewModel, str]:
         """Create a new scenario."""
         try:
             body = json.loads(body_str or "{}")
         except json.JSONDecodeError:
             logger.warning("Invalid JSON in create_scenario request")
-            return OperationResult.fail("Invalid JSON format", "BAD_REQUEST")
+            return Result.failure("Invalid JSON format")
 
         try:
             logger.info("Creating scenario")
@@ -64,7 +64,7 @@ class AdminController:
             
             if not result.is_success:
                 logger.warning("Scenario creation failed", extra={"context": {"error": result.error}})
-                return OperationResult.fail(result.error, "CREATION_FAILED")
+                return Result.failure(result.error)
             
             d = result.value  # dict from use case
             view_model = AdminScenarioViewModel(
@@ -82,15 +82,15 @@ class AdminController:
                 updated_at=d["updated_at"],
             )
             logger.info("Scenario created successfully", extra={"context": {"scenario_id": d["scenario_id"]}})
-            return OperationResult.succeed(view_model)
+            return Result.success(view_model)
         except ValidationError as exc:
             logger.warning("Validation error in create_scenario", extra={"context": {"errors": str(exc)}})
-            return OperationResult.fail(f"Invalid request data: {str(exc)}", "VALIDATION_ERROR")
+            return Result.failure(f"Invalid request data: {str(exc)}")
         except Exception as exc:
             logger.exception("Error creating scenario", extra={"context": {"error": str(exc)}})
             raise
 
-    def list_scenarios(self) -> OperationResult[AdminScenarioListViewModel]:
+    def list_scenarios(self) -> Result[AdminScenarioListViewModel, str]:
         """List all scenarios."""
         try:
             logger.info("Listing scenarios")
@@ -98,7 +98,7 @@ class AdminController:
             
             if not result.is_success:
                 logger.warning("Failed to list scenarios", extra={"context": {"error": result.error}})
-                return OperationResult.fail(result.error, "LIST_FAILED")
+                return Result.failure(result.error)
             
             scenarios_data = result.value.get("scenarios", [])  # list of dicts from use case
             scenarios = [
@@ -119,18 +119,18 @@ class AdminController:
                 for d in scenarios_data
             ]
             view_model = AdminScenarioListViewModel(scenarios=scenarios, total_count=len(scenarios))
-            return OperationResult.succeed(view_model)
+            return Result.success(view_model)
         except Exception as exc:
             logger.exception("Error listing scenarios", extra={"context": {"error": str(exc)}})
             raise
 
-    def update_scenario(self, scenario_id: str, body_str: str | None) -> OperationResult[AdminScenarioViewModel]:
+    def update_scenario(self, scenario_id: str, body_str: str | None) -> Result[AdminScenarioViewModel, str]:
         """Update a scenario."""
         try:
             body = json.loads(body_str or "{}")
         except json.JSONDecodeError:
             logger.warning("Invalid JSON in update_scenario request")
-            return OperationResult.fail("Invalid JSON format", "BAD_REQUEST")
+            return Result.failure("Invalid JSON format")
 
         try:
             logger.info("Updating scenario", extra={"context": {"scenario_id": scenario_id}})
@@ -148,7 +148,7 @@ class AdminController:
             
             if not result.is_success:
                 logger.warning("Scenario update failed", extra={"context": {"scenario_id": scenario_id, "error": result.error}})
-                return OperationResult.fail(result.error, "UPDATE_FAILED")
+                return Result.failure(result.error)
             
             d = result.value  # dict from use case
             view_model = AdminScenarioViewModel(
@@ -166,15 +166,15 @@ class AdminController:
                 updated_at=d.get("updated_at", ""),
             )
             logger.info("Scenario updated successfully", extra={"context": {"scenario_id": scenario_id}})
-            return OperationResult.succeed(view_model)
+            return Result.success(view_model)
         except ValidationError as exc:
             logger.warning("Validation error in update_scenario", extra={"context": {"scenario_id": scenario_id, "errors": str(exc)}})
-            return OperationResult.fail(f"Invalid request data: {str(exc)}", "VALIDATION_ERROR")
+            return Result.failure(f"Invalid request data: {str(exc)}")
         except Exception as exc:
             logger.exception("Error updating scenario", extra={"context": {"scenario_id": scenario_id, "error": str(exc)}})
             raise
 
-    def list_users(self) -> OperationResult[AdminUserListViewModel]:
+    def list_users(self) -> Result[AdminUserListViewModel, str]:
         """List all users."""
         try:
             logger.info("Listing users")
@@ -182,7 +182,7 @@ class AdminController:
             
             if not result.is_success:
                 logger.warning("Failed to list users", extra={"context": {"error": result.error}})
-                return OperationResult.fail(result.error, "LIST_FAILED")
+                return Result.failure(result.error)
             
             users_data = result.value.get("users", [])
             users = [
@@ -198,18 +198,18 @@ class AdminController:
                 for u in users_data
             ]
             view_model = AdminUserListViewModel(users=users, total_count=len(users))
-            return OperationResult.succeed(view_model)
+            return Result.success(view_model)
         except Exception as exc:
             logger.exception("Error listing users", extra={"context": {"error": str(exc)}})
             raise
 
-    def update_user(self, user_id: str, body_str: str | None) -> OperationResult[AdminUserViewModel]:
+    def update_user(self, user_id: str, body_str: str | None) -> Result[AdminUserViewModel, str]:
         """Update a user."""
         try:
             body = json.loads(body_str or "{}")
         except json.JSONDecodeError:
             logger.warning("Invalid JSON in update_user request")
-            return OperationResult.fail("Invalid JSON format", "BAD_REQUEST")
+            return Result.failure("Invalid JSON format")
 
         try:
             logger.info("Updating user", extra={"context": {"user_id": user_id}})
@@ -222,7 +222,7 @@ class AdminController:
             
             if not result.is_success:
                 logger.warning("User update failed", extra={"context": {"user_id": user_id, "error": result.error}})
-                return OperationResult.fail(result.error, "UPDATE_FAILED")
+                return Result.failure(result.error)
             
             d = result.value
             view_model = AdminUserViewModel(
@@ -235,10 +235,10 @@ class AdminController:
                 total_words_learned=d.get("total_words_learned", 0),
             )
             logger.info("User updated successfully", extra={"context": {"user_id": user_id}})
-            return OperationResult.succeed(view_model)
+            return Result.success(view_model)
         except ValidationError as exc:
             logger.warning("Validation error in update_user", extra={"context": {"user_id": user_id, "errors": str(exc)}})
-            return OperationResult.fail(f"Invalid request data: {str(exc)}", "VALIDATION_ERROR")
+            return Result.failure(f"Invalid request data: {str(exc)}")
         except Exception as exc:
             logger.exception("Error updating user", extra={"context": {"user_id": user_id, "error": str(exc)}})
             raise

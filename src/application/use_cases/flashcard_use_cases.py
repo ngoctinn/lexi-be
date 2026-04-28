@@ -1,7 +1,7 @@
 """Flashcard Use Cases - Consolidated from individual files."""
 
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from ulid import ULID
 from application.dtos.flashcard_dtos import CreateFlashCardCommand, CreateFlashCardResponse
 from application.repositories.flash_card_repository import FlashCardRepository
@@ -177,7 +177,7 @@ class ReviewFlashcardUseCase:
             raise PermissionError("Forbidden")
         
         # 3. Áp dụng đánh giá SRS (raises ValueError nếu rating không hợp lệ)
-        card.apply_review(rating)
+        card.apply_sm2_review(rating)
         
         # 4. Cập nhật vào database
         self._repo.update(card)

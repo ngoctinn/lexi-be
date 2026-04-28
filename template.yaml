@@ -698,6 +698,7 @@ Outputs:
     Description: "Client ID cho ứng dụng Frontend"
     Value: !GetAtt AuthModule.Outputs.UserPoolClientId
 
-  IdentityPoolId:
-    Description: "Identity Pool ID cho client-side AWS SDK"
-    Value: !GetAtt AuthModule.Outputs.IdentityPoolId
+  # IdentityPoolId:
+  #   Description: "Identity Pool ID cho client-side AWS SDK"
+  #   Value: !GetAtt AuthModule.Outputs.IdentityPoolId
+  # Note: Identity Pool is commented out in auth.yaml, will be added later

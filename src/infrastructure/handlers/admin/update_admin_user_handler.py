@@ -93,7 +93,7 @@ def handler(event, context):
     
     result = controller.update_user(target_user_id, event.get("body"))
     if result.is_success:
-        return presenter.present_success(result.success)
+        return presenter.present_success(result.value)
     else:
-        status_code = 404 if "không tồn tại" in result.error.message else 400
-        return presenter._format_response(status_code, {"error": result.error.message, "code": result.error.code})
+        status_code = 404 if "không tồn tại" in result.error else 400
+        return presenter._format_response(status_code, {"error": result.error})

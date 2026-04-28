@@ -8,7 +8,6 @@ from typing import Any, Dict, Optional
 from dataclasses import asdict
 
 from interfaces.presenters.base import BasePresenter
-from interfaces.view_models.base import ErrorViewModel, OperationResult
 from shared.http_utils import dumps
 
 
@@ -31,16 +30,27 @@ class HttpPresenter(BasePresenter):
 
     def present_error(
         self, error_msg: str, code: Optional[str] = None, status_code: int = 400
-    ) -> ErrorViewModel:
-        """Format error to ErrorViewModel."""
-        return ErrorViewModel(message=error_msg, code=code or "ERROR")
+    ) -> Dict[str, Any]:
+        """Format error response to HTTP."""
+        return self._format_response(status_code, {
+            "error": error_msg,
+            "code": code or "ERROR"
+        })
 
     def present_success(
         self, data: Any, message: str = "Success", status_code: int = 200
     ) -> Dict[str, Any]:
         """Format success response to HTTP."""
         if hasattr(data, '__dataclass_fields__'):
-            data_dict = asdict(data)
+            # Use fields() approach as recommended by Python docs for safety
+            from dataclasses import fields
+            try:
+                data_dict = {field.name: getattr(data, field.name) for field in fields(data)}
+            except Exception:
+                # Fallback to manual field extraction
+                data_dict = {}
+                for field_name in data.__dataclass_fields__:
+                    data_dict[field_name] = getattr(data, field_name)
         elif hasattr(data, 'model_dump'):  # Pydantic v2
             data_dict = data.model_dump()
         elif hasattr(data, 'dict'):  # Pydantic v1
@@ -62,23 +72,21 @@ class HttpPresenter(BasePresenter):
 
     def present_not_found(self, message: str = "Not found") -> Dict[str, Any]:
         """Format 404 Not Found response."""
-        error_vm = self.present_error(message, code="NOT_FOUND", status_code=404)
-        return self._format_response(404, asdict(error_vm))
+        return self._format_response(404, {
+            "error": message,
+            "code": "NOT_FOUND"
+        })
 
     def present_unauthorized(self, message: str = "Unauthorized") -> Dict[str, Any]:
         """Format 401 Unauthorized response."""
-        error_vm = self.present_error(message, code="UNAUTHORIZED", status_code=401)
-        return self._format_response(401, asdict(error_vm))
+        return self._format_response(401, {
+            "error": message,
+            "code": "UNAUTHORIZED"
+        })
 
     def present_bad_request(self, message: str = "Bad request") -> Dict[str, Any]:
         """Format 400 Bad Request response."""
-        error_vm = self.present_error(message, code="BAD_REQUEST", status_code=400)
-        return self._format_response(400, asdict(error_vm))
-
-    def format_operation_result(self, result: OperationResult[Any]) -> Dict[str, Any]:
-        """Convert OperationResult to HTTP response."""
-        if result.is_success:
-            return self.present_success(result.success)
-        else:
-            error = result.error
-            return self._format_response(400, asdict(error))
+        return self._format_response(400, {
+            "error": message,
+            "code": "BAD_REQUEST"
+        })

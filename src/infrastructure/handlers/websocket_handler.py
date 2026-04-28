@@ -518,14 +518,14 @@ class WebSocketSessionController:
                 audio_url=str(body.get("audio_url") or "") or None,
             )
         )
-        if not result.is_success or result.value is None:
+        if not result.is_success or result.success is None:
             try:
                 self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
             except Exception as exc:
                 print(f"[ws] Failed to send error message: {exc}")
             return _response(422, {"message": result.error or "Lỗi xử lý lượt nói."})
 
-        response = result.value
+        response = result.success
         try:
             self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
             self._send_ai_response(response.ai_turn.content)
@@ -560,10 +560,10 @@ class WebSocketSessionController:
         )
         if not result.is_success or result.value is None:
             try:
-                self.send_message({"event": "ERROR", "message": result.error or "Không thể kết thúc session."})
+                self.send_message({"event": "ERROR", "message": result.error})
             except Exception as exc:
                 print(f"[ws] Failed to send error message: {exc}")
-            return _response(422, {"message": result.error or "Không thể kết thúc session."})
+            return _response(422, {"message": result.error})
 
         try:
             self.send_message(
@@ -680,10 +680,10 @@ class WebSocketSessionController:
 
             if not result.is_success or result.value is None:
                 try:
-                    self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
+                    self.send_message({"event": "ERROR", "message": result.error})
                 except Exception as exc:
                     print(f"[ws] Failed to send error message: {exc}")
-                return _response(422, {"message": result.error or "Lỗi xử lý lượt nói."})
+                return _response(422, {"message": result.error})
 
             response = result.value
             try:

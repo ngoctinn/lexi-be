@@ -92,6 +92,6 @@ def handler(event, context):
     
     result = controller.list_users()
     if result.is_success:
-        return presenter.present_success(result.success)
+        return presenter.present_success(result.value)
     else:
-        return presenter._format_response(500, {"error": result.error.message, "code": result.error.code})
+        return presenter._format_response(500, {"error": result.error})

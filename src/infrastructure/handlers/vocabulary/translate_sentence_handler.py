@@ -40,12 +40,10 @@ def handler(event, context):
         result = vocabulary_controller.translate_sentence(body_str)
         
         if result.is_success:
-            return presenter.present_success(result.success)
+            return presenter.present_success(result.value)
         else:
-            error = result.error
             return presenter._format_response(400, {
-                "error": error.message,
-                "code": error.code or "ERROR"
+                "error": result.error
             })
     except Exception as e:
         logger.exception("Error in sentence translation", extra={"context": {"error": str(e)}})

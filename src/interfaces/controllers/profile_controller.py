@@ -5,10 +5,10 @@ from pydantic import ValidationError
 
 from interfaces.mapper.profile_mapper import ProfileMapper
 from interfaces.presenters.http_presenter import HttpPresenter
-from interfaces.view_models.base import OperationResult
 from interfaces.view_models.user_vm import UserProfileViewModel
 from application.use_cases.user_profile_use_cases import GetProfileUseCase, UpdateProfileUseCase
 from shared.http_utils import dumps
+from shared.result import Result
 
 logger = logging.getLogger(__name__)
 
@@ -22,14 +22,14 @@ class ProfileController:
     - Chuyển đổi dữ liệu thô sang DTO thông qua Mapper.
     - Gọi Use Case tương ứng.
     - Chuyển đổi Response DTO sang View Model.
-    - Trả về OperationResult[ViewModel].
+    - Trả về Result[ViewModel, str].
     """
     def __init__(self, get_use_case: GetProfileUseCase, update_use_case: UpdateProfileUseCase, presenter: HttpPresenter | None = None):
         self._get_use_case = get_use_case
         self._update_use_case = update_use_case
         self._presenter = presenter or HttpPresenter()
 
-    def get_profile(self, user_id: str) -> OperationResult[UserProfileViewModel]:
+    def get_profile(self, user_id: str) -> Result[UserProfileViewModel, str]:
         """
         Xử lý yêu cầu lấy thông tin hồ sơ.
         """
@@ -39,7 +39,7 @@ class ProfileController:
             
             if not result.is_success:
                 logger.warning("Profile not found", extra={"context": {"user_id": user_id}})
-                return OperationResult.fail("Profile not found", "NOT_FOUND")
+                return Result.failure(result.error)
             
             # Chuyển đổi Response DTO → View Model
             response = result.value
@@ -58,13 +58,13 @@ class ProfileController:
             )
             
             logger.info("Profile retrieved successfully", extra={"context": {"user_id": user_id}})
-            return OperationResult.succeed(view_model)
+            return Result.success(view_model)
             
         except Exception as e:
             logger.exception("Error getting profile", extra={"context": {"user_id": user_id, "error": str(e)}})
-            raise
+            return Result.failure(str(e))
 
-    def update_profile(self, user_id: str, body_str: str) -> OperationResult[UserProfileViewModel]:
+    def update_profile(self, user_id: str, body_str: str) -> Result[UserProfileViewModel, str]:
         """
         Xử lý yêu cầu cập nhật thông tin hồ sơ.
         """
@@ -72,7 +72,7 @@ class ProfileController:
             body = json.loads(body_str or "{}")
         except json.JSONDecodeError:
             logger.warning("Invalid JSON in update request")
-            return OperationResult.fail("Invalid JSON format", "BAD_REQUEST")
+            return Result.failure("Invalid JSON format")
 
         try:
             logger.info("Updating profile", extra={"context": {"user_id": user_id}})
@@ -84,7 +84,7 @@ class ProfileController:
             
             if not result.is_success:
                 logger.warning("Profile update failed", extra={"context": {"user_id": user_id, "error": result.error}})
-                return OperationResult.fail(result.error, "UPDATE_FAILED")
+                return Result.failure(result.error)
 
             # 3. Chuyển đổi Response DTO → View Model
             response = result.value
@@ -103,11 +103,11 @@ class ProfileController:
             )
             
             logger.info("Profile updated successfully", extra={"context": {"user_id": user_id}})
-            return OperationResult.succeed(view_model)
+            return Result.success(view_model)
             
         except ValidationError as e:
             logger.warning("Validation error in update request", extra={"context": {"user_id": user_id, "errors": str(e)}})
-            return OperationResult.fail(f"Invalid request data: {str(e)}", "VALIDATION_ERROR")
+            return Result.failure(f"Invalid request data: {str(e)}")
         except Exception as e:
             logger.exception("Error updating profile", extra={"context": {"user_id": user_id, "error": str(e)}})
-            raise
+            return Result.failure(str(e))

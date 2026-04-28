@@ -13,7 +13,7 @@ from application.use_cases.vocabulary_use_cases import TranslateSentenceUseCase,
 from domain.exceptions.dictionary_exceptions import WordNotFoundError, DictionaryServiceError
 from interfaces.mapper.vocabulary_mapper import VocabularyMapper
 from interfaces.presenters.http_presenter import HttpPresenter
-from interfaces.view_models.base import OperationResult
+from shared.result import Result
 from interfaces.view_models.vocabulary_vm import VocabularyTranslationViewModel, SentenceTranslationViewModel
 from shared.http_utils import dumps
 
@@ -31,16 +31,16 @@ class VocabularyController:
         self._translate_sentence_use_case = translate_sentence_use_case
         self._presenter = presenter or HttpPresenter()
 
-    def translate(self, body_str: str | None) -> OperationResult[VocabularyTranslationViewModel]:
+    def translate(self, body_str: str | None) -> Result[VocabularyTranslationViewModel, str]:
         if not self._translate_use_case:
             logger.error("Translate use case not configured")
-            return OperationResult.fail("Translate use case not configured", "NOT_CONFIGURED")
+            return Result.failure("Translate use case not configured")
         
         try:
             body = json.loads(body_str or "{}")
         except json.JSONDecodeError:
             logger.warning("Invalid JSON in translate request")
-            return OperationResult.fail("Invalid JSON format", "BAD_REQUEST")
+            return Result.failure("Invalid JSON format")
         
         try:
             logger.info("Translating vocabulary")
@@ -52,43 +52,43 @@ class VocabularyController:
                 # Handle Dictionary API errors
                 if isinstance(error, WordNotFoundError):
                     logger.warning("Word not found in dictionary", extra={"context": {"error": str(error)}})
-                    return OperationResult.fail("Word not found in dictionary", "WORD_NOT_FOUND")
+                    return Result.failure("Word not found in dictionary")
                 if isinstance(error, DictionaryServiceError):
                     logger.error("Dictionary service error", extra={"context": {"error": str(error)}})
-                    return OperationResult.fail("Dictionary service temporarily unavailable", "DICTIONARY_SERVICE_ERROR")
+                    return Result.failure("Dictionary service temporarily unavailable")
                 # Handle legacy errors
                 if isinstance(error, VocabularyNotFoundError):
                     logger.warning("Vocabulary not found", extra={"context": {"error": str(error)}})
-                    return OperationResult.fail(str(error), "NOT_FOUND")
+                    return Result.failure(str(error))
                 if isinstance(error, (VocabularyLookupError, VocabularyPersistenceError)):
                     logger.error("External service error", extra={"context": {"error": str(error)}})
-                    return OperationResult.fail(str(error), "SERVICE_ERROR")
+                    return Result.failure(str(error))
                 logger.warning("Translation failed", extra={"context": {"error": str(error)}})
-                return OperationResult.fail(str(error), "TRANSLATION_FAILED")
+                return Result.failure(str(error))
             
             # Chuyển đổi Response DTO → View Model
             response = result.value
             view_model = VocabularyMapper.response_to_view_model(response)
             
             logger.info("Translation successful")
-            return OperationResult.succeed(view_model)
+            return Result.success(view_model)
         except ValidationError as exc:
             logger.warning("Validation error in translate request", extra={"context": {"errors": str(exc)}})
-            return OperationResult.fail(f"Invalid request data: {str(exc)}", "VALIDATION_ERROR")
+            return Result.failure(f"Invalid request data: {str(exc)}")
         except Exception as exc:
             logger.exception("Error in translate", extra={"context": {"error": str(exc)}})
             raise
 
-    def translate_sentence(self, body_str: str | None) -> OperationResult[SentenceTranslationViewModel]:
+    def translate_sentence(self, body_str: str | None) -> Result[SentenceTranslationViewModel, str]:
         if not self._translate_sentence_use_case:
             logger.error("Translate sentence use case not configured")
-            return OperationResult.fail("Translate sentence use case not configured", "NOT_CONFIGURED")
+            return Result.failure("Translate sentence use case not configured")
         
         try:
             body = json.loads(body_str or "{}")
         except json.JSONDecodeError:
             logger.warning("Invalid JSON in translate_sentence request")
-            return OperationResult.fail("Invalid JSON format", "BAD_REQUEST")
+            return Result.failure("Invalid JSON format")
         
         try:
             logger.info("Translating sentence")
@@ -97,7 +97,7 @@ class VocabularyController:
             
             if not result.is_success:
                 logger.error("Sentence translation failed", extra={"context": {"error": str(result.error)}})
-                return OperationResult.fail(str(result.error), "SERVICE_ERROR")
+                return Result.failure(str(result.error))
             
             # Chuyển đổi Response DTO → View Model
             response = result.value
@@ -107,10 +107,10 @@ class VocabularyController:
             )
             
             logger.info("Sentence translation successful")
-            return OperationResult.succeed(view_model)
+            return Result.success(view_model)
         except ValidationError as exc:
             logger.warning("Validation error in translate_sentence request", extra={"context": {"errors": str(exc)}})
-            return OperationResult.fail(f"Invalid request data: {str(exc)}", "VALIDATION_ERROR")
+            return Result.failure(f"Invalid request data: {str(exc)}")
         except Exception as exc:
             logger.exception("Error in translate_sentence", extra={"context": {"error": str(exc)}})
             raise

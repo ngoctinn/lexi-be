@@ -8,7 +8,7 @@ from application.exceptions.vocabulary_errors import VocabularyLookupError
 from application.use_cases.flashcard_use_cases import CreateFlashCardUseCase
 from interfaces.mapper.flashcard_mapper import FlashCardMapper
 from interfaces.presenters.http_presenter import HttpPresenter
-from interfaces.view_models.base import OperationResult
+from shared.result import Result
 from interfaces.view_models.flashcard_vm import FlashcardViewModel
 from shared.http_utils import dumps
 
@@ -23,20 +23,20 @@ class FlashCardController:
         self.mapper = FlashCardMapper()
         self._presenter = presenter or HttpPresenter()
 
-    def create(self, event: Dict[str, Any], user_id: str) -> OperationResult[FlashcardViewModel]:
+    def create(self, event: Dict[str, Any], user_id: str) -> Result[FlashcardViewModel, str]:
         """Tạo flashcard mới từ request."""
         try:
             body = json.loads(event.get("body", "{}"))
         except json.JSONDecodeError:
             logger.warning("Invalid JSON in flashcard creation")
-            return OperationResult.fail("Invalid JSON format", "BAD_REQUEST")
+            return Result.failure("Invalid JSON format")
 
         try:
             logger.info("Creating flashcard", extra={"context": {"user_id": user_id}})
             command = self.mapper.to_create_command(body, user_id)
         except ValidationError as e:
             logger.warning("Validation error in flashcard creation", extra={"context": {"error": str(e)}})
-            return OperationResult.fail(f"Invalid data: {str(e)}", "VALIDATION_ERROR")
+            return Result.failure(f"Invalid data: {str(e)}")
 
         try:
             result = self.create_flashcard_usecase.execute(command)
@@ -44,7 +44,7 @@ class FlashCardController:
             if not result.is_success:
                 error_msg = str(result.error) if result.error else "Cannot create flashcard"
                 logger.warning("Flashcard creation failed", extra={"context": {"user_id": user_id, "error": error_msg}})
-                return OperationResult.fail(error_msg, "CREATION_FAILED")
+                return Result.failure(error_msg)
 
             # Chuyển đổi Response DTO → View Model
             response = result.value
@@ -54,10 +54,11 @@ class FlashCardController:
                 meaning=response.translation_vi,
                 example=response.example_sentence,
                 created_at=response.created_at,
+                next_review_at=response.created_at,  # Set to created_at for new cards
             )
             
             logger.info("Flashcard created successfully", extra={"context": {"user_id": user_id, "flashcard_id": response.flashcard_id}})
-            return OperationResult.succeed(view_model)
+            return Result.success(view_model)
         except Exception as e:
             logger.exception("Error creating flashcard", extra={"context": {"user_id": user_id, "error": str(e)}})
             raise
