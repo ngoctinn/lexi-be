@@ -18,6 +18,9 @@ def handler(event, context):
     """
     Handler mỏng (Thin Handler) - Chỉ đóng vai trò adapter hạ tầng.
     Logic Interface Adapter chuẩn nằm ở AuthController.
+    
+    CRITICAL: Cognito Lambda triggers MUST return the event object.
+    Returning any other object will cause "Object of type X is not JSON serializable" error.
     """
     try:
         if event.get('triggerSource') != "PostConfirmation_ConfirmSignUp":
@@ -25,7 +28,21 @@ def handler(event, context):
             return event
 
         logger.info("Processing PostConfirmation event", extra={"context": {"user_id": event.get('userName')}})
-        return auth_controller.handle_post_confirmation(event)
+        
+        # Execute business logic via controller
+        result = auth_controller.handle_post_confirmation(event)
+        
+        # Log result but ALWAYS return event object for Cognito
+        if result.is_success:
+            logger.info("User profile created successfully", extra={"context": {"user_id": event.get('userName')}})
+        else:
+            logger.error("Failed to create user profile", extra={"context": {"error": result.error}})
+        
+        # MUST return event object - Cognito requirement
+        return event
+        
     except Exception as e:
         logger.exception("Error in post_confirmation_handler", extra={"context": {"error": str(e)}})
-        raise
+        # Even on error, return event to not block user sign-up
+        # User can still login, profile creation can be retried later
+        return event

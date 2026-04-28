@@ -21,6 +21,9 @@ def handler(event, context):
     AWS Best Practice: Automatically link Google/Facebook users to existing 
     email/password accounts to prevent duplicate users.
     
+    IMPORTANT: This trigger does NOT auto-verify email or auto-confirm users.
+    Users must verify their email via OTP code sent by Cognito.
+    
     Refs:
     - https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-identity-federation-consolidate-users.html
     - https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-lambda-pre-sign-up.html
@@ -32,6 +35,8 @@ def handler(event, context):
         # Only process federated sign-ups (Google, Facebook, etc.)
         if trigger_source != 'PreSignUp_ExternalProvider':
             logger.info(f"Skipping non-federated sign-up: {trigger_source}")
+            # For regular email/password sign-ups, return event unchanged
+            # Cognito will send OTP verification email automatically
             return event
         
         # Extract user info
@@ -63,6 +68,8 @@ def handler(event, context):
         else:
             logger.info(f"No existing user found for {email}, will create new user")
         
+        # MUST return event object unchanged
+        # Do NOT set autoConfirmUser or autoVerifyEmail here
         return event
         
     except Exception as e:
