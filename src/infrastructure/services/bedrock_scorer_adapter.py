@@ -64,6 +64,15 @@ class BedrockScorerAdapter:
         Returns:
             Scoring dict or None if failed
         """
+        logger.info(
+            "BedrockScorerAdapter.score() called",
+            extra={
+                "level": level,
+                "scenario_title": scenario_title,
+                "user_turns_count": len(user_turns) if user_turns else 0,
+            }
+        )
+        
         if not user_turns:
             logger.warning("score() called with empty user_turns")
             return None
@@ -101,42 +110,47 @@ Respond in JSON format only:
         system_content = [{"text": prompt}]
 
         try:
+            request_body = {
+                "system": system_content,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"text": "Please score the above performance."}]
+                    }
+                ],
+                "inferenceConfig": {
+                    "maxTokens": 500,
+                    "temperature": 0.7
+                }
+            }
+            
             logger.info(
                 "Calling Bedrock for scoring",
                 extra={
                     "level": level,
                     "scenario": scenario_title,
                     "turn_count": len(user_turns),
+                    "prompt_length": len(prompt),
+                    "request_body_keys": list(request_body.keys()),
                 }
             )
             
             # Use non-streaming API (simpler and more reliable)
             response = self.bedrock_client.invoke_model(
                 modelId="apac.amazon.nova-micro-v1:0",
-                body=dumps(
-                    {
-                        "system": system_content,
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": [{"text": "Please score the above performance."}]
-                            }
-                        ],
-                        "inferenceConfig": {
-                            "maxTokens": 500,
-                            "temperature": 0.7
-                        }
-                    }
-                ),
+                body=dumps(request_body),
             )
 
             # Parse response
             response_body = json.loads(response["body"].read())
             
-            logger.debug(
+            logger.info(
                 "Bedrock response received",
                 extra={
                     "response_keys": list(response_body.keys()),
+                    "has_content": "content" in response_body,
+                    "content_blocks": len(response_body.get("content", [])) if "content" in response_body else 0,
+                    "full_response_body": response_body,  # Log full response to debug
                 }
             )
             
@@ -154,11 +168,12 @@ Respond in JSON format only:
                         "response_body": response_body,
                         "level": level,
                         "scenario": scenario_title,
+                        "turn_count": len(user_turns),
                     }
                 )
                 return None
             
-            logger.debug(
+            logger.info(
                 "Extracted content from Bedrock",
                 extra={
                     "content_length": len(content),
@@ -166,7 +181,20 @@ Respond in JSON format only:
                 }
             )
             
-            scoring_data = json.loads(content.strip())
+            # Try to parse JSON
+            try:
+                scoring_data = json.loads(content.strip())
+            except json.JSONDecodeError as parse_error:
+                logger.error(
+                    "Failed to parse scoring JSON from Bedrock",
+                    extra={
+                        "level": level,
+                        "scenario": scenario_title,
+                        "content": content,
+                        "parse_error": str(parse_error),
+                    }
+                )
+                return None
 
             # Validate and clamp scores
             for key in [

@@ -1,27 +1,24 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  Template chính cho dự án Lexi-BE.
-  Quản lý việc nhúng các module hạ tầng và định nghĩa API Gateway trung tâm.
+  Main application stack for Lexi-BE.
+  Imports auth resources from separate lexi-auth-base stack.
+  Deploy lexi-auth-base stack BEFORE deploying this stack.
+
+Parameters:
+  AuthBaseStackName:
+    Type: String
+    Default: lexi-auth-base
+    Description: Name of the auth-base stack to import Cognito resources from
+
+  DatabaseStackName:
+    Type: String
+    Default: lexi-database
+    Description: Name of the database stack to import DynamoDB table from
 
 Resources:
-  # --- 1. MODULE DATABASE (DynamoDB) ---
-  DatabaseModule:
-    Type: AWS::Serverless::Application
-    Properties:
-      Location: config/database.yaml
-
-  # --- 2. MODULE AUTH (Cognito & PostConfirmation Logic) ---
-  AuthModule:
-    Type: AWS::Serverless::Application
-    Properties:
-      Location: config/auth.yaml
-      Parameters:
-        # Truyền thông tin bảng từ DatabaseModule sang AuthModule
-        TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
-        TableArn: !GetAtt DatabaseModule.Outputs.LexiAppTableArn
-
-  # --- 3. API GATEWAY TRUNG TÂM (Với Cognito Authorizer) ---
+  # --- 1. API GATEWAY TRUNG TÂM (Với Cognito Authorizer) ---
+  # Import UserPoolArn from separate auth-base stack
   LexiApi:
     Type: AWS::Serverless::Api
     Properties:
@@ -30,7 +27,8 @@ Resources:
         DefaultAuthorizer: MyCognitoAuthorizer
         Authorizers:
           MyCognitoAuthorizer:
-            UserPoolArn: !GetAtt AuthModule.Outputs.UserPoolArn
+            UserPoolArn:
+              Fn::ImportValue: !Sub "${AuthBaseStackName}-UserPoolArn"
             Identity:
               Header: Authorization
 
@@ -58,7 +56,8 @@ Resources:
       Runtime: python3.12
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
       Events:
         CompleteOnboarding:
           Type: Api
@@ -68,7 +67,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   # [MÔ-ĐUN ADMIN] - Quản lý người dùng và kịch bản
   ListAdminUsersFunction:
@@ -79,7 +79,8 @@ Resources:
       Runtime: python3.12
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
       Events:
         ListAdminUsers:
           Type: Api
@@ -89,7 +90,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBReadPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   UpdateAdminUserFunction:
     Type: AWS::Serverless::Function
@@ -99,7 +101,8 @@ Resources:
       Runtime: python3.12
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
       Events:
         UpdateAdminUser:
           Type: Api
@@ -109,7 +112,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   ListAdminScenariosFunction:
     Type: AWS::Serverless::Function
@@ -119,7 +123,8 @@ Resources:
       Runtime: python3.12
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
       Events:
         ListAdminScenarios:
           Type: Api
@@ -129,7 +134,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBReadPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   CreateAdminScenarioFunction:
     Type: AWS::Serverless::Function
@@ -139,7 +145,8 @@ Resources:
       Runtime: python3.12
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
       Events:
         CreateAdminScenario:
           Type: Api
@@ -149,7 +156,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   UpdateAdminScenarioFunction:
     Type: AWS::Serverless::Function
@@ -159,7 +167,8 @@ Resources:
       Runtime: python3.12
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
       Events:
         UpdateAdminScenario:
           Type: Api
@@ -169,7 +178,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   # [MÔ-ĐUN HỒ SƠ] - Quản lý thông tin người dùng
   GetProfileFunction:
@@ -182,7 +192,8 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
           LOG_LEVEL: INFO
       Events:
         GetProfile:
@@ -193,7 +204,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBReadPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   UpdateProfileFunction:
     Type: AWS::Serverless::Function
@@ -205,7 +217,8 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
           LOG_LEVEL: INFO
       Events:
         UpdateProfile:
@@ -216,7 +229,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   TranslateVocabularyFunction:
     Type: AWS::Serverless::Function
@@ -227,7 +241,8 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
       Events:
         TranslateVocabulary:
           Type: Api
@@ -238,7 +253,8 @@ Resources:
             # Cognito Authorizer is applied via DefaultAuthorizer
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
         - Statement:
             - Effect: Allow
               Action:
@@ -277,7 +293,8 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
           LOG_LEVEL: INFO
       Events:
         CreateFlashcard:
@@ -288,7 +305,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   ListDueCardsFunction:
     Type: AWS::Serverless::Function
@@ -300,7 +318,8 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
           LOG_LEVEL: INFO
       Events:
         ListDueCards:
@@ -311,7 +330,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBReadPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   ReviewFlashcardFunction:
     Type: AWS::Serverless::Function
@@ -323,7 +343,8 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
           LOG_LEVEL: INFO
       Events:
         ReviewFlashcard:
@@ -334,7 +355,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   ListFlashcardsFunction:
     Type: AWS::Serverless::Function
@@ -346,7 +368,8 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
           LOG_LEVEL: INFO
       Events:
         ListFlashcards:
@@ -357,7 +380,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBReadPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   GetFlashcardFunction:
     Type: AWS::Serverless::Function
@@ -369,7 +393,8 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
           LOG_LEVEL: INFO
       Events:
         GetFlashcard:
@@ -380,7 +405,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBReadPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   UpdateFlashcardFunction:
     Type: AWS::Serverless::Function
@@ -392,7 +418,8 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
           LOG_LEVEL: INFO
       Events:
         UpdateFlashcard:
@@ -403,7 +430,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   DeleteFlashcardFunction:
     Type: AWS::Serverless::Function
@@ -415,7 +443,8 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
           LOG_LEVEL: INFO
       Events:
         DeleteFlashcard:
@@ -426,7 +455,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   ExportFlashcardsFunction:
     Type: AWS::Serverless::Function
@@ -438,7 +468,8 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
           LOG_LEVEL: INFO
       Events:
         ExportFlashcards:
@@ -449,7 +480,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBReadPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   ImportFlashcardsFunction:
     Type: AWS::Serverless::Function
@@ -461,7 +493,8 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
           LOG_LEVEL: INFO
       Events:
         ImportFlashcards:
@@ -472,7 +505,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   GetStatisticsFunction:
     Type: AWS::Serverless::Function
@@ -484,7 +518,8 @@ Resources:
       Timeout: 15
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
           LOG_LEVEL: INFO
       Events:
         GetStatistics:
@@ -495,7 +530,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBReadPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
 
   ListScenariosFunction:
     Type: AWS::Serverless::Function
@@ -505,10 +541,12 @@ Resources:
       Runtime: python3.12
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
       Policies:
         - DynamoDBReadPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
       Events:
         ListScenarios:
           Type: Api
@@ -555,14 +593,18 @@ Resources:
         Size: 1024
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
           SPEAKING_AUDIO_BUCKET_NAME: !Ref SpeakingAudioBucket
-          COGNITO_USER_POOL_ID: !GetAtt AuthModule.Outputs.UserPoolId
-          COGNITO_APP_CLIENT_ID: !GetAtt AuthModule.Outputs.UserPoolClientId
+          COGNITO_USER_POOL_ID:
+            Fn::ImportValue: !Sub "${AuthBaseStackName}-UserPoolId"
+          COGNITO_APP_CLIENT_ID:
+            Fn::ImportValue: !Sub "${AuthBaseStackName}-UserPoolClientId"
           LOG_LEVEL: INFO
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
         - S3CrudPolicy:
             BucketName: !Ref SpeakingAudioBucket
         - Statement:
@@ -601,7 +643,8 @@ Resources:
         Size: 1024
       Environment:
         Variables:
-          LEXI_TABLE_NAME: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+          LEXI_TABLE_NAME:
+            Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
           SPEAKING_AUDIO_BUCKET_NAME: !Ref SpeakingAudioBucket
           LOG_LEVEL: INFO
       Events:
@@ -637,7 +680,8 @@ Resources:
             RestApiId: !Ref LexiApi
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !GetAtt DatabaseModule.Outputs.LexiAppTableName
+            TableName:
+              Fn::ImportValue: !Sub "${DatabaseStackName}-LexiAppTableName"
         - S3CrudPolicy:
             BucketName: !Ref SpeakingAudioBucket
         - Statement:
@@ -690,15 +734,6 @@ Outputs:
     Description: "URL của WebSocket API"
     Value: !Sub "wss://${SpeakingWebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
 
-  UserPoolId:
-    Description: "ID của Cognito User Pool"
-    Value: !GetAtt AuthModule.Outputs.UserPoolId
+  # Note: Auth outputs (UserPoolId, UserPoolClientId) are available from lexi-auth-base stack
+  # Frontend should retrieve auth config directly from lexi-auth-base stack outputs
 
-  UserPoolClientId:
-    Description: "Client ID cho ứng dụng Frontend"
-    Value: !GetAtt AuthModule.Outputs.UserPoolClientId
-
-  # IdentityPoolId:
-  #   Description: "Identity Pool ID cho client-side AWS SDK"
-  #   Value: !GetAtt AuthModule.Outputs.IdentityPoolId
-  # Note: Identity Pool is commented out in auth.yaml, will be added later

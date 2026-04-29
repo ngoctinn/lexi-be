@@ -1,0 +1,185 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  Core Cognito infrastructure - User Pool, Domain, and App Client.
+  This is a STANDALONE stack. Deploy this FIRST before auth-lambdas and auth-providers.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name for resource naming
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, prod]
+
+Resources:
+  # --- COGNITO USER POOL (Core) ---
+  LexiUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "LexiUserPool-${Environment}"
+      
+      # Auto-verify email for seamless user experience
+      AutoVerifiedAttributes:
+        - email
+      
+      # Login with email instead of username
+      UsernameAttributes:
+        - email
+      
+      # Password policy (balanced security)
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: false
+      
+      # User attributes schema
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+      
+      # Account recovery via email
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      
+      # Deletion protection for production
+      DeletionProtection: !If [IsProduction, ACTIVE, INACTIVE]
+      
+      # Email configuration - Use SES for production
+      EmailConfiguration:
+        EmailSendingAccount: !If [IsProduction, DEVELOPER, COGNITO_DEFAULT]
+        SourceArn: !If 
+          - IsProduction
+          - !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/ngoctin.me"
+          - !Ref AWS::NoValue
+        From: !If 
+          - IsProduction
+          - "Lexi App <noreply@ngoctin.me>"
+          - !Ref AWS::NoValue
+      
+      # Verification messages
+      EmailVerificationMessage: "Your verification code is {####}"
+      EmailVerificationSubject: "Verify your Lexi account"
+      
+      # User pool tags
+      UserPoolTags:
+        Environment: !Ref Environment
+        Application: Lexi
+        ManagedBy: CloudFormation
+        Stack: auth
+
+  # --- COGNITO DOMAIN ---
+  LexiUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub "lexi-app-${AWS::AccountId}-${Environment}"
+      UserPoolId: !Ref LexiUserPool
+
+  # --- COGNITO APP CLIENT ---
+  LexiUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: LexiUserPoolDomain
+    Properties:
+      UserPoolId: !Ref LexiUserPool
+      ClientName: !Sub "LexiWebClient-${Environment}"
+      
+      # Auth flows
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      
+      # Attributes - only include attributes defined in Schema
+      ReadAttributes:
+        - email
+        - name
+      # WriteAttributes removed - name is not in required schema, only email is
+      
+      # OAuth configuration
+      # Start with COGNITO only - Google will be added via auth-providers stack
+      SupportedIdentityProviders:
+        - COGNITO
+      
+      AllowedOAuthFlows:
+        - code
+        - implicit
+      
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      
+      # Callback URLs (localhost + production)
+      CallbackURLs:
+        - http://localhost:3000/oauth-callback
+        - https://ngoctin.me/oauth-callback
+      
+      LogoutURLs:
+        - http://localhost:3000
+        - https://ngoctin.me
+      
+      AllowedOAuthFlowsUserPoolClient: true
+      
+      # Token validity
+      RefreshTokenValidity: 30
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      TokenValidityUnits:
+        RefreshToken: days
+        AccessToken: minutes
+        IdToken: minutes
+      
+      # Prevent user existence errors
+      PreventUserExistenceErrors: ENABLED
+
+Outputs:
+  UserPoolId:
+    Description: "Cognito User Pool ID"
+    Value: !Ref LexiUserPool
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolId"
+
+  UserPoolArn:
+    Description: "Cognito User Pool ARN"
+    Value: !GetAtt LexiUserPool.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolArn"
+
+  UserPoolClientId:
+    Description: "Cognito App Client ID"
+    Value: !Ref LexiUserPoolClient
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolClientId"
+
+  UserPoolDomain:
+    Description: "Cognito Hosted UI Domain"
+    Value: !Ref LexiUserPoolDomain
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolDomain"
+
+  LoginUrl:
+    Description: "Cognito Hosted UI Login URL"
+    Value: !Sub "https://${LexiUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/login?client_id=${LexiUserPoolClient}&response_type=code&scope=email+openid+profile&redirect_uri=http://localhost:3000/oauth-callback"
+
+  Region:
+    Description: "AWS Region"
+    Value: !Ref "AWS::Region"
+    Export:
+      Name: !Sub "${AWS::StackName}-Region"

@@ -65,11 +65,20 @@ class BaseHandler(ABC, Generic[T]):
         """
         Extract user_id from Cognito claims.
         
+        Uses cognito:username instead of sub to match with user profiles created
+        by PostConfirmation trigger. For federated users (Google, Facebook), 
+        cognito:username has format "Google_xxx" which matches the userName in 
+        PostConfirmation event.
+        
+        AWS Best Practice: cognito:username is the consistent identifier across
+        Lambda triggers and API Gateway authorizer claims.
+        
         Raises:
             AuthenticationError: If user_id not found
         """
         try:
-            user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
+            # Use cognito:username to match PostConfirmation trigger's event['userName']
+            user_id = event["requestContext"]["authorizer"]["claims"]["cognito:username"]
             if not user_id:
                 raise AuthenticationError("Empty user_id")
             return user_id

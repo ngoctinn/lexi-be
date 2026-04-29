@@ -21,24 +21,54 @@ def handler(event, context):
     
     CRITICAL: Cognito Lambda triggers MUST return the event object.
     Returning any other object will cause "Object of type X is not JSON serializable" error.
+    
+    This handler supports:
+    - PostConfirmation_ConfirmSignUp: After email/password sign-up confirmation
+    - PostConfirmation_ExternalProvider: After federated sign-up (not triggered for Google)
+    - PostAuthentication_Authentication: After successful login (used for Google OAuth users)
     """
     try:
-        if event.get('triggerSource') != "PostConfirmation_ConfirmSignUp":
-            logger.info("Skipping non-PostConfirmation event")
+        trigger_source = event.get('triggerSource')
+        logger.info(f"PostConfirmation handler triggered with source: {trigger_source}")
+        
+        # Handle PostConfirmation triggers (email/password sign-up)
+        if trigger_source in ["PostConfirmation_ConfirmSignUp", "PostConfirmation_ExternalProvider"]:
+            logger.info("Processing PostConfirmation event", extra={"context": {"user_id": event.get('userName')}})
+            
+            # Execute business logic via controller
+            result = auth_controller.handle_post_confirmation(event)
+            
+            # Log result but ALWAYS return event object for Cognito
+            if result.is_success:
+                logger.info("User profile created successfully", extra={"context": {"user_id": event.get('userName')}})
+            else:
+                logger.error("Failed to create user profile", extra={"context": {"error": result.error}})
+            
             return event
-
-        logger.info("Processing PostConfirmation event", extra={"context": {"user_id": event.get('userName')}})
         
-        # Execute business logic via controller
-        result = auth_controller.handle_post_confirmation(event)
+        # Handle PostAuthentication trigger (for Google OAuth users)
+        # This is needed because PostConfirmation doesn't run for external providers
+        if trigger_source == "PostAuthentication_Authentication":
+            user_attributes = event.get('request', {}).get('userAttributes', {})
+            identities = user_attributes.get('identities')
+            
+            # Only create profile for federated users (Google, Facebook, etc.)
+            if identities:
+                logger.info(f"Creating profile for federated user via PostAuthentication: {event.get('userName')}")
+                result = auth_controller.handle_post_confirmation(event)
+                
+                if result.is_success:
+                    logger.info("User profile created successfully via PostAuthentication")
+                else:
+                    # Profile might already exist, that's OK
+                    logger.info(f"Profile creation result: {result.error}")
+            else:
+                logger.info(f"Not a federated user, skipping profile creation: {event.get('userName')}")
+            
+            return event
         
-        # Log result but ALWAYS return event object for Cognito
-        if result.is_success:
-            logger.info("User profile created successfully", extra={"context": {"user_id": event.get('userName')}})
-        else:
-            logger.error("Failed to create user profile", extra={"context": {"error": result.error}})
-        
-        # MUST return event object - Cognito requirement
+        # Skip other triggers
+        logger.info(f"Skipping non-PostConfirmation/PostAuthentication event: {trigger_source}")
         return event
         
     except Exception as e:

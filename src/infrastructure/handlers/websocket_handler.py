@@ -500,15 +500,24 @@ class WebSocketSessionController:
 
 
     def send_message_turn(self, session_id: str, connection_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        print(f"[ws] send_message_turn called: session_id={session_id}, connection_id={connection_id}")
+        print(f"[ws] send_message_turn body: {body}")
+        
         session = self._get_session(session_id)
         if not session:
+            print(f"[ws] send_message_turn: session not found")
             return _response(404, {"message": "Session không tồn tại."})
 
         text = str(body.get("text") or body.get("content") or "").strip()
+        print(f"[ws] send_message_turn: extracted text='{text}' (length={len(text)})")
+        
         if not text:
+            print(f"[ws] send_message_turn: text is empty, returning 422")
             return _response(422, {"message": "Nội dung lượt nói không được để trống."})
 
         self._sync_connection(session, connection_id)
+        
+        print(f"[ws] send_message_turn: calling submit_turn_use_case.execute()")
         result = self.submit_turn_use_case.execute(
             SubmitSpeakingTurnCommand(
                 user_id=session.user_id,
@@ -518,18 +527,30 @@ class WebSocketSessionController:
                 audio_url=str(body.get("audio_url") or "") or None,
             )
         )
-        if not result.is_success or result.success is None:
+        print(f"[ws] send_message_turn: submit_turn_use_case returned, is_success={result.is_success}")
+        
+        # ✅ FIX: Use result.value (same as submit_transcript) instead of result.success
+        if not result.is_success or result.value is None:
+            print(f"[ws] send_message_turn: use case failed, error={result.error}")
             try:
                 self.send_message({"event": "ERROR", "message": result.error or "Lỗi xử lý lượt nói."})
             except Exception as exc:
                 print(f"[ws] Failed to send error message: {exc}")
             return _response(422, {"message": result.error or "Lỗi xử lý lượt nói."})
 
-        response = result.success
+        response = result.value  # ✅ FIX: Changed from result.success to result.value
+        print(f"[ws] send_message_turn: use case succeeded, user_turn_index={response.user_turn.turn_index}")
+        print(f"[ws] send_message_turn: AI response text length={len(response.ai_turn.content)}")
+        
         try:
+            print(f"[ws] send_message_turn: sending TURN_SAVED event")
             self.send_message({"event": "TURN_SAVED", "turn_index": response.user_turn.turn_index})
+            
+            print(f"[ws] send_message_turn: sending AI_RESPONSE event")
             self._send_ai_response(response.ai_turn.content)
+            
             if response.ai_turn.audio_url:
+                print(f"[ws] send_message_turn: sending AI_AUDIO_URL event")
                 self.send_message(
                     {
                         "event": "AI_AUDIO_URL",
@@ -537,10 +558,17 @@ class WebSocketSessionController:
                         "text": response.ai_turn.content,
                     }
                 )
+            else:
+                print(f"[ws] send_message_turn: no audio_url, skipping AI_AUDIO_URL event")
+                
+            print(f"[ws] send_message_turn: all events sent successfully")
         except Exception as exc:
             print(f"[ws] Failed to send response messages: {exc}")
+            import traceback
+            traceback.print_exc()
             return _response(500, {"message": "Lỗi gửi phản hồi."})
 
+        print(f"[ws] send_message_turn: returning 200 OK")
         return _response(
             200,
             {
@@ -879,23 +907,30 @@ def handler(event, context):
 
         # Route actions
         if action == "START_SESSION":
+            print(f"[ws] Routing to START_SESSION")
             return controller.start_session(str(session_id), connection_id)
         if action == "GET_TRANSCRIBE_URL":
+            print(f"[ws] Routing to GET_TRANSCRIBE_URL")
             return controller.get_transcribe_url(str(session_id), connection_id)
         if action == "SUBMIT_TRANSCRIPT":
+            # ✅ Unified handler for both text input and mic input
+            print(f"[ws] Routing to SUBMIT_TRANSCRIPT (handles both text and mic input)")
+            print(f"[ws] SUBMIT_TRANSCRIPT body: {body}")
             return controller.submit_transcript(str(session_id), connection_id, body)
         if action == "USE_HINT":
+            print(f"[ws] Routing to USE_HINT")
             return controller.use_hint(str(session_id), connection_id)
         if action == "ANALYZE_TURN":
+            print(f"[ws] Routing to ANALYZE_TURN")
             turn_index = body.get("turn_index")
             if turn_index is None:
                 return _response(400, {"message": "Missing turn_index"})
             return controller.analyze_turn(str(session_id), int(turn_index), connection_id)
         if action == "END_SESSION":
+            print(f"[ws] Routing to END_SESSION")
             return controller.end_session(str(session_id), connection_id)
-        if action == "SEND_MESSAGE":
-            return controller.send_message_turn(str(session_id), connection_id, body)
 
+        print(f"[ws] Unknown action: {action}")
         return controller.unsupported(action or route_key or body.get("action", "UNKNOWN"))
     
     except ValueError as e:

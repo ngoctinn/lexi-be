@@ -124,9 +124,8 @@ class DynamoScenarioRepository(ScenarioRepository):
         return {
             "PK": f"SCENARIO#{scenario.scenario_id}",
             "SK": "METADATA",
-            "GSI3PK": "SCENARIO",
-            "GSI3SK": scenario.created_at,
             "EntityType": "SCENARIO",
+            "created_at": scenario.created_at,
             "scenario_id": scenario.scenario_id,
             "scenario_title": scenario.scenario_title,
             "context": scenario.context,
@@ -137,7 +136,6 @@ class DynamoScenarioRepository(ScenarioRepository):
             "difficulty_level": scenario.difficulty_level,
             "order": scenario.order,
             "notes": scenario.notes,
-            "created_at": scenario.created_at,
             "updated_at": scenario.updated_at,
         }
 

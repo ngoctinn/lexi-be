@@ -69,10 +69,11 @@ Resources:
             ProjectionType: INCLUDE
             NonKeyAttributes:
               - EntityType
-              - scenario
-              - my_character
+              - scenario_id
+              - scenario_title
+              - learner_role_id
+              - ai_role_id
               - ai_character
-              - ai_gender
               - level
               - status
               - total_turns

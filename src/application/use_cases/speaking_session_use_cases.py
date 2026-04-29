@@ -717,14 +717,62 @@ class CompleteSpeakingSessionUseCase:
             scoring_items = self._scoring_repo.get_by_session(request.session_id)
             if scoring_items:
                 scoring = scoring_items[0]
+                logger.info(
+                    "Using existing scoring for session",
+                    extra={"session_id": str(request.session_id)}
+                )
             else:
                 # Use domain service for scoring (with optional external scorer)
                 user_turns = [turn for turn in turns if _is_user_turn(turn)]
-                scoring_data = self._performance_scorer.score_session(
-                    user_turns=user_turns,
-                    level=_enum_value(session.level),
-                    scenario_title=session.scenario_title,  # ✅ Use scenario_title, not scenario_id
+                
+                logger.info(
+                    "Starting scoring for session",
+                    extra={
+                        "session_id": str(request.session_id),
+                        "user_turns_count": len(user_turns),
+                        "total_turns_count": len(turns),
+                        "level": _enum_value(session.level),
+                        "scenario_title": session.scenario_title,
+                    }
                 )
+                
+                if len(user_turns) == 0:
+                    logger.warning(
+                        "No user turns to score",
+                        extra={"session_id": str(request.session_id)}
+                    )
+                    return Result.failure("Không có lượt nói nào để chấm điểm. Vui lòng thực hành trước khi nộp bài.")
+                
+                try:
+                    scoring_data = self._performance_scorer.score_session(
+                        user_turns=user_turns,
+                        level=_enum_value(session.level),
+                        scenario_title=session.scenario_title,
+                    )
+                    
+                    logger.info(
+                        "Scoring completed successfully",
+                        extra={
+                            "session_id": str(request.session_id),
+                            "overall_score": scoring_data.get("overall_score"),
+                        }
+                    )
+                except Exception as scoring_error:
+                    logger.error(
+                        "Scoring failed",
+                        extra={
+                            "session_id": str(request.session_id),
+                            "user_turns_count": len(user_turns),
+                            "error": str(scoring_error),
+                            "error_type": type(scoring_error).__name__,
+                        },
+                        exc_info=True
+                    )
+                    return Result.failure(
+                        f"Không thể chấm điểm phiên học. Lỗi: {str(scoring_error)}. "
+                        "Vui lòng thử lại sau hoặc liên hệ hỗ trợ."
+                    )
+                
                 scoring = Scoring(
                     scoring_id=new_ulid(),
                     session_id=session.session_id,
@@ -750,7 +798,14 @@ class CompleteSpeakingSessionUseCase:
             )
             return Result.success(response)
         except Exception as exc:
-            logger.exception(f"CompleteSpeakingSessionUseCase failed: {exc}")
+            logger.exception(
+                "CompleteSpeakingSessionUseCase failed",
+                extra={
+                    "session_id": request.session_id,
+                    "user_id": request.user_id,
+                    "error": str(exc),
+                }
+            )
             return Result.failure(str(exc))
 
 

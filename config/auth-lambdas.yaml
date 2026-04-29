@@ -1,0 +1,151 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  Cognito Lambda Triggers - PreSignUp, PostConfirmation, PostAuthentication.
+  This is a STANDALONE stack. Deploy AFTER auth-base stack.
+  IMPORTANT: After deployment, run CLI command from Outputs to attach triggers to User Pool.
+
+Parameters:
+  AuthBaseStackName:
+    Type: String
+    Default: lexi-auth-base
+    Description: Name of the auth-base stack to import Cognito resources from
+
+  TableName:
+    Type: String
+    Description: DynamoDB table name for user profiles
+    Default: LexiApp
+
+Resources:
+  # --- 1. PRE SIGN-UP LAMBDA ---
+  PreSignUpLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "lexi-pre-signup-${AWS::StackName}"
+      CodeUri: ../src/
+      Handler: infrastructure.handlers.auth.pre_signup_handler.handler
+      Runtime: python3.12
+      Timeout: 10
+      MemorySize: 256
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID:
+            Fn::ImportValue: !Sub "${AuthBaseStackName}-UserPoolId"
+          LOG_LEVEL: INFO
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:ListUsers
+                - cognito-idp:AdminLinkProviderForUser
+              Resource:
+                Fn::ImportValue: !Sub "${AuthBaseStackName}-UserPoolArn"
+      Tags:
+        Application: Lexi
+        ManagedBy: CloudFormation
+        Stack: auth
+    Metadata:
+      BuildMethod: python3.12
+
+  PreSignUpLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt PreSignUpLambda.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn:
+        Fn::ImportValue: !Sub "${AuthBaseStackName}-UserPoolArn"
+
+  # --- 2. POST CONFIRMATION LAMBDA ---
+  PostConfirmationLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "lexi-post-confirmation-${AWS::StackName}"
+      CodeUri: ../src/
+      Handler: infrastructure.handlers.auth.post_confirmation_handler.handler
+      Runtime: python3.12
+      Timeout: 10
+      MemorySize: 256
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !Ref TableName
+          LOG_LEVEL: INFO
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TableName
+      Tags:
+        Application: Lexi
+        ManagedBy: CloudFormation
+        Stack: auth
+    Metadata:
+      BuildMethod: python3.12
+
+  PostConfirmationLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt PostConfirmationLambda.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn:
+        Fn::ImportValue: !Sub "${AuthBaseStackName}-UserPoolArn"
+
+  # --- 3. POST AUTHENTICATION LAMBDA ---
+  PostAuthenticationLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "lexi-post-authentication-${AWS::StackName}"
+      CodeUri: ../src/
+      Handler: infrastructure.handlers.auth.post_authentication_handler.handler
+      Runtime: python3.12
+      Timeout: 10
+      MemorySize: 256
+      Environment:
+        Variables:
+          LEXI_TABLE_NAME: !Ref TableName
+          LOG_LEVEL: INFO
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TableName
+      Tags:
+        Application: Lexi
+        ManagedBy: CloudFormation
+        Stack: auth
+    Metadata:
+      BuildMethod: python3.12
+
+  PostAuthenticationLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt PostAuthenticationLambda.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn:
+        Fn::ImportValue: !Sub "${AuthBaseStackName}-UserPoolArn"
+
+Outputs:
+  PreSignUpLambdaArn:
+    Description: "ARN of PreSignUp Lambda"
+    Value: !GetAtt PreSignUpLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-PreSignUpLambdaArn"
+
+  PostConfirmationLambdaArn:
+    Description: "ARN of PostConfirmation Lambda"
+    Value: !GetAtt PostConfirmationLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-PostConfirmationLambdaArn"
+
+  PostAuthenticationLambdaArn:
+    Description: "ARN of PostAuthentication Lambda"
+    Value: !GetAtt PostAuthenticationLambda.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-PostAuthenticationLambdaArn"
+
+  AttachTriggersCommand:
+    Description: "CLI command to attach Lambda triggers to User Pool"
+    Value: !Sub |
+      aws cognito-idp update-user-pool \
+        --user-pool-id $(aws cloudformation list-exports --query "Exports[?Name=='${AuthBaseStackName}-UserPoolId'].Value" --output text) \
+        --lambda-config PreSignUp=${PreSignUpLambda.Arn},PostConfirmation=${PostConfirmationLambda.Arn},PostAuthentication=${PostAuthenticationLambda.Arn} \
+        --region ${AWS::Region}
