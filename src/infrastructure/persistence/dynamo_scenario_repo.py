@@ -90,15 +90,18 @@ class DynamoScenarioRepository(ScenarioRepository):
                 "SK": "METADATA",
             },
             UpdateExpression=(
-                "SET scenario_title = :st, context = :ctx, roles = :r, goals = :g, "
+                "SET scenario_title = :st, context = :ctx, #r = :roles, goals = :g, "
                 "is_active = :ia, usage_count = :uc, difficulty_level = :dl, "
                 "#ord = :o, notes = :n, updated_at = :ua"
             ),
-            ExpressionAttributeNames={"#ord": "order"},  # order là reserved word
+            ExpressionAttributeNames={
+                "#r": "roles",  # roles là reserved word
+                "#ord": "order",  # order là reserved word
+            },
             ExpressionAttributeValues={
                 ":st": scenario.scenario_title,
                 ":ctx": scenario.context,
-                ":r": scenario.roles,
+                ":roles": scenario.roles,
                 ":g": scenario.goals,
                 ":ia": scenario.is_active,
                 ":uc": scenario.usage_count,

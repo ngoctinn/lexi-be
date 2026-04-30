@@ -143,6 +143,7 @@ Resources:
       CodeUri: src/
       Handler: infrastructure.handlers.admin.create_admin_scenario_handler.handler
       Runtime: python3.12
+      Timeout: 30
       Environment:
         Variables:
           LEXI_TABLE_NAME:
@@ -165,6 +166,7 @@ Resources:
       CodeUri: src/
       Handler: infrastructure.handlers.admin.update_admin_scenario_handler.handler
       Runtime: python3.12
+      Timeout: 30
       Environment:
         Variables:
           LEXI_TABLE_NAME:

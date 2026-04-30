@@ -45,7 +45,7 @@ class DynamoDBUserRepo(UserProfileRepository):
                     "current_streak": profile.current_streak,
                     "last_completed_at": profile.last_completed_at,
                     "total_words_learned": profile.total_words_learned,
-                    "joined_at": now,
+                    "created_at": now,  # Use created_at consistently (for GSI3)
                 },
                 ConditionExpression="attribute_not_exists(PK)",
             )

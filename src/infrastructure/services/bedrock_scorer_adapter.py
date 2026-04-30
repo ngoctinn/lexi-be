@@ -1,14 +1,12 @@
 """Infrastructure adapter for Bedrock-based scoring.
 
 This adapter wraps the Bedrock API and implements the external scorer interface.
-It's responsible for calling Bedrock (Amazon Nova Micro) and parsing responses.
+It's responsible for calling Bedrock (Amazon Nova Lite) and parsing responses.
 """
 
 import json
 import logging
 from typing import List, Optional
-
-from shared.http_utils import dumps
 
 import boto3
 from botocore.exceptions import ClientError
@@ -21,13 +19,16 @@ logger = logging.getLogger(__name__)
 
 class BedrockScorerAdapter:
     """
-    Adapter for Bedrock Nova Micro scoring service.
+    Adapter for Bedrock Nova Lite scoring service.
     
     Error Handling:
     - 429 ThrottlingException: Handled by boto3 exponential backoff
     - 503 ServiceUnavailableException: Handled by boto3 exponential backoff
     - Other errors: Logged and None returned (graceful degradation)
     """
+
+    # Use Nova Lite for scoring (same as conversation)
+    MODEL_ID = "apac.amazon.nova-lite-v1:0"
 
     def __init__(self, bedrock_client=None, region: str = "ap-southeast-1"):
         """
@@ -54,7 +55,7 @@ class BedrockScorerAdapter:
 
     def score(self, user_turns: List[Turn], level: str, scenario_title: str) -> Optional[dict]:
         """
-        Call Bedrock Nova Micro to score learner's performance.
+        Call Bedrock Nova Lite to score learner's performance using Converse API.
 
         Args:
             user_turns: List of user Turn entities
@@ -70,17 +71,25 @@ class BedrockScorerAdapter:
                 "level": level,
                 "scenario_title": scenario_title,
                 "user_turns_count": len(user_turns) if user_turns else 0,
+                "user_turns_preview": [turn.content[:50] for turn in user_turns[:3]] if user_turns else [],
+                "model_id": self.MODEL_ID,
             }
         )
         
         if not user_turns:
-            logger.warning("score() called with empty user_turns")
+            logger.error(
+                "score() called with empty user_turns - THIS SHOULD NOT HAPPEN",
+                extra={
+                    "level": level,
+                    "scenario_title": scenario_title,
+                }
+            )
             return None
 
         turn_texts = [turn.content for turn in user_turns]
         turns_str = "\n".join([f"- {text}" for text in turn_texts])
 
-        prompt = f"""Analyze this English learner's speaking performance.
+        system_prompt = f"""Analyze this English learner's speaking performance.
 
 Level: {level}
 Scenario: {scenario_title}
@@ -105,93 +114,123 @@ Respond in JSON format only:
   "feedback": "<personalized feedback in Vietnamese>"
 }}"""
 
-        # Amazon Nova format (per AWS docs: https://docs.aws.amazon.com/nova/latest/userguide/complete-request-schema.html)
-        # Note: Nova Micro does not support prompt caching (Anthropic-specific feature)
-        system_content = [{"text": prompt}]
+        user_message = "Please score the above performance."
 
         try:
-            request_body = {
-                "system": system_content,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [{"text": "Please score the above performance."}]
-                    }
-                ],
-                "inferenceConfig": {
-                    "maxTokens": 500,
-                    "temperature": 0.7
-                }
-            }
-            
             logger.info(
-                "Calling Bedrock for scoring",
+                "Calling Bedrock Converse API for scoring",
                 extra={
                     "level": level,
                     "scenario": scenario_title,
                     "turn_count": len(user_turns),
-                    "prompt_length": len(prompt),
-                    "request_body_keys": list(request_body.keys()),
+                    "system_prompt_length": len(system_prompt),
+                    "model_id": self.MODEL_ID,
                 }
             )
             
-            # Use non-streaming API (simpler and more reliable)
-            response = self.bedrock_client.invoke_model(
-                modelId="apac.amazon.nova-micro-v1:0",
-                body=dumps(request_body),
+            # Use Converse API (AWS best practice, same as conversation_orchestrator)
+            # Reference: https://docs.aws.amazon.com/nova/latest/userguide/using-converse-api.html
+            response = self.bedrock_client.converse(
+                modelId=self.MODEL_ID,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"text": user_message}]
+                    }
+                ],
+                system=[{"text": system_prompt}],
+                inferenceConfig={
+                    "maxTokens": 500,
+                    "temperature": 0.7
+                }
             )
 
-            # Parse response
-            response_body = json.loads(response["body"].read())
-            
+            # Converse API: standardized response format
             logger.info(
-                "Bedrock response received",
+                "Bedrock Converse API response received",
                 extra={
-                    "response_keys": list(response_body.keys()),
-                    "has_content": "content" in response_body,
-                    "content_blocks": len(response_body.get("content", [])) if "content" in response_body else 0,
-                    "full_response_body": response_body,  # Log full response to debug
+                    "response_keys": list(response.keys()),
+                    "has_output": "output" in response,
+                    "stop_reason": response.get("stopReason", "N/A"),
+                    "usage": response.get("usage", {}),
                 }
             )
             
-            # Extract text from Nova format
-            content = ""
-            if "content" in response_body:
-                for block in response_body["content"]:
-                    if "text" in block:
-                        content += block["text"]
+            # Extract text from Converse API response
+            content = response["output"]["message"]["content"][0]["text"]
+            
+            logger.info(
+                "Extracted content from Bedrock response",
+                extra={
+                    "content_length": len(content),
+                    "content_preview": content[:300] if content else "EMPTY",
+                    "has_json_markers": "{" in content and "}" in content,
+                }
+            )
             
             if not content.strip():
                 logger.error(
-                    "Bedrock response has no text content",
+                    "CRITICAL: Bedrock response has no text content",
                     extra={
-                        "response_body": response_body,
+                        "response_keys": list(response.keys()),
                         "level": level,
                         "scenario": scenario_title,
                         "turn_count": len(user_turns),
+                        "stop_reason": response.get("stopReason", "N/A"),
                     }
                 )
                 return None
             
-            logger.info(
-                "Extracted content from Bedrock",
-                extra={
-                    "content_length": len(content),
-                    "content_preview": content[:200],
-                }
-            )
-            
             # Try to parse JSON
             try:
-                scoring_data = json.loads(content.strip())
+                # Clean up content - remove markdown code blocks if present
+                content_clean = content.strip()
+                if content_clean.startswith("```json"):
+                    content_clean = content_clean[7:]
+                if content_clean.startswith("```"):
+                    content_clean = content_clean[3:]
+                if content_clean.endswith("```"):
+                    content_clean = content_clean[:-3]
+                content_clean = content_clean.strip()
+                
+                logger.info(
+                    "Attempting to parse JSON",
+                    extra={
+                        "original_length": len(content),
+                        "cleaned_length": len(content_clean),
+                        "cleaned_preview": content_clean[:200],
+                    }
+                )
+                
+                scoring_data = json.loads(content_clean)
+                
+                logger.info(
+                    "Successfully parsed scoring JSON",
+                    extra={
+                        "scoring_keys": list(scoring_data.keys()),
+                        "has_all_scores": all(
+                            key in scoring_data
+                            for key in [
+                                "fluency_score",
+                                "pronunciation_score",
+                                "grammar_score",
+                                "vocabulary_score",
+                                "overall_score",
+                            ]
+                        ),
+                    }
+                )
             except json.JSONDecodeError as parse_error:
                 logger.error(
-                    "Failed to parse scoring JSON from Bedrock",
+                    "CRITICAL: Failed to parse scoring JSON from Bedrock",
                     extra={
                         "level": level,
                         "scenario": scenario_title,
-                        "content": content,
+                        "content_length": len(content),
+                        "content_full": content,
                         "parse_error": str(parse_error),
+                        "parse_error_line": parse_error.lineno if hasattr(parse_error, 'lineno') else "N/A",
+                        "parse_error_col": parse_error.colno if hasattr(parse_error, 'colno') else "N/A",
                     }
                 )
                 return None

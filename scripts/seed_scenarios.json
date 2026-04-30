@@ -1,0 +1,362 @@
+[
+  {
+    "scenario_id": "a1-greeting-introduction",
+    "scenario_title": "Meeting Someone New",
+    "context": "Social Communication",
+    "roles": ["New neighbor", "Friendly resident"],
+    "goals": [
+      "Introduce yourself",
+      "Ask simple questions",
+      "Use greetings and polite expressions"
+    ],
+    "difficulty_level": "A1",
+    "order": 1,
+    "notes": "Focus on present simple tense, basic vocabulary (name, age, job, country)",
+    "is_active": true
+  },
+  {
+    "scenario_id": "a1-coffee-shop",
+    "scenario_title": "Ordering at a Coffee Shop",
+    "context": "At the Coffee Shop",
+    "roles": ["Customer", "Barista"],
+    "goals": [
+      "Order drinks and snacks",
+      "Ask about sizes and prices",
+      "Make payment politely"
+    ],
+    "difficulty_level": "A1",
+    "order": 2,
+    "notes": "Practice food/drink vocabulary, numbers, and basic requests",
+    "is_active": true
+  },
+  {
+    "scenario_id": "a1-asking-directions",
+    "scenario_title": "Finding Your Way",
+    "context": "Transportation & Asking Directions",
+    "roles": ["Tourist", "Local resident"],
+    "goals": [
+      "Ask for directions",
+      "Understand direction words",
+      "Thank and confirm"
+    ],
+    "difficulty_level": "A1",
+    "order": 3,
+    "notes": "Practice location prepositions and direction vocabulary",
+    "is_active": true
+  },
+  {
+    "scenario_id": "a1-shopping-basics",
+    "scenario_title": "Shopping at a Store",
+    "context": "Shopping",
+    "roles": ["Customer", "Shop assistant"],
+    "goals": [
+      "Ask about prices",
+      "Request items with colors and sizes",
+      "Complete purchase"
+    ],
+    "difficulty_level": "A1",
+    "order": 4,
+    "notes": "Practice numbers, colors, clothing items, and basic questions",
+    "is_active": true
+  },
+  {
+    "scenario_id": "a2-restaurant-ordering",
+    "scenario_title": "Ordering Food at a Restaurant",
+    "context": "Food & Restaurants",
+    "roles": ["Customer", "Waiter/Waitress"],
+    "goals": [
+      "Order food and drinks",
+      "Ask about menu items",
+      "Request the bill politely"
+    ],
+    "difficulty_level": "A2",
+    "order": 5,
+    "notes": "Focus on food vocabulary, polite requests, and restaurant phrases",
+    "is_active": true
+  },
+  {
+    "scenario_id": "a2-hotel-checkin",
+    "scenario_title": "Checking into a Hotel",
+    "context": "Travel & Hotels",
+    "roles": ["Hotel guest", "Hotel receptionist"],
+    "goals": [
+      "Provide booking information",
+      "Ask about amenities",
+      "Understand check-in/out times"
+    ],
+    "difficulty_level": "A2",
+    "order": 6,
+    "notes": "Use past simple for booking, present simple for facilities",
+    "is_active": true
+  },
+  {
+    "scenario_id": "a2-doctor-appointment",
+    "scenario_title": "Visiting the Doctor",
+    "context": "Health & Medical",
+    "roles": ["Patient", "Doctor"],
+    "goals": [
+      "Describe symptoms",
+      "Answer health questions",
+      "Understand medical advice"
+    ],
+    "difficulty_level": "A2",
+    "order": 7,
+    "notes": "Practice health vocabulary, present perfect for duration",
+    "is_active": true
+  },
+  {
+    "scenario_id": "a2-making-plans",
+    "scenario_title": "Planning a Weekend Trip",
+    "context": "Daily Life",
+    "roles": ["Friend planning trip", "Friend"],
+    "goals": [
+      "Suggest activities",
+      "Discuss preferences",
+      "Agree on time and place"
+    ],
+    "difficulty_level": "A2",
+    "order": 8,
+    "notes": "Use future forms (going to, will), time expressions",
+    "is_active": true
+  },
+  {
+    "scenario_id": "b1-phone-conversation",
+    "scenario_title": "Making a Phone Call",
+    "context": "Daily Life",
+    "roles": ["Customer", "Company representative"],
+    "goals": [
+      "Introduce yourself on phone",
+      "Explain reason for calling",
+      "Schedule appointment"
+    ],
+    "difficulty_level": "B1",
+    "order": 9,
+    "notes": "Practice phone etiquette, polite requests, time expressions",
+    "is_active": true
+  },
+  {
+    "scenario_id": "b1-airport-checkin",
+    "scenario_title": "Airport Check-in",
+    "context": "Travel & Aviation",
+    "roles": ["Passenger", "Check-in agent"],
+    "goals": [
+      "Check in for flight",
+      "Ask about baggage",
+      "Understand gate information"
+    ],
+    "difficulty_level": "B1",
+    "order": 10,
+    "notes": "Practice travel vocabulary, understanding announcements",
+    "is_active": true
+  },
+  {
+    "scenario_id": "b1-banking-transaction",
+    "scenario_title": "Banking Transaction",
+    "context": "Finance & Banking",
+    "roles": ["Customer", "Bank teller"],
+    "goals": [
+      "Ask about exchange rates",
+      "Request currency exchange",
+      "Understand fees"
+    ],
+    "difficulty_level": "B1",
+    "order": 11,
+    "notes": "Practice financial vocabulary, formal language",
+    "is_active": true
+  },
+  {
+    "scenario_id": "b1-apartment-viewing",
+    "scenario_title": "Renting an Apartment",
+    "context": "Daily Life",
+    "roles": ["Potential tenant", "Landlord/Real estate agent"],
+    "goals": [
+      "Ask about apartment features",
+      "Discuss rent and deposit",
+      "Inquire about lease terms"
+    ],
+    "difficulty_level": "B1",
+    "order": 12,
+    "notes": "Use comparative forms, conditional sentences, housing vocabulary",
+    "is_active": true
+  },
+  {
+    "scenario_id": "b2-job-interview",
+    "scenario_title": "Job Interview",
+    "context": "Work & Career",
+    "roles": ["Job candidate", "Interviewer"],
+    "goals": [
+      "Describe work experience",
+      "Explain strengths and weaknesses",
+      "Discuss career goals"
+    ],
+    "difficulty_level": "B2",
+    "order": 13,
+    "notes": "Use past simple, present perfect, and conditional forms",
+    "is_active": true
+  },
+  {
+    "scenario_id": "b2-team-meeting",
+    "scenario_title": "Team Project Meeting",
+    "context": "Office & Meetings",
+    "roles": ["Team member", "Team leader"],
+    "goals": [
+      "Report work progress",
+      "Propose solutions",
+      "Agree on next steps"
+    ],
+    "difficulty_level": "B2",
+    "order": 14,
+    "notes": "Practice professional communication, meeting vocabulary",
+    "is_active": true
+  },
+  {
+    "scenario_id": "b2-complaint-resolution",
+    "scenario_title": "Making a Complaint",
+    "context": "Shopping",
+    "roles": ["Dissatisfied customer", "Customer service representative"],
+    "goals": [
+      "Explain the problem",
+      "Express dissatisfaction politely",
+      "Negotiate solution"
+    ],
+    "difficulty_level": "B2",
+    "order": 15,
+    "notes": "Practice complaint language, passive voice, conditional sentences",
+    "is_active": true
+  },
+  {
+    "scenario_id": "b2-travel-problem",
+    "scenario_title": "Dealing with Travel Issues",
+    "context": "Travel & Aviation",
+    "roles": ["Stranded passenger", "Airline staff"],
+    "goals": [
+      "Explain situation and urgency",
+      "Ask about alternatives",
+      "Request compensation"
+    ],
+    "difficulty_level": "B2",
+    "order": 16,
+    "notes": "Practice problem-solving language, modal verbs, travel vocabulary",
+    "is_active": true
+  },
+  {
+    "scenario_id": "c1-business-presentation",
+    "scenario_title": "Product Presentation to Investors",
+    "context": "Business & Presentations",
+    "roles": ["Presenter", "Investor"],
+    "goals": [
+      "Present problem and solution",
+      "Analyze market",
+      "Persuade investors"
+    ],
+    "difficulty_level": "C1",
+    "order": 17,
+    "notes": "Use formal business language, persuasive techniques, complex sentences",
+    "is_active": true
+  },
+  {
+    "scenario_id": "c1-policy-discussion",
+    "scenario_title": "Company Policy Discussion",
+    "context": "Office & Meetings",
+    "roles": ["Manager", "Employee"],
+    "goals": [
+      "Analyze policy pros and cons",
+      "Propose improvements",
+      "Reach consensus"
+    ],
+    "difficulty_level": "C1",
+    "order": 18,
+    "notes": "Practice analytical language, argumentation, professional discourse",
+    "is_active": true
+  },
+  {
+    "scenario_id": "c1-business-negotiation",
+    "scenario_title": "Business Contract Negotiation",
+    "context": "Business & Presentations",
+    "roles": ["Company A representative", "Company B representative"],
+    "goals": [
+      "Present contract terms",
+      "Negotiate conditions",
+      "Reach win-win agreement"
+    ],
+    "difficulty_level": "C1",
+    "order": 19,
+    "notes": "Use negotiation techniques, formal business language, persuasion",
+    "is_active": true
+  },
+  {
+    "scenario_id": "c1-crisis-management",
+    "scenario_title": "Managing a Crisis",
+    "context": "Office & Meetings",
+    "roles": ["Crisis manager", "Team member"],
+    "goals": [
+      "Analyze situation",
+      "Propose strategic solutions",
+      "Coordinate team responses"
+    ],
+    "difficulty_level": "C1",
+    "order": 20,
+    "notes": "Practice leadership language, strategic thinking, persuasive communication",
+    "is_active": true
+  },
+  {
+    "scenario_id": "c2-debate-discussion",
+    "scenario_title": "Discussing Social Issues",
+    "context": "Society & World",
+    "roles": ["Debate participant", "Discussion moderator/opponent"],
+    "goals": [
+      "Express complex opinions",
+      "Support with examples",
+      "Respond to counterarguments"
+    ],
+    "difficulty_level": "C2",
+    "order": 21,
+    "notes": "Practice argumentation, linking words, abstract vocabulary",
+    "is_active": true
+  },
+  {
+    "scenario_id": "c2-academic-conference",
+    "scenario_title": "Academic Conference",
+    "context": "Society & World",
+    "roles": ["Researcher", "Fellow academic"],
+    "goals": [
+      "Present research concepts",
+      "Critique methodologies",
+      "Engage in scholarly debate"
+    ],
+    "difficulty_level": "C2",
+    "order": 22,
+    "notes": "Use academic register, complex syntax, specialized terminology",
+    "is_active": true
+  },
+  {
+    "scenario_id": "c2-media-interview",
+    "scenario_title": "Media Interview",
+    "context": "Society & World",
+    "roles": ["Expert interviewee", "Journalist"],
+    "goals": [
+      "Articulate complex ideas",
+      "Handle difficult questions",
+      "Engage audience effectively"
+    ],
+    "difficulty_level": "C2",
+    "order": 23,
+    "notes": "Practice media training techniques, concise explanations, public speaking",
+    "is_active": true
+  },
+  {
+    "scenario_id": "c2-strategic-consulting",
+    "scenario_title": "Business Strategy Consulting",
+    "context": "Business & Presentations",
+    "roles": ["Consultant", "CEO"],
+    "goals": [
+      "Analyze business situation",
+      "Propose long-term strategy",
+      "Forecast risks and opportunities"
+    ],
+    "difficulty_level": "C2",
+    "order": 24,
+    "notes": "Master business vocabulary, strategic thinking, executive communication",
+    "is_active": true
+  }
+]
