@@ -24,11 +24,11 @@ Resources:
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: !Sub "LexiUserPool-${Environment}"
-      
+
       # Login with email instead of username
       UsernameAttributes:
         - email
-      
+
       # Password policy (balanced security)
       Policies:
         PasswordPolicy:
@@ -37,7 +37,7 @@ Resources:
           RequireNumbers: true
           RequireSymbols: false
           RequireUppercase: false
-      
+
       # User attributes schema
       Schema:
         - Name: email
@@ -48,26 +48,26 @@ Resources:
           AttributeDataType: String
           Mutable: true
           Required: false
-      
+
       # Account recovery via email
       AccountRecoverySetting:
         RecoveryMechanisms:
           - Name: verified_email
             Priority: 1
-      
+
       # Deletion protection for production
       DeletionProtection: !If [IsProduction, ACTIVE, INACTIVE]
-      
+
       # Email configuration - Use SES for all environments
       EmailConfiguration:
         EmailSendingAccount: DEVELOPER
         SourceArn: !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/ngoctin.me"
         From: "Lexi <support@ngoctin.me>"
-      
+
       # Verification messages
       EmailVerificationMessage: "Your verification code is {####}"
       EmailVerificationSubject: "Verify Your Lexi Account"
-      
+
       # User pool tags
       UserPoolTags:
         Environment: !Ref Environment
@@ -89,44 +89,43 @@ Resources:
     Properties:
       UserPoolId: !Ref LexiUserPool
       ClientName: !Sub "LexiWebClient-${Environment}"
-      
+
       # Auth flows
       ExplicitAuthFlows:
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
         - ALLOW_USER_SRP_AUTH
-      
+
       # Attributes - only include attributes defined in Schema
       ReadAttributes:
         - email
         - name
       # WriteAttributes removed - name is not in required schema, only email is
-      
+
       # OAuth configuration
-      # Start with COGNITO only - Google will be added via auth-providers stack
+      # Start with COGNITO only - Google is enabled manually via AWS CLI
       SupportedIdentityProviders:
         - COGNITO
-      
+
       AllowedOAuthFlows:
         - code
-        - implicit
-      
+
       AllowedOAuthScopes:
         - email
         - openid
         - profile
-      
+
       # Callback URLs (localhost + production)
       CallbackURLs:
         - http://localhost:3000/oauth-callback
         - https://ngoctin.me/oauth-callback
-      
+
       LogoutURLs:
-        - http://localhost:3000
-        - https://ngoctin.me
-      
+        - http://localhost:3000/login
+        - https://ngoctin.me/login
+
       AllowedOAuthFlowsUserPoolClient: true
-      
+
       # Token validity
       RefreshTokenValidity: 30
       AccessTokenValidity: 60
@@ -135,7 +134,7 @@ Resources:
         RefreshToken: days
         AccessToken: minutes
         IdToken: minutes
-      
+
       # Prevent user existence errors
       PreventUserExistenceErrors: ENABLED
 

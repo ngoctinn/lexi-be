@@ -28,3 +28,5 @@ You want to see:
 ## If triggers are missing
 
 Re-attach triggers (from the `auth-lambdas` stack output `AttachTriggersCommand`) and re-run the verification.
+
+Important: deploying `config/auth-base.yaml` may reset `LambdaConfig` on the user pool. If you redeploy the base auth stack, re-run the trigger attach step immediately afterwards.
