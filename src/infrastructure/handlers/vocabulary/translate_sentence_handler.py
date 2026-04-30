@@ -22,8 +22,9 @@ def handler(event, context):
     User ID is available in event["requestContext"]["authorizer"]["claims"]["sub"].
     """
     try:
-        # Get user_id from Cognito claims (validated by API Gateway)
-        user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
+        # Use cognito:username to match PostConfirmation trigger's event['userName']
+        # For federated users (Google), this will be "Google_xxx" format
+        user_id = event["requestContext"]["authorizer"]["claims"]["cognito:username"]
         logger.info("Processing sentence translation", extra={"context": {"user_id": user_id}})
     except KeyError:
         # This should never happen if API Gateway Cognito Authorizer is configured correctly

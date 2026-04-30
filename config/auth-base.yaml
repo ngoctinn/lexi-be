@@ -25,10 +25,6 @@ Resources:
     Properties:
       UserPoolName: !Sub "LexiUserPool-${Environment}"
       
-      # Auto-verify email for seamless user experience
-      AutoVerifiedAttributes:
-        - email
-      
       # Login with email instead of username
       UsernameAttributes:
         - email
@@ -47,7 +43,7 @@ Resources:
         - Name: email
           AttributeDataType: String
           Mutable: true
-          Required: true
+          Required: false
         - Name: name
           AttributeDataType: String
           Mutable: true
@@ -62,21 +58,15 @@ Resources:
       # Deletion protection for production
       DeletionProtection: !If [IsProduction, ACTIVE, INACTIVE]
       
-      # Email configuration - Use SES for production
+      # Email configuration - Use SES for all environments
       EmailConfiguration:
-        EmailSendingAccount: !If [IsProduction, DEVELOPER, COGNITO_DEFAULT]
-        SourceArn: !If 
-          - IsProduction
-          - !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/ngoctin.me"
-          - !Ref AWS::NoValue
-        From: !If 
-          - IsProduction
-          - "Lexi App <noreply@ngoctin.me>"
-          - !Ref AWS::NoValue
+        EmailSendingAccount: DEVELOPER
+        SourceArn: !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/ngoctin.me"
+        From: "Lexi <support@ngoctin.me>"
       
       # Verification messages
       EmailVerificationMessage: "Your verification code is {####}"
-      EmailVerificationSubject: "Verify your Lexi account"
+      EmailVerificationSubject: "Verify Your Lexi Account"
       
       # User pool tags
       UserPoolTags:

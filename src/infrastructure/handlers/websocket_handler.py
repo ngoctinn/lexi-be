@@ -248,13 +248,15 @@ class WebSocketSessionController:
             traceback.print_exc()
             return _response(401, {"message": "Token verification error"})
 
-        user_id = str(claims.get("sub") or "")
+        # Use cognito:username to match PostConfirmation trigger's event['userName']
+        # For federated users (Google), this will be "Google_xxx" format
+        user_id = str(claims.get("cognito:username") or "")
         if not user_id:
-            print(f"[ws] Token missing 'sub' claim")
+            print(f"[ws] Token missing 'cognito:username' claim")
             return _response(401, {"message": "Token không hợp lệ."})
         
         if session.user_id != user_id:
-            print(f"[ws] Session user_id mismatch: session.user_id={session.user_id} token.sub={user_id}")
+            print(f"[ws] Session user_id mismatch: session.user_id={session.user_id} token.cognito:username={user_id}")
             return _response(403, {"message": "Session không thuộc về người dùng này."})
 
         session.connection_id = connection_id

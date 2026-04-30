@@ -115,7 +115,9 @@ def _unauthorized_response():
 def handler(event, context):
     session_controller = get_session_controller()
     try:
-        user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
+        # Use cognito:username to match PostConfirmation trigger's event['userName']
+        # For federated users (Google), this will be "Google_xxx" format
+        user_id = event["requestContext"]["authorizer"]["claims"]["cognito:username"]
     except KeyError:
         return _unauthorized_response()
 

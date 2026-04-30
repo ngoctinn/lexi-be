@@ -74,7 +74,9 @@ def handler(event, context):
     Authorization (admin role check) is performed in this handler.
     """
     try:
-        user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
+        # Use cognito:username to match PostConfirmation trigger's event['userName']
+        # For federated users (Google), this will be "Google_xxx" format
+        user_id = event["requestContext"]["authorizer"]["claims"]["cognito:username"]
         logger.info("List users handler invoked", extra={"context": {"user_id": user_id}})
     except KeyError:
         logger.error("Missing Cognito claims - check API Gateway authorizer configuration")

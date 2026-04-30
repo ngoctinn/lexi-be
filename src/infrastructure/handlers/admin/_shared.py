@@ -21,9 +21,12 @@ def check_admin(event: dict, user_repo: DynamoDBUserRepo) -> Tuple[Optional[str]
     """
     Kiểm tra JWT và role ADMIN.
     Trả về (user_id, None) nếu hợp lệ, hoặc (None, error_response) nếu không.
+    
+    Uses cognito:username to match PostConfirmation trigger's event['userName'].
+    For federated users (Google), this will be "Google_xxx" format.
     """
     try:
-        user_id = event["requestContext"]["authorizer"]["claims"]["sub"]
+        user_id = event["requestContext"]["authorizer"]["claims"]["cognito:username"]
     except KeyError:
         return None, _response(401, {"error": "Unauthorized"})
 

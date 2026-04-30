@@ -23,56 +23,51 @@ def handler(event, context):
     Returning any other object will cause "Object of type X is not JSON serializable" error.
     
     This handler supports:
-    - PostConfirmation_ConfirmSignUp: After email/password sign-up confirmation
-    - PostConfirmation_ExternalProvider: After federated sign-up (not triggered for Google)
-    - PostAuthentication_Authentication: After successful login (used for Google OAuth users)
+    - PostConfirmation_ConfirmSignUp: After sign-up confirmation (local users and first federated sign-in)
+    - PostConfirmation_ConfirmForgotPassword: After password reset confirmation (ignored here)
     """
     try:
         trigger_source = event.get('triggerSource')
-        logger.info(f"PostConfirmation handler triggered with source: {trigger_source}")
+        user_id = event.get('userName', 'unknown')
+        logger.info(f"PostConfirmation handler triggered", extra={"context": {"trigger_source": trigger_source, "user_id": user_id}})
         
-        # Handle PostConfirmation triggers (email/password sign-up)
-        if trigger_source in ["PostConfirmation_ConfirmSignUp", "PostConfirmation_ExternalProvider"]:
-            logger.info("Processing PostConfirmation event", extra={"context": {"user_id": event.get('userName')}})
+        # Handle PostConfirmation for successful sign-up confirmation.
+        # AWS docs: for federated users, the post confirmation triggerSource is also PostConfirmation_ConfirmSignUp.
+        if trigger_source == "PostConfirmation_ConfirmSignUp":
+            logger.info("Processing PostConfirmation event", extra={"context": {"user_id": user_id, "trigger_source": trigger_source}})
+            
+            # Validate required fields
+            user_attrs = event.get('request', {}).get('userAttributes', {})
+            email = user_attrs.get('email', '')
+            
+            if not user_id:
+                logger.error("Missing userName in Cognito event", extra={"context": {"event": event}})
+                return event
+            
+            if not email:
+                logger.error("Missing email in userAttributes", extra={"context": {"user_id": user_id, "userAttributes": user_attrs}})
+                return event
             
             # Execute business logic via controller
-            result = auth_controller.handle_post_confirmation(event)
-            
-            # Log result but ALWAYS return event object for Cognito
-            if result.is_success:
-                logger.info("User profile created successfully", extra={"context": {"user_id": event.get('userName')}})
-            else:
-                logger.error("Failed to create user profile", extra={"context": {"error": result.error}})
-            
-            return event
-        
-        # Handle PostAuthentication trigger (for Google OAuth users)
-        # This is needed because PostConfirmation doesn't run for external providers
-        if trigger_source == "PostAuthentication_Authentication":
-            user_attributes = event.get('request', {}).get('userAttributes', {})
-            identities = user_attributes.get('identities')
-            
-            # Only create profile for federated users (Google, Facebook, etc.)
-            if identities:
-                logger.info(f"Creating profile for federated user via PostAuthentication: {event.get('userName')}")
+            try:
                 result = auth_controller.handle_post_confirmation(event)
                 
+                # Log result but ALWAYS return event object for Cognito
                 if result.is_success:
-                    logger.info("User profile created successfully via PostAuthentication")
+                    logger.info("User profile created successfully", extra={"context": {"user_id": user_id, "email": email}})
                 else:
-                    # Profile might already exist, that's OK
-                    logger.info(f"Profile creation result: {result.error}")
-            else:
-                logger.info(f"Not a federated user, skipping profile creation: {event.get('userName')}")
+                    logger.error("Failed to create user profile", extra={"context": {"user_id": user_id, "error": result.error}})
+            except Exception as e:
+                logger.exception("Exception in handle_post_confirmation", extra={"context": {"user_id": user_id, "error": str(e)}})
             
             return event
         
         # Skip other triggers
-        logger.info(f"Skipping non-PostConfirmation/PostAuthentication event: {trigger_source}")
+        logger.info(f"Skipping non-PostConfirmation/PostAuthentication event", extra={"context": {"trigger_source": trigger_source, "user_id": user_id}})
         return event
         
     except Exception as e:
-        logger.exception("Error in post_confirmation_handler", extra={"context": {"error": str(e)}})
+        logger.exception("Error in post_confirmation_handler", extra={"context": {"error": str(e), "event": event}})
         # Even on error, return event to not block user sign-up
         # User can still login, profile creation can be retried later
         return event

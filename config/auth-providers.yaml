@@ -34,7 +34,7 @@ Resources:
       ProviderType: Google
       ProviderDetails:
         client_id: !Sub "{{resolve:ssm:${GoogleClientIdParameter}}}"
-        client_secret: !Sub "{{resolve:ssm:${GoogleClientSecretParameter}}}"
+        client_secret: !Sub "{{resolve:ssm-secure:${GoogleClientSecretParameter}}}"
         authorize_scopes: "email profile openid"
       AttributeMapping:
         email: email
