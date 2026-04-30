@@ -4,7 +4,7 @@ This repo deploys Cognito triggers in a separate SAM stack and attaches them to 
 
 ## What AWS expects
 
-- Cognito triggers must return the *same* `event` object.
+- Cognito triggers must return the _same_ `event` object.
 - Federated users (Google) invoke:
   - First sign-in: `PreSignUp_ExternalProvider` + `PostConfirmation_ConfirmSignUp`
   - Subsequent sign-ins: `PostAuthentication_Authentication`
